@@ -115,6 +115,53 @@ export const mockDb = {
       detail,
     });
   },
+  buatUser(input: { nama: string; username: string; password: string; role: Role }, actor: User): User {
+    if (actor.role !== "pemilik") throw new Error("Hanya pemilik yang boleh menambah pengguna.");
+    const nama = input.nama.trim();
+    const username = input.username.trim().toLowerCase();
+    if (!nama || !username) throw new Error("Nama dan username wajib diisi.");
+    if (input.password.length < 6) throw new Error("Password minimal 6 karakter.");
+    if (this.users.some((u) => u.username.toLowerCase() === username)) {
+      throw new Error("Username sudah dipakai.");
+    }
+    const baru = {
+      id: `u${Date.now().toString(36)}`,
+      nama,
+      username,
+      password: input.password,
+      role: input.role,
+    };
+    this.users.push(baru);
+    this.audit(actor, "buat-user", `Tambah pengguna ${nama} (${input.role})`);
+    return { id: baru.id, nama: baru.nama, username: baru.username, role: baru.role };
+  },
+  ubahUser(id: string, input: { password?: string; role?: Role }, actor: User): User {
+    if (actor.role !== "pemilik") throw new Error("Hanya pemilik yang boleh mengubah pengguna.");
+    const target = this.users.find((u) => u.id === id);
+    if (!target) throw new Error("Pengguna tidak ditemukan.");
+    if (input.password !== undefined && input.password.length < 6) {
+      throw new Error("Password minimal 6 karakter.");
+    }
+    if (input.role && input.role !== target.role && target.role === "pemilik") {
+      const pemilikLain = this.users.some((u) => u.id !== id && u.role === "pemilik");
+      if (!pemilikLain) throw new Error("Minimal harus ada satu pemilik.");
+    }
+    if (input.password !== undefined) target.password = input.password;
+    if (input.role !== undefined) target.role = input.role;
+    this.audit(actor, "ubah-user", `Ubah pengguna ${target.nama} (${target.username})`);
+    return { id: target.id, nama: target.nama, username: target.username, role: target.role };
+  },
+  hapusUser(id: string, actor: User): void {
+    if (actor.role !== "pemilik") throw new Error("Hanya pemilik yang boleh menghapus pengguna.");
+    if (id === actor.id) throw new Error("Tidak bisa menghapus akun sendiri.");
+    const target = this.users.find((u) => u.id === id);
+    if (!target) throw new Error("Pengguna tidak ditemukan.");
+    if (target.role === "pemilik" && this.users.filter((u) => u.role === "pemilik").length <= 1) {
+      throw new Error("Minimal harus ada satu pemilik.");
+    }
+    this.users = this.users.filter((u) => u.id !== id);
+    this.audit(actor, "hapus-user", `Hapus pengguna ${target.nama} (${target.username})`);
+  },
   shiftAktif: null as ShiftInfo | null,
   shiftRiwayat: [] as ShiftRiwayat[],
   transaksi: [] as TransaksiRiwayat[],

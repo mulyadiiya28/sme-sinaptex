@@ -16,16 +16,22 @@ const DEFAULT: ProfilToko = {
 
 type TokoState = {
   profil: ProfilToko;
+  kebijakan: { izinkanKredit: boolean };
   simpan: (p: ProfilToko) => void;
+  simpanKebijakan: (k: TokoState["kebijakan"]) => void;
   reset: () => void;
 };
+
+const DEFAULT_KEBIJAKAN: TokoState["kebijakan"] = { izinkanKredit: true };
 
 export const useToko = create<TokoState>()(
   persist(
     (set) => ({
       profil: DEFAULT,
+      kebijakan: DEFAULT_KEBIJAKAN,
       simpan: (profil) => set({ profil }),
-      reset: () => set({ profil: DEFAULT }),
+      simpanKebijakan: (kebijakan) => set({ kebijakan }),
+      reset: () => set({ profil: DEFAULT, kebijakan: DEFAULT_KEBIJAKAN }),
     }),
     { name: "pos-sinaptex-toko" },
   ),

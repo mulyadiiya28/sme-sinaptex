@@ -428,6 +428,9 @@ public/
 | `api.auth.login()` | `POST /api/auth/login` | username+password → user, access token, refresh token (httpOnly cookie di live) |
 | `api.auth.logout()` | `POST /api/auth/logout` | akhiri sesi, catat audit |
 | `api.auth.users()` | `GET /api/users` | daftar pengguna + peran (kelola oleh engine) |
+| `api.auth.buatUser()` | `POST /api/users` | **hanya pemilik**; nama+username unik+password min 6+peran; tercatat di audit log |
+| `api.auth.ubahUser()` | `PUT /api/users/{id}` | ganti password/peran; tidak boleh menurunkan pemilik terakhir; tercatat di audit log |
+| `api.auth.hapusUser()` | `DELETE /api/users/{id}` | tidak bisa hapus akun sendiri / pemilik terakhir; tercatat di audit log |
 | `api.auth.auditList()` | `GET /api/audit-log` | jejak audit (login/logout, nanti: void/penyesuaian stok) |
 | `api.master.imporProduk()` | `POST /api/products/import` | **hanya pemilik**; unggah CSV migrasi (sku,nama,barcode,satuan,kategori,hargaBeli,hargaJual,stok,stokMinimum); duplikat SKU/barcode ditolak per baris; respons per baris (sukses/gagal/pesan) |
 | `api.master.imporPelanggan()` | `POST /api/customers/import` | **hanya pemilik**; unggah CSV (nama,telepon,alamat,batasKredit); duplikat nama ditolak per baris |
@@ -482,6 +485,14 @@ Alur utuh yang bisa diuji: buka shift → kasir (F2 cari / Enter tambah / F4 bay
 - **Validasi impor produk**: SKU/nama wajib, harga jual > 0, duplikat SKU/barcode (dengan data lama maupun antar baris) ditolak **per baris** (baris valid tetap masuk) — hasil impor berisi sukses/gagal/pesan per baris, tercatat di audit log.
 - **Impor saldo awal GL** = inisiasi GL untuk migrasi usaha yang sudah jalan: nama akun harus cocok dengan daftar akun engine, total debit harus = total kredit, lalu jurnal `OPEN-MIG` "Saldo awal (migrasi)" dibuat dan jurnal `OPEN-*` lama (modal awal seed) diganti; saldo Kas/Bank dihitung ulang dari jurnal.
 - **Pelanggan**: kini ada master pelanggan di mock (`api.master.pelanggan`, key cache `["pelanggan"]`); input pelanggan di keranjang kasir memakai datalist dari master ini.
+
+### Catatan mock (Pemutakhiran pasca-P1)
+
+- **Kelola pengguna** (Keamanan, hanya pemilik): tambah pengguna (nama/username unik/password min 6/peran), ubah (password baru opsional + peran, tidak boleh menurunkan pemilik terakhir), hapus (tidak bisa hapus akun sendiri / pemilik terakhir) — semua tercatat di audit log.
+- **Kebijakan operasional** (Operasional): toggle "izinkan penjualan kredit" di toko store (persist) — saat nonaktif, kotak piutang di dialog pembayaran terkunci dengan pesan kebijakan. Di live, divalidasi ulang engine.
+- **Tab Retur** di Riwayat: arsip retur (nomor, ref transaksi, item, alasan, metode refund, nominal).
+- **Panel Akuntansi** di Pengaturan: daftar akun engine + saldo (dari `GET /api/accounts`) — read-only.
+- **Dashboard**: omzet/piutang mengecualikan transaksi `dibatalkan`; peringatan "menunggu konfirmasi" untuk pembayaran digital tertunda; kartu engine akuntansi kini menyatakan aktif.
 
 ### Cara menjalankan
 

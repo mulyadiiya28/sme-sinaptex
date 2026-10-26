@@ -2,16 +2,17 @@
 
 import { useMemo, useState } from "react";
 import { Download, Eye, RotateCcw, Search, XCircle } from "lucide-react";
-import type { ReturInput, TransaksiRiwayat } from "@/lib/api/types";
+import type { ReturInput, ReturPenjualan, TransaksiRiwayat } from "@/lib/api/types";
 import { DataTable, type Column } from "@/components/data-table";
 import { FormField } from "@/components/form-field";
 import { MoneyDisplay } from "@/components/money-display";
 import { PageHeader } from "@/components/page-header";
 import { StatusBadge } from "@/components/status-badge";
-import { useRiwayatTransaksi, useTransaksiMutations } from "@/hooks/queries";
+import { useRiwayatRetur, useRiwayatTransaksi, useTransaksiMutations } from "@/hooks/queries";
 import { useAuth } from "@/lib/store/auth";
 import { useToko } from "@/lib/store/toko";
 import { cetakStruk } from "@/lib/struk";
+import { cn } from "@/lib/utils";
 
 const STATUS_TONE = {
   lunas: "success",
@@ -28,6 +29,7 @@ const STATUS_LABEL = {
 } as const;
 
 export default function RiwayatPage() {
+  const [tab, setTab] = useState<"transaksi" | "retur">("transaksi");
   const riwayat = useRiwayatTransaksi();
   const { batal } = useTransaksiMutations();
   const user = useAuth((s) => s.user);
@@ -133,6 +135,25 @@ export default function RiwayatPage() {
         description="Setiap transaksi tercatat dan dapat ditelusuri — status penjualan dan status pembayaran terpisah."
       />
 
+      <div className="mb-4 flex flex-wrap gap-2">
+        {(["transaksi", "retur"] as const).map((id) => (
+          <button
+            key={id}
+            type="button"
+            onClick={() => setTab(id)}
+            className={cn(
+              "rounded-full border px-4 py-2 text-sm font-semibold transition-colors",
+              tab === id ? "border-brand bg-brand text-white" : "border-line bg-white text-muted hover:text-ink",
+            )}
+          >
+            {id === "transaksi" ? "Transaksi" : "Retur"}
+          </button>
+        ))}
+      </div>
+
+      {tab === "retur" ? (
+        <PanelRetur />
+      ) : (
       <div className="panel p-4">
         <div className="flex flex-wrap items-end gap-2.5">
           <div className="relative flex-1 min-w-[220px]">
@@ -164,6 +185,7 @@ export default function RiwayatPage() {
           <DataTable columns={columns} rows={filtered} rowKey={(r) => r.nomor} empty="Belum ada transaksi. Mulai dari layar Kasir." className="mt-2" />
         )}
       </div>
+      )}
 
       {detail && <DetailDialog t={detail} onClose={() => setDetail(null)} />}
       {targetVoid && (
@@ -180,6 +202,36 @@ export default function RiwayatPage() {
         />
       )}
       {targetRetur && <ReturDialog t={targetRetur} onClose={() => setTargetRetur(null)} />}
+    </div>
+  );
+}
+
+function PanelRetur() {
+  const retur = useRiwayatRetur();
+
+  const columns: Column<ReturPenjualan>[] = [
+    { key: "waktu", header: "Waktu", render: (r) => (
+      <span className="text-muted">{new Date(r.waktu).toLocaleString("id-ID", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })}</span>
+    ) },
+    { key: "nomor", header: "Nomor retur", render: (r) => <span className="font-semibold text-brand">{r.nomor}</span> },
+    { key: "referensi", header: "Ref. transaksi", render: (r) => r.referensi },
+    { key: "items", header: "Item", render: (r) => (
+      <span>{r.items.map((i) => `${i.qty}× ${i.nama}`).join(", ")}</span>
+    ) },
+    { key: "alasan", header: "Alasan", render: (r) => <span className="text-muted">{r.alasan}</span> },
+    { key: "metodeRefund", header: "Refund", align: "center", render: (r) => (
+      <StatusBadge label={r.metodeRefund === "tunai" ? "Tunai" : "Transfer"} tone="info" />
+    ) },
+    { key: "total", header: "Nominal", align: "right", render: (r) => <MoneyDisplay value={r.total} className="font-semibold text-rose-600" /> },
+  ];
+
+  return (
+    <div className="panel p-4">
+      {retur.isLoading ? (
+        <p className="py-12 text-center text-sm text-muted">Memuat riwayat retur...</p>
+      ) : (
+        <DataTable columns={columns} rows={retur.data ?? []} rowKey={(r) => r.nomor} empty="Belum ada retur." />
+      )}
     </div>
   );
 }
@@ -271,7 +323,7 @@ function DetailDialog({ t, onClose }: { t: TransaksiRiwayat; onClose: () => void
           )}
         </dl>
         <p className="mt-4 rounded-xl bg-slate-50 px-3 py-2 text-[11px] text-muted">
-          Nantinya panel ini memuat penelusuran ke jurnal engine (audit trail).
+          Jurnal terkait transaksi ini bisa ditelusuri di menu Akuntansi → Jurnal Otomatis (ref: {t.nomor}).
         </p>
         <div className="mt-4 flex gap-2">
           <button type="button" onClick={() => cetakStruk(useToko.getState().profil, { ...t, waktu: t.waktu, pembayaran: t.pembayaran })} className="btn-secondary flex-1">

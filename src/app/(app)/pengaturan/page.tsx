@@ -8,7 +8,7 @@ import { FormField } from "@/components/form-field";
 import { MoneyDisplay } from "@/components/money-display";
 import { PageHeader } from "@/components/page-header";
 import { StatusBadge } from "@/components/status-badge";
-import { useAkun, useAuditLog, useAuthUsers, useImporMutations } from "@/hooks/queries";
+import { useAkun, useAuditLog, useAuthUsers, useImporMutations, useUserMutations } from "@/hooks/queries";
 import { unduhCsv, parseCsv } from "@/lib/csv";
 import { useAuth } from "@/lib/store/auth";
 import { useToko } from "@/lib/store/toko";
@@ -383,8 +383,8 @@ function PanelProfil() {
 function PanelInfo({ grup }: { grup: string }) {
   const daftar =
     grup === "Operasional"
-      ? ["Satuan & kategori produk", "Printer & scanner barcode", "Kebijakan stok & pajak", "Metode pembayaran aktif"]
-      : ["Daftar akun & pemetaan", "Kebijakan HPP", "Periode akuntansi", "Konfigurasi pajak"];
+      ? ["Printer & scanner barcode", "Multi outlet / gudang", "Queue mutasi offline (P2)"]
+      : ["Kebijakan HPP", "Periode akuntansi", "Konfigurasi pajak lanjutan"];
   return (
     <div className="panel p-6">
       <h2 className="text-sm font-bold text-brand">{grup}</h2>
@@ -392,7 +392,48 @@ function PanelInfo({ grup }: { grup: string }) {
         {daftar.map((t) => (
           <li key={t} className="flex items-center justify-between border-b border-line/60 pb-2">
             <span>{t}</span>
-            <StatusBadge label="Menyusul (P1/P2)" tone="neutral" />
+            <StatusBadge label="Menyusul (P2)" tone="neutral" />
+          </li>
+        ))}
+      </ul>
+      {grup === "Operasional" && <KebijakanOperasional />}
+      {grup === "Akuntansi" && <DaftarAkunInfo />}
+    </div>
+  );
+}
+
+function KebijakanOperasional() {
+  const kebijakan = useToko((s) => s.kebijakan);
+  const simpanKebijakan = useToko((s) => s.simpanKebijakan);
+
+  return (
+    <div className="mt-5 border-t border-line pt-4">
+      <p className="text-sm font-semibold text-ink">Kebijakan penjualan kredit</p>
+      <label className="mt-2 flex items-center gap-2.5 text-sm text-muted">
+        <input
+          type="checkbox"
+          checked={kebijakan.izinkanKredit}
+          onChange={(e) => simpanKebijakan({ ...kebijakan, izinkanKredit: e.target.checked })}
+        />
+        Izinkan kasir mengubah sisa pembayaran menjadi piutang (penjualan kredit)
+      </label>
+      <p className="mt-1.5 text-xs text-muted">
+        Bila nonaktif, kasir harus melunasi seluruh sisa — kotak piutang di dialog pembayaran terkunci. Di live, kebijakan ini divalidasi ulang oleh engine C#.
+      </p>
+    </div>
+  );
+}
+
+function DaftarAkunInfo() {
+  const akun = useAkun();
+  return (
+    <div className="mt-5 border-t border-line pt-4">
+      <p className="text-sm font-semibold text-ink">Daftar akun (dari engine)</p>
+      <ul className="mt-2 grid grid-cols-1 gap-1.5 text-xs text-muted sm:grid-cols-2">
+        {(akun.data ?? []).map((a) => (
+          <li key={a.akun} className="flex items-center justify-between rounded-lg border border-line/60 bg-white px-2.5 py-1.5">
+            <span className="font-medium text-ink">{a.akun}</span>
+            <span className="tabular-nums"><MoneyDisplay value={a.saldo} /></span>
           </li>
         ))}
       </ul>
@@ -404,6 +445,12 @@ function PanelKeamanan() {
   const users = useAuthUsers();
   const audit = useAuditLog();
   const user = useAuth((s) => s.user);
+  const { buat, ubah, hapus } = useUserMutations();
+  const [form, setForm] = useState({ nama: "", username: "", password: "", role: "kasir" as User["role"] });
+  const [error, setError] = useState<string | null>(null);
+  const [sukses, setSukses] = useState<string | null>(null);
+  const [targetUbah, setTargetUbah] = useState<User | null>(null);
+  const [targetHapus, setTargetHapus] = useState<User | null>(null);
 
   const kolomUser: Column<User>[] = [
     { key: "nama", header: "Nama", render: (r) => <span className="font-medium">{r.nama}</span> },
@@ -419,7 +466,21 @@ function PanelKeamanan() {
         />
       ),
     },
-    { key: "sesi", header: "Sesi", render: () => (user ? "—" : "—") },
+    {
+      key: "aksi",
+      header: "",
+      align: "right",
+      render: (r) => (
+        user?.role === "pemilik" ? (
+          <div className="flex justify-end gap-1.5">
+            <button type="button" onClick={() => setTargetUbah(r)} className="btn-secondary rounded-lg px-2.5 py-1.5 text-xs">Ubah</button>
+            {r.id !== user.id && (
+              <button type="button" onClick={() => setTargetHapus(r)} className="btn-secondary rounded-lg px-2.5 py-1.5 text-xs text-rose-600">Hapus</button>
+            )}
+          </div>
+        ) : null
+      ),
+    },
   ];
 
   const kolomAudit: Column<AuditEntry>[] = [
@@ -444,15 +505,119 @@ function PanelKeamanan() {
           <ShieldCheck className="size-4" aria-hidden />
           Pengguna &amp; hak akses
         </h2>
+        {user?.role === "pemilik" && (
+          <form
+            className="mb-4 flex flex-wrap items-end gap-2.5 rounded-xl border border-line bg-slate-50/60 p-3"
+            onSubmit={(e) => {
+              e.preventDefault();
+              setError(null);
+              setSukses(null);
+              buat.mutate(
+                { input: form, actor: user },
+                {
+                  onSuccess: () => {
+                    setForm({ nama: "", username: "", password: "", role: "kasir" });
+                    setSukses("Pengguna baru tersimpan.");
+                  },
+                  onError: (err) => setError(String(err).replace("Error: ", "")),
+                },
+              );
+            }}
+          >
+            <FormField label="Nama">
+              <input className="input w-40" value={form.nama} onChange={(e) => setForm({ ...form, nama: e.target.value })} />
+            </FormField>
+            <FormField label="Username">
+              <input className="input w-32" value={form.username} onChange={(e) => setForm({ ...form, username: e.target.value })} />
+            </FormField>
+            <FormField label="Password (min. 6)">
+              <input type="password" className="input w-36" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} />
+            </FormField>
+            <FormField label="Peran">
+              <select className="input w-28" value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value as User["role"] })}>
+                <option value="kasir">Kasir</option>
+                <option value="pemilik">Pemilik</option>
+              </select>
+            </FormField>
+            <button type="submit" disabled={buat.isPending} className="btn-primary">Tambah</button>
+          </form>
+        )}
+        {error && <p className="mb-3 rounded-xl bg-rose-50 px-3 py-2 text-xs text-rose-700">{error}</p>}
+        {sukses && <p className="mb-3 rounded-xl bg-emerald-50 px-3 py-2 text-xs text-emerald-700">{sukses}</p>}
         <DataTable columns={kolomUser} rows={users.data ?? []} rowKey={(r) => r.id} empty="Belum ada pengguna." />
         <p className="mt-3 px-1 text-xs text-muted">
-          Kelola pengguna (tambah/hapus, ganti password) akan dilakukan oleh engine C# — frontend hanya menampilkan.
+          Password disimpan oleh engine; di live, tambah/ubah/hapus pengguna tetap lewat API C# dengan audit log.
         </p>
       </div>
       <div className="panel p-4">
         <h2 className="mb-3 px-1 text-sm font-bold text-brand">Audit log sesi</h2>
         <DataTable columns={kolomAudit} rows={audit.data ?? []} rowKey={(r) => r.id} empty="Belum ada aktivitas tercatat." />
       </div>
+
+      {targetUbah && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink/50 p-4 backdrop-blur-sm" onClick={() => setTargetUbah(null)}>
+          <div className="panel w-full max-w-sm p-7" onClick={(e) => e.stopPropagation()}>
+            <h2 className="font-black text-brand">Ubah {targetUbah.nama}</h2>
+            <form
+              className="mt-4 space-y-3"
+              onSubmit={(e) => {
+                e.preventDefault();
+                setError(null);
+                if (!user) return;
+                const data = new FormData(e.currentTarget);
+                const password = String(data.get("password") ?? "");
+                const role = String(data.get("role") ?? targetUbah.role) as User["role"];
+                ubah.mutate(
+                  { id: targetUbah.id, input: { ...(password ? { password } : {}), role }, actor: user },
+                  { onSuccess: () => setTargetUbah(null), onError: (err) => setError(String(err).replace("Error: ", "")) },
+                );
+              }}
+            >
+              <FormField label="Password baru (kosongkan = tidak diubah)">
+                <input type="password" name="password" className="input" />
+              </FormField>
+              <FormField label="Peran">
+                <select name="role" defaultValue={targetUbah.role} className="input">
+                  <option value="kasir">Kasir</option>
+                  <option value="pemilik">Pemilik</option>
+                </select>
+              </FormField>
+              {error && <p className="rounded-xl bg-rose-50 px-3 py-2 text-xs text-rose-700">{error}</p>}
+              <div className="flex gap-2">
+                <button type="submit" disabled={ubah.isPending} className="btn-primary flex-1">Simpan</button>
+                <button type="button" onClick={() => setTargetUbah(null)} className="btn-secondary">Batal</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {targetHapus && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink/50 p-4 backdrop-blur-sm" onClick={() => setTargetHapus(null)}>
+          <div className="panel w-full max-w-sm p-7" onClick={(e) => e.stopPropagation()}>
+            <h2 className="font-black text-brand">Hapus {targetHapus.nama}?</h2>
+            <p className="mt-2 text-sm text-muted">Pengguna ini tidak akan bisa login lagi.</p>
+            {error && <p className="mt-3 rounded-xl bg-rose-50 px-3 py-2 text-xs text-rose-700">{error}</p>}
+            <div className="mt-4 flex gap-2">
+              <button
+                type="button"
+                disabled={hapus.isPending}
+                className="btn-primary flex-1 bg-rose-600 hover:bg-rose-500"
+                onClick={() => {
+                  if (!user) return;
+                  hapus.mutate(
+                    { id: targetHapus.id, actor: user },
+                    { onSuccess: () => setTargetHapus(null), onError: (err) => setError(String(err).replace("Error: ", "")) },
+                  );
+                }}
+              >
+                {hapus.isPending ? "Memproses..." : "Ya, Hapus"}
+              </button>
+              <button type="button" onClick={() => setTargetHapus(null)} className="btn-secondary">Batal</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

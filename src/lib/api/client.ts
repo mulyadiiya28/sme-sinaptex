@@ -68,6 +68,21 @@ export const api = {
       await delay(120);
       return structuredClone(mockDb.auditLog).reverse();
     },
+    buatUser: async (input: { nama: string; username: string; password: string; role: User["role"] }, actor: User): Promise<User> => {
+      if (API_MODE === "live") throw new Error("API C# belum disambung.");
+      await delay(300);
+      return mockDb.buatUser(input, actor);
+    },
+    ubahUser: async (id: string, input: { password?: string; role?: User["role"] }, actor: User): Promise<User> => {
+      if (API_MODE === "live") throw new Error("API C# belum disambung.");
+      await delay(300);
+      return mockDb.ubahUser(id, input, actor);
+    },
+    hapusUser: async (id: string, actor: User): Promise<void> => {
+      if (API_MODE === "live") throw new Error("API C# belum disambung.");
+      await delay(250);
+      mockDb.hapusUser(id, actor);
+    },
   },
 
   master: {

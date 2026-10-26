@@ -39,6 +39,7 @@ export function PaymentDialog({
 }) {
   const cart = useCart();
   const pajakPersen = useToko((s) => s.profil.pajakPersen ?? 0);
+  const izinkanKredit = useToko((s) => s.kebijakan.izinkanKredit);
   const [sukses, setSukses] = useState<CheckoutResult | null>(null);
   const kunciIdempotensi = useRef<string>(
     typeof crypto !== "undefined" && "randomUUID" in crypto ? crypto.randomUUID() : `chk-${Date.now()}-${Math.random()}`,
@@ -222,14 +223,20 @@ export function PaymentDialog({
               <span className="font-semibold text-rose-700">Sisa pembayaran</span>
               <MoneyDisplay value={hitungan.sisa} className="font-black text-rose-700" />
             </div>
-            <label className="flex items-center gap-2 text-xs text-ink">
-              <input
-                type="checkbox"
-                checked={cart.gunakanPiutang}
-                onChange={(e) => cart.setPiutang(e.target.checked)}
-              />
-              Sisa menjadi piutang penjualan (penjualan kredit)
-            </label>
+            {izinkanKredit ? (
+              <label className="flex items-center gap-2 text-xs text-ink">
+                <input
+                  type="checkbox"
+                  checked={cart.gunakanPiutang}
+                  onChange={(e) => cart.setPiutang(e.target.checked)}
+                />
+                Sisa menjadi piutang penjualan (penjualan kredit)
+              </label>
+            ) : (
+              <p className="text-xs font-semibold text-rose-700">
+                Kebijakan toko menonaktifkan penjualan kredit — lunasi seluruh sisa.
+              </p>
+            )}
           </div>
         )}
 

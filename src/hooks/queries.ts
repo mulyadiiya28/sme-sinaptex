@@ -66,6 +66,31 @@ export function useAuditLog() {
   return useQuery({ queryKey: ["audit"], queryFn: api.auth.auditList });
 }
 
+export function useUserMutations() {
+  const qc = useQueryClient();
+  const invalidate = () => {
+    qc.invalidateQueries({ queryKey: ["users"] });
+    qc.invalidateQueries({ queryKey: ["audit"] });
+  };
+
+  const buat = useMutation({
+    mutationFn: (args: { input: { nama: string; username: string; password: string; role: User["role"] }; actor: User }) =>
+      api.auth.buatUser(args.input, args.actor),
+    onSuccess: invalidate,
+  });
+  const ubah = useMutation({
+    mutationFn: (args: { id: string; input: { password?: string; role?: User["role"] }; actor: User }) =>
+      api.auth.ubahUser(args.id, args.input, args.actor),
+    onSuccess: invalidate,
+  });
+  const hapus = useMutation({
+    mutationFn: (args: { id: string; actor: User }) => api.auth.hapusUser(args.id, args.actor),
+    onSuccess: invalidate,
+  });
+
+  return { buat, ubah, hapus };
+}
+
 export function usePembelianMutations() {
   const qc = useQueryClient();
   const invalidateSemua = () => {

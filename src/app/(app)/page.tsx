@@ -19,7 +19,8 @@ export default function DashboardPage() {
   }
 
   const hari = new Date().toISOString().slice(0, 10);
-  const transaksi = riwayat.data ?? [];
+  const semua = riwayat.data ?? [];
+  const transaksi = semua.filter((t) => t.status !== "dibatalkan");
   const hariIni = transaksi.filter((t) => t.waktu.slice(0, 10) === hari);
   const omzetHariIni = hariIni.reduce((s, t) => s + t.total, 0);
   const menipis = (products.data ?? []).filter((p) => p.stok <= p.stokMinimum);
@@ -93,15 +94,25 @@ export default function DashboardPage() {
                 </p>
               </li>
             ) : null}
-            {transaksi.some((t) => t.piutang > 0) ? (
+            {transaksi.some((t) => t.status === "menunggu_pembayaran") ? (
+              <li className="rounded-2xl border border-line/70 bg-slate-50/60 p-3">
+                <StatusBadge label="Menunggu konfirmasi" tone="warning" />
+                <p className="mt-1.5 text-sm text-ink">
+                  Ada pembayaran QRIS/gateway yang belum dikonfirmasi — cek Keuangan → Kas & Bank.
+                </p>
+              </li>
+            ) : null}
+            {transaksi.some((t) => t.piutang > 0 && t.status !== "dibatalkan") ? (
               <li className="rounded-2xl border border-line/70 bg-slate-50/60 p-3">
                 <StatusBadge label="Piutang" tone="danger" />
                 <p className="mt-1.5 text-sm text-ink">Ada penjualan kredit yang belum lunas.</p>
               </li>
             ) : null}
             <li className="rounded-2xl border border-line/70 bg-slate-50/60 p-3">
-              <StatusBadge label="Engine akuntansi" tone="info" />
-              <p className="mt-1.5 text-sm text-ink">Jurnal & laba-rugi menyusul saat engine C# tersambung (Tahap 3).</p>
+              <StatusBadge label="Engine akuntansi" tone="success" />
+              <p className="mt-1.5 text-sm text-ink">
+                Jurnal, neraca saldo, buku besar & laba-rugi aktif di menu Akuntansi.
+              </p>
             </li>
           </ul>
         </div>
