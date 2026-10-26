@@ -1,0 +1,162 @@
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { api } from "@/lib/api/client";
+import type {
+  CheckoutPayload,
+  PembelianInput,
+  Product,
+  ShiftBukaInput,
+  ShiftMutasiInput,
+} from "@/lib/api/types";
+
+export function useProducts() {
+  return useQuery({ queryKey: ["products"], queryFn: api.master.products });
+}
+
+export function useActiveShift() {
+  return useQuery({ queryKey: ["shift"], queryFn: api.shift.aktif });
+}
+
+export function useShiftRiwayat() {
+  return useQuery({ queryKey: ["shift-riwayat"], queryFn: api.shift.riwayat });
+}
+
+export function useRiwayatTransaksi() {
+  return useQuery({ queryKey: ["transaksi"], queryFn: api.transaksi.riwayat });
+}
+
+export function usePembelian() {
+  return useQuery({ queryKey: ["pembelian"], queryFn: api.pembelian.list });
+}
+
+export function useBiaya() {
+  return useQuery({ queryKey: ["biaya"], queryFn: api.biaya.list });
+}
+
+export function useJurnal() {
+  return useQuery({ queryKey: ["jurnal"], queryFn: api.akuntansi.jurnal });
+}
+
+export function useAkun() {
+  return useQuery({ queryKey: ["akun"], queryFn: api.akuntansi.akun });
+}
+
+export function useLabaRugi() {
+  return useQuery({ queryKey: ["laba-rugi"], queryFn: api.akuntansi.labaRugi });
+}
+
+export function usePembelianMutations() {
+  const qc = useQueryClient();
+  const invalidateSemua = () => {
+    qc.invalidateQueries({ queryKey: ["pembelian"] });
+    qc.invalidateQueries({ queryKey: ["jurnal"] });
+    qc.invalidateQueries({ queryKey: ["akun"] });
+    qc.invalidateQueries({ queryKey: ["laba-rugi"] });
+    qc.invalidateQueries({ queryKey: ["products"] });
+  };
+
+  const buat = useMutation({
+    mutationFn: (input: PembelianInput) => api.pembelian.buat(input),
+    onSuccess: invalidateSemua,
+  });
+
+  return { buat };
+}
+
+export function usePembayaranMutations() {
+  const qc = useQueryClient();
+  const invalidateSemua = () => {
+    qc.invalidateQueries({ queryKey: ["pembelian"] });
+    qc.invalidateQueries({ queryKey: ["transaksi"] });
+    qc.invalidateQueries({ queryKey: ["jurnal"] });
+    qc.invalidateQueries({ queryKey: ["akun"] });
+    qc.invalidateQueries({ queryKey: ["laba-rugi"] });
+  };
+
+  const bayarHutang = useMutation({
+    mutationFn: ({ id, nominal, metode }: { id: string; nominal: number; metode: "tunai" | "transfer" }) =>
+      api.hutang.bayar(id, nominal, metode),
+    onSuccess: invalidateSemua,
+  });
+  const bayarPiutang = useMutation({
+    mutationFn: ({ nomor, nominal, metode }: { nomor: string; nominal: number; metode: "tunai" | "transfer" }) =>
+      api.piutang.bayar(nomor, nominal, metode),
+    onSuccess: invalidateSemua,
+  });
+
+  return { bayarHutang, bayarPiutang };
+}
+
+export function useBiayaMutations() {
+  const qc = useQueryClient();
+  const invalidateSemua = () => {
+    qc.invalidateQueries({ queryKey: ["biaya"] });
+    qc.invalidateQueries({ queryKey: ["jurnal"] });
+    qc.invalidateQueries({ queryKey: ["akun"] });
+    qc.invalidateQueries({ queryKey: ["laba-rugi"] });
+  };
+
+  const catat = useMutation({
+    mutationFn: (input: { kategori: string; nominal: number; metode: "tunai" | "transfer"; catatan?: string }) =>
+      api.biaya.catat(input),
+    onSuccess: invalidateSemua,
+  });
+
+  return { catat };
+}
+
+export function useShiftMutations() {
+  const qc = useQueryClient();
+  const invalidate = () => {
+    qc.invalidateQueries({ queryKey: ["shift"] });
+    qc.invalidateQueries({ queryKey: ["shift-riwayat"] });
+  };
+
+  const buka = useMutation({
+    mutationFn: (input: ShiftBukaInput) => api.shift.buka(input),
+    onSuccess: invalidate,
+  });
+  const mutasiKas = useMutation({
+    mutationFn: (input: ShiftMutasiInput) => api.shift.mutasiKas(input),
+    onSuccess: invalidate,
+  });
+  const tutup = useMutation({
+    mutationFn: (uangFisik: number) => api.shift.tutup(uangFisik),
+    onSuccess: invalidate,
+  });
+
+  return { buka, mutasiKas, tutup };
+}
+
+export function useProductMutations() {
+  const qc = useQueryClient();
+  const invalidate = () => qc.invalidateQueries({ queryKey: ["products"] });
+
+  const create = useMutation({
+    mutationFn: (p: Omit<Product, "id">) => api.master.createProduct(p),
+    onSuccess: invalidate,
+  });
+  const update = useMutation({
+    mutationFn: ({ id, data }: { id: string; data: Omit<Product, "id"> }) =>
+      api.master.updateProduct(id, data),
+    onSuccess: invalidate,
+  });
+  const remove = useMutation({
+    mutationFn: (id: string) => api.master.deleteProduct(id),
+    onSuccess: invalidate,
+  });
+
+  return { create, update, remove };
+}
+
+export function useCheckout(onSuccess: (data: Awaited<ReturnType<typeof api.transaksi.checkout>>) => void) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: CheckoutPayload) => api.transaksi.checkout(payload),
+    onSuccess: (data) => {
+      qc.invalidateQueries({ queryKey: ["transaksi"] });
+      qc.invalidateQueries({ queryKey: ["products"] });
+      qc.invalidateQueries({ queryKey: ["shift"] });
+      onSuccess(data);
+    },
+  });
+}
