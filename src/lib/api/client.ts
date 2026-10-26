@@ -1,17 +1,22 @@
 import type {
+  AuditEntry,
   Biaya,
   CheckoutPayload,
   CheckoutResult,
   JurnalEntry,
   LabaRugi,
+  LoginResult,
+  PaymentMethod,
   Pembelian,
   PembelianInput,
+  PenyesuaianStokInput,
   Product,
   ShiftBukaInput,
   ShiftInfo,
   ShiftMutasiInput,
   ShiftRiwayat,
   TransaksiRiwayat,
+  User,
 } from "@/lib/api/types";
 import { mockDb, produkBaruId } from "@/lib/api/mock/db";
 
@@ -35,6 +40,29 @@ export function hitungTotal(payload: Pick<CheckoutPayload, "lines" | "diskonTran
 }
 
 export const api = {
+  auth: {
+    login: async (username: string, password: string): Promise<LoginResult> => {
+      if (API_MODE === "live") throw new Error("API C# belum disambung.");
+      await delay(400);
+      return mockDb.login(username, password);
+    },
+    logout: async (user?: User): Promise<void> => {
+      if (API_MODE === "live") throw new Error("API C# belum disambung.");
+      await delay(150);
+      mockDb.logout(user);
+    },
+    users: async (): Promise<User[]> => {
+      if (API_MODE === "live") throw new Error("API C# belum disambung.");
+      await delay(120);
+      return mockDb.users.map(({ password: _, ...u }) => u);
+    },
+    auditList: async (): Promise<AuditEntry[]> => {
+      if (API_MODE === "live") throw new Error("API C# belum disambung.");
+      await delay(120);
+      return structuredClone(mockDb.auditLog).reverse();
+    },
+  },
+
   master: {
     products: async (): Promise<Product[]> => {
       if (API_MODE === "live") throw new Error("API C# belum disambung.");
@@ -50,6 +78,11 @@ export const api = {
       const baru: Product = { ...p, id: produkBaruId() };
       mockDb.products.push(baru);
       return structuredClone(baru);
+    },
+    penyesuaianStok: async (input: PenyesuaianStokInput, user: User): Promise<Product> => {
+      if (API_MODE === "live") throw new Error("API C# belum disambung.");
+      await delay(300);
+      return mockDb.penyesuaianStok(input, user);
     },
     updateProduct: async (id: string, p: Omit<Product, "id">): Promise<Product> => {
       if (API_MODE === "live") throw new Error("API C# belum disambung.");
@@ -164,6 +197,10 @@ export const api = {
 
       if (!mockDb.shiftAktif) throw new Error("Shift belum dibuka.");
 
+      if (mockDb.kunciCheckout.has(payload.idempotensiKunci)) {
+        throw new Error("Transaksi ganda terdeteksi (idempotensi) — refresh dan ulangi.");
+      }
+
       const total = hitungTotal(payload);
       const kembalian = hitungKembalian(total, payload.allocations);
       const terbayar = payload.allocations.reduce((sum, a) => sum + a.nominal, 0) - kembalian;
@@ -173,6 +210,19 @@ export const api = {
 
       if (sisa > 0 && !jadiPiutang) {
         throw new Error("Pembayaran kurang dan penjualan kredit tidak diizinkan.");
+      }
+
+      let belum = total - kembalian;
+      let masukTunai = 0;
+      let masukBank = 0;
+      const pembayaran: Array<{ metode: PaymentMethod; nominal: number }> = [];
+      for (const a of payload.allocations) {
+        if (belum <= 0) break;
+        const masuk = Math.min(a.nominal, belum);
+        if (a.metode === "tunai") masukTunai += masuk;
+        else masukBank += masuk;
+        if (masuk > 0) pembayaran.push({ metode: a.metode, nominal: masuk });
+        belum -= masuk;
       }
 
       nomorBerikut += 1;
@@ -197,6 +247,7 @@ export const api = {
         kembalian,
         piutang: jadiPiutang ? sisa : 0,
         status,
+        pembayaran,
       });
 
       mockDb.jurnalPenjualan(
@@ -226,6 +277,12 @@ export const api = {
       if (API_MODE === "live") throw new Error("API C# belum disambung.");
       await delay(120);
       return mockDb.riwayatTransaksi();
+    },
+
+    batal: async (nomor: string, user: User): Promise<TransaksiRiwayat> => {
+      if (API_MODE === "live") throw new Error("API C# belum disambung.");
+      await delay(400);
+      return mockDb.batalTransaksi(nomor, user);
     },
   },
 };

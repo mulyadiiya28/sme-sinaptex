@@ -34,6 +34,7 @@ export type CheckoutPayload = {
   pelanggan?: string;
   kasir: string;
   shiftId: string;
+  idempotensiKunci: string;
 };
 
 export type CheckoutResult = {
@@ -90,7 +91,14 @@ export type TransaksiRiwayat = {
   total: number;
   kembalian: number;
   piutang: number;
-  status: "lunas" | "menunggu_pembayaran" | "dibayar_sebagian";
+  status: "lunas" | "menunggu_pembayaran" | "dibayar_sebagian" | "dibatalkan";
+  pembayaran?: Array<{ metode: PaymentMethod; nominal: number }>;
+};
+
+export type PenyesuaianStokInput = {
+  productId: string;
+  stokFisik: number;
+  alasan: string;
 };
 
 export type PembelianItem = {
@@ -145,4 +153,37 @@ export type LabaRugi = {
   hpp: number;
   biaya: number;
   laba: number;
+};
+
+export type Role = "pemilik" | "kasir";
+
+export type User = {
+  id: string;
+  nama: string;
+  username: string;
+  role: Role;
+};
+
+export type LoginResult = {
+  user: User;
+  accessToken: string;
+  refreshToken: string;
+  kedaluwarsa: number;
+};
+
+export type AuditEntry = {
+  id: string;
+  waktu: string;
+  user: string;
+  aksi: string;
+  detail: string;
+};
+
+export type ProfilToko = {
+  nama: string;
+  alamat: string;
+  telepon: string;
+  mataUang: string;
+  zonaWaktu: string;
+  footerStruk: string;
 };

@@ -29,6 +29,11 @@ npm run build   # verifikasi build statis
 - **Keuangan**: 4 tab — Kas & Bank (rekonsiliasi), Biaya (catat + tabel), Piutang (pelunasan), Hutang (pelunasan ke pemasok).
 - **Akuntansi**: neraca saldo dengan indikator keseimbangan debit=kredit, jurnal otomatis expandable, laba-rugi (pendapatan − HPP − biaya).
 - **Laporan**: omzet & rata-rata per transaksi, penjualan per hari, nilai persediaan (stok × harga beli).
+- **Login & hak akses**: halaman login (demo: `pemilik/pemilik123`, `kasir/kasir123`); role `pemilik` = akses penuh, `kasir` = Kasir/Riwayat/Shift; menu sidebar & akses halaman difilter per role; logout di topbar; audit log sesi di Pengaturan > Keamanan.
+- **Pengaturan**: profil toko (nama, alamat, telepon, mata uang, zona waktu, footer struk) — dipakai topbar.
+- **Void transaksi**: pemilik dapat membatalkan transaksi dari Riwayat — stok kembali, jurnal reversal, status `dibatalkan`, tercatat di audit log.
+- **Penyesuaian stok**: pemilik dapat mengganti stok sistem dengan stok fisik (opname/rusak/hilang) — jurnal akun "Selisih stok" otomatis.
+- **Idempotensi**: setiap sesi dialog pembayaran membawa kunci unik; pengiriman ulang dengan kunci sama ditolak.
 
 ## PWA (Serwist)
 

@@ -5,11 +5,20 @@ import { useEffect, useState } from "react";
 import { ArrowLeft } from "lucide-react";
 import { useProducts, useActiveShift } from "@/hooks/queries";
 import { useCart } from "@/lib/store/cart";
+import { AuthGuard } from "@/components/auth-guard";
 import { ProductCatalog } from "@/components/kasir/product-catalog";
 import { CartPanel } from "@/components/kasir/cart-panel";
 import { PaymentDialog } from "@/components/kasir/payment-dialog";
 
 export default function KasirPage() {
+  return (
+    <AuthGuard>
+      <KasirScreen />
+    </AuthGuard>
+  );
+}
+
+function KasirScreen() {
   const products = useProducts();
   const shift = useActiveShift();
   const add = useCart((s) => s.add);

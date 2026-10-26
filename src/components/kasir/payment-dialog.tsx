@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { BadgePercent, CheckCircle2, Plus, ReceiptText, XCircle } from "lucide-react";
 import type { CheckoutResult, PaymentMethod } from "@/lib/api/types";
 import { MoneyDisplay } from "@/components/money-display";
@@ -37,6 +37,9 @@ export function PaymentDialog({
 }) {
   const cart = useCart();
   const [sukses, setSukses] = useState<CheckoutResult | null>(null);
+  const kunciIdempotensi = useRef<string>(
+    typeof crypto !== "undefined" && "randomUUID" in crypto ? crypto.randomUUID() : `chk-${Date.now()}-${Math.random()}`,
+  );
 
   const total = totalTransaksi(cart.lines, cart.diskonTransaksi);
 
@@ -72,6 +75,7 @@ export function PaymentDialog({
       pelanggan: cart.pelanggan,
       kasir,
       shiftId,
+      idempotensiKunci: kunciIdempotensi.current,
     });
   }
 

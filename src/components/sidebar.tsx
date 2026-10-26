@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { NAV_GROUPS } from "@/lib/nav";
+import { useAuth } from "@/lib/store/auth";
 import { cn } from "@/lib/utils";
 
 export function Sidebar({
@@ -14,6 +15,11 @@ export function Sidebar({
   onToggle: () => void;
 }) {
   const pathname = usePathname();
+  const user = useAuth((s) => s.user);
+  const groups = NAV_GROUPS.map((g) => ({
+    ...g,
+    items: g.items.filter((i) => !i.roles || !user || i.roles.includes(user.role)),
+  })).filter((g) => g.items.length > 0);
 
   return (
     <aside
@@ -35,7 +41,7 @@ export function Sidebar({
       </div>
 
       <nav className="flex-1 space-y-4 overflow-y-auto px-2 pb-4">
-        {NAV_GROUPS.map((group) => (
+        {groups.map((group) => (
           <div key={group.title ?? group.items[0].href}>
             {group.title && !collapsed && (
               <p className="px-3 pb-1 pt-2 text-[10px] font-semibold uppercase tracking-widest text-white/40">

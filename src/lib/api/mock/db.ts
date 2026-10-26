@@ -2,14 +2,17 @@ import type {
   Biaya,
   JurnalBaris,
   JurnalEntry,
+  LoginResult,
   Pembelian,
   PembelianInput,
   Product,
+  Role,
   ShiftBukaInput,
   ShiftInfo,
   ShiftMutasiInput,
   ShiftRiwayat,
   TransaksiRiwayat,
+  User,
 } from "@/lib/api/types";
 
 const produkSeed: Product[] = [
@@ -35,6 +38,7 @@ const DAFTAR_AKUN = [
   "Penjualan",
   "HPP",
   "Biaya operasional",
+  "Selisih stok",
 ];
 
 const KAS_TUNAI_AWAL = 1_500_000;
@@ -66,6 +70,38 @@ function kasTunaiSistem(shift: ShiftInfo): number {
 
 export const mockDb = {
   products: [...produkSeed] as Product[],
+  users: [
+    { id: "u1", nama: "Pemilik Toko", username: "pemilik", password: "pemilik123", role: "pemilik" as const },
+    { id: "u2", nama: "Kasir 1", username: "kasir", password: "kasir123", role: "kasir" as const },
+  ] as Array<User & { password: string }>,
+  sesi: null as LoginResult | null,
+  auditLog: [] as Array<{ id: string; waktu: string; user: string; aksi: string; detail: string }>,
+  login(username: string, password: string): LoginResult {
+    const user = this.users.find((u) => u.username === username && u.password === password);
+    if (!user) throw new Error("Username atau password salah.");
+    const sesi: LoginResult = {
+      user: { id: user.id, nama: user.nama, username: user.username, role: user.role as Role },
+      accessToken: `mock-at-${user.id}-${Date.now()}`,
+      refreshToken: `mock-rt-${user.id}-${Date.now()}`,
+      kedaluwarsa: Date.now() + 15 * 60 * 1000,
+    };
+    this.sesi = sesi;
+    this.audit(sesi.user, "login", `Masuk sebagai ${sesi.user.role}`);
+    return structuredClone(sesi);
+  },
+  logout(user?: User): void {
+    if (user) this.audit(user, "logout", "Keluar sesi");
+    this.sesi = null;
+  },
+  audit(user: User, aksi: string, detail: string): void {
+    this.auditLog.push({
+      id: `AUD-${String(this.auditLog.length + 1).padStart(4, "0")}`,
+      waktu: waktuSekarang(),
+      user: `${user.nama} (${user.username})`,
+      aksi,
+      detail,
+    });
+  },
   shiftAktif: null as ShiftInfo | null,
   shiftRiwayat: [] as ShiftRiwayat[],
   transaksi: [] as TransaksiRiwayat[],
@@ -135,6 +171,71 @@ export const mockDb = {
 
   catatTransaksi(r: TransaksiRiwayat): void {
     this.transaksi.unshift(r);
+  },
+
+  kunciCheckout: new Set<string>(),
+
+  batalTransaksi(nomor: string, user: User): TransaksiRiwayat {
+    const t = this.transaksi.find((x) => x.nomor === nomor);
+    if (!t) throw new Error("Transaksi tidak ditemukan.");
+    if (t.status === "dibatalkan") throw new Error("Transaksi sudah dibatalkan sebelumnya.");
+
+    if (t.shiftId === this.shiftAktif?.id) {
+      const tunai = (t.pembayaran ?? []).find((b) => b.metode === "tunai")?.nominal ?? 0;
+      this.shiftAktif.penjualanTunai = Math.max(0, this.shiftAktif.penjualanTunai - tunai);
+      this.shiftAktif.kasTunaiSistem = kasTunaiSistem(this.shiftAktif);
+      this.kas.tunai = Math.max(0, this.kas.tunai - tunai);
+    }
+
+    for (const item of t.items) {
+      const p = this.products.find((x) => x.nama === item.nama);
+      if (p) p.stok += item.qty;
+    }
+
+    const baris: JurnalBaris[] = [
+      { akun: "Penjualan", debit: t.total, kredit: 0 },
+    ];
+    const tunaiPortion = (t.pembayaran ?? []).find((b) => b.metode === "tunai")?.nominal ?? 0;
+    const bankPortion = (t.pembayaran ?? []).find((b) => b.metode === "transfer" || b.metode === "qris")?.nominal ?? 0;
+    if (tunaiPortion > 0) baris.push({ akun: "Kas", debit: 0, kredit: tunaiPortion });
+    if (bankPortion > 0) baris.push({ akun: "Bank", debit: 0, kredit: bankPortion });
+    if (t.piutang > 0) baris.push({ akun: "Piutang usaha", debit: 0, kredit: t.piutang });
+    const hpp = t.items.reduce((s, i) => {
+      const p = this.products.find((x) => x.nama === i.nama);
+      return s + (p ? p.hargaBeli * i.qty : 0);
+    }, 0);
+    if (hpp > 0) {
+      baris.push({ akun: "Persediaan", debit: hpp, kredit: 0 });
+      baris.push({ akun: "HPP", debit: 0, kredit: hpp });
+    }
+    this.jurnal.unshift(buatJurnal(`Pembatalan transaksi ${t.nomor}`, `VOID-${t.nomor}`, baris));
+
+    this.kas.bank = Math.max(0, this.kas.bank - bankPortion);
+
+    t.status = "dibatalkan";
+    t.piutang = 0;
+    this.audit(user, "void", `Batalkan transaksi ${t.nomor} (Rp${t.total.toLocaleString("id-ID")})`);
+    return structuredClone(t);
+  },
+
+  penyesuaianStok(input: { productId: string; stokFisik: number; alasan: string }, user: User): Product {
+    const p = this.products.find((x) => x.id === input.productId);
+    if (!p) throw new Error("Produk tidak ditemukan.");
+    if (input.stokFisik < 0) throw new Error("Stok fisik tidak boleh negatif.");
+    const lama = p.stok;
+    const selisih = input.stokFisik - lama;
+    if (selisih === 0) throw new Error("Stok fisik sama dengan stok sistem — tidak ada penyesuaian.");
+
+    const nilai = Math.abs(selisih) * p.hargaBeli;
+    const baris: JurnalBaris[] =
+      selisih > 0
+        ? [{ akun: "Persediaan", debit: nilai, kredit: 0 }, { akun: "Selisih stok", debit: 0, kredit: nilai }]
+        : [{ akun: "Selisih stok", debit: nilai, kredit: 0 }, { akun: "Persediaan", debit: 0, kredit: nilai }];
+    this.jurnal.unshift(buatJurnal(`Penyesuaian stok ${p.nama}`, `ADJ-${p.sku}`, baris));
+
+    p.stok = input.stokFisik;
+    this.audit(user, "penyesuaian_stok", `${p.nama}: ${lama} → ${input.stokFisik} (${input.alasan || "tanpa alasan"})`);
+    return structuredClone(p);
   },
 
   riwayatTransaksi(): TransaksiRiwayat[] {

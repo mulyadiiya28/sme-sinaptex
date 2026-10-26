@@ -1,26 +1,30 @@
 "use client";
 
 import { useMemo, useRef, useState } from "react";
-import { Pencil, Plus, Search } from "lucide-react";
-import type { Product } from "@/lib/api/types";
+import { Pencil, Plus, Search, SlidersHorizontal } from "lucide-react";
+import type { PenyesuaianStokInput, Product } from "@/lib/api/types";
 import { DataTable, type Column } from "@/components/data-table";
+import { FormField } from "@/components/form-field";
 import { MoneyDisplay } from "@/components/money-display";
 import { PageHeader } from "@/components/page-header";
 import { StatusBadge } from "@/components/status-badge";
 import { ProductFormDialog } from "@/components/produk/product-form-dialog";
 import { useProductMutations, useProducts } from "@/hooks/queries";
+import { useAuth } from "@/lib/store/auth";
 
 type Filter = "semua" | "menipis" | "nonaktif";
 
 export default function ProdukPage() {
   const products = useProducts();
   const { remove } = useProductMutations();
+  const user = useAuth((s) => s.user);
   const [keyword, setKeyword] = useState("");
   const [filter, setFilter] = useState<Filter>("semua");
   const [dialog, setDialog] = useState<{ open: boolean; editing: Product | null }>({
     open: false,
     editing: null,
   });
+  const [penyesuaian, setPenyesuaian] = useState(false);
   const searchRef = useRef<HTMLInputElement>(null);
 
   const filtered = useMemo(() => {
@@ -72,9 +76,16 @@ export default function ProdukPage() {
         title="Produk & Stok"
         description="Master produk untuk kasir. Stok tersedia nantinya dihitung engine dari mutasi stok."
         actions={
-          <button type="button" onClick={() => setDialog({ open: true, editing: null })} className="btn-primary">
-            <Plus className="size-4" aria-hidden /> Tambah Produk
-          </button>
+          <div className="flex gap-2">
+            {user?.role === "pemilik" && (
+              <button type="button" onClick={() => setPenyesuaian(true)} className="btn-secondary">
+                <SlidersHorizontal className="size-4" aria-hidden /> Penyesuaian Stok
+              </button>
+            )}
+            <button type="button" onClick={() => setDialog({ open: true, editing: null })} className="btn-primary">
+              <Plus className="size-4" aria-hidden /> Tambah Produk
+            </button>
+          </div>
         }
       />
 
@@ -123,6 +134,93 @@ export default function ProdukPage() {
       </div>
 
       {dialog.open && <ProductFormDialog editing={dialog.editing} onClose={() => setDialog({ open: false, editing: null })} />}
+      {penyesuaian && (
+        <PenyesuaianStokDialog
+          produk={products.data ?? []}
+          pending={false}
+          onClose={() => setPenyesuaian(false)}
+        />
+      )}
+    </div>
+  );
+}
+
+function PenyesuaianStokDialog({
+  produk,
+  onClose,
+}: {
+  produk: Product[];
+  pending?: boolean;
+  onClose: () => void;
+}) {
+  const penyesuaianStok = useProductMutations().penyesuaianStok;
+  const user = useAuth((s) => s.user);
+  const [input, setInput] = useState<PenyesuaianStokInput>({ productId: "", stokFisik: 0, alasan: "stok opname" });
+  const [error, setError] = useState<string | null>(null);
+  const terpilih = produk.find((p) => p.id === input.productId);
+  const selisih = terpilih ? input.stokFisik - terpilih.stok : 0;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink/50 p-4 backdrop-blur-sm" onClick={onClose}>
+      <div className="panel w-full max-w-sm p-7" onClick={(e) => e.stopPropagation()}>
+        <h2 className="font-black text-brand">Penyesuaian stok</h2>
+        <p className="mt-1 text-xs text-muted">
+          Stok sistem diganti dengan stok fisik hasil hitung (stok opname). Selisih membentuk jurnal akun
+          &ldquo;Selisih stok&rdquo; dan tercatat di audit log.
+        </p>
+        <form
+          className="mt-4 space-y-3.5"
+          onSubmit={(e) => {
+            e.preventDefault();
+            setError(null);
+            if (!user) return setError("Sesi tidak ditemukan.");
+            if (!terpilih) return setError("Pilih produk terlebih dahulu.");
+            penyesuaianStok.mutate(
+              { input, user },
+              { onSuccess: () => onClose(), onError: (err) => setError(String(err)) },
+            );
+          }}
+        >
+          <FormField label="Produk">
+            <select className="input" value={input.productId} onChange={(e) => setInput({ ...input, productId: e.target.value })} autoFocus>
+              <option value="">— pilih produk —</option>
+              {produk.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.nama} (sistem: {p.stok} {p.satuan})
+                </option>
+              ))}
+            </select>
+          </FormField>
+          <FormField label={`Stok fisik (${terpilih?.satuan ?? "satuan"})`}>
+            <input
+              type="number"
+              min={0}
+              className="input text-right tabular-nums"
+              value={input.stokFisik || ""}
+              onChange={(e) => setInput({ ...input, stokFisik: Number(e.target.value) })}
+            />
+          </FormField>
+          <FormField label="Alasan">
+            <select className="input" value={input.alasan} onChange={(e) => setInput({ ...input, alasan: e.target.value })}>
+              <option value="stok opname">Stok opname</option>
+              <option value="rusak">Rusak / kedaluwarsa</option>
+              <option value="hilang">Hilang</option>
+              <option value="lainnya">Lainnya</option>
+            </select>
+          </FormField>
+          {terpilih && selisih !== 0 && (
+            <p className={`rounded-xl px-3 py-2 text-xs ${selisih > 0 ? "bg-emerald-50 text-emerald-700" : "bg-rose-50 text-rose-700"}`}>
+              Selisih {selisih > 0 ? "+" : ""}{selisih} — nilai jurnal{" "}
+              <MoneyDisplay value={Math.abs(selisih) * terpilih.hargaBeli} className="font-bold" />
+            </p>
+          )}
+          {error && <p className="rounded-xl bg-rose-50 px-3 py-2 text-xs text-rose-700">{error}</p>}
+          <div className="flex gap-2">
+            <button type="submit" className="btn-primary flex-1">Simpan Penyesuaian</button>
+            <button type="button" onClick={onClose} className="btn-secondary">Batal</button>
+          </div>
+        </form>
+      </div>
     </div>
   );
 }

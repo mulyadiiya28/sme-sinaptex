@@ -1,30 +1,36 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Eye, Search } from "lucide-react";
+import { Eye, Search, XCircle } from "lucide-react";
 import type { TransaksiRiwayat } from "@/lib/api/types";
 import { DataTable, type Column } from "@/components/data-table";
 import { MoneyDisplay } from "@/components/money-display";
 import { PageHeader } from "@/components/page-header";
 import { StatusBadge } from "@/components/status-badge";
-import { useRiwayatTransaksi } from "@/hooks/queries";
+import { useRiwayatTransaksi, useTransaksiMutations } from "@/hooks/queries";
+import { useAuth } from "@/lib/store/auth";
 
 const STATUS_TONE = {
   lunas: "success",
   menunggu_pembayaran: "warning",
   dibayar_sebagian: "warning",
+  dibatalkan: "danger",
 } as const;
 
 const STATUS_LABEL = {
   lunas: "Lunas",
   menunggu_pembayaran: "Menunggu pembayaran",
   dibayar_sebagian: "Sebagian (piutang)",
+  dibatalkan: "Dibatalkan",
 } as const;
 
 export default function RiwayatPage() {
   const riwayat = useRiwayatTransaksi();
+  const { batal } = useTransaksiMutations();
+  const user = useAuth((s) => s.user);
   const [keyword, setKeyword] = useState("");
   const [detail, setDetail] = useState<TransaksiRiwayat | null>(null);
+  const [targetVoid, setTargetVoid] = useState<TransaksiRiwayat | null>(null);
 
   const filtered = useMemo(() => {
     const q = keyword.trim().toLowerCase();
@@ -54,9 +60,21 @@ export default function RiwayatPage() {
       <StatusBadge label={STATUS_LABEL[r.status]} tone={STATUS_TONE[r.status]} />
     ) },
     { key: "aksi", header: "", align: "right", render: (r) => (
-      <button type="button" onClick={() => setDetail(r)} className="btn-secondary rounded-lg px-2.5 py-1.5 text-xs">
-        <Eye className="size-3.5" aria-hidden /> Detail
-      </button>
+      <div className="flex justify-end gap-1.5">
+        <button type="button" onClick={() => setDetail(r)} className="btn-secondary rounded-lg px-2.5 py-1.5 text-xs">
+          <Eye className="size-3.5" aria-hidden /> Detail
+        </button>
+        {user?.role === "pemilik" && r.status !== "dibatalkan" && (
+          <button
+            type="button"
+            onClick={() => setTargetVoid(r)}
+            title="Batalkan transaksi"
+            className="flex items-center gap-1 rounded-lg border border-line bg-white px-2.5 py-1.5 text-xs font-semibold text-rose-600 transition-colors hover:bg-rose-50"
+          >
+            <XCircle className="size-3.5" aria-hidden /> Void
+          </button>
+        )}
+      </div>
     ) },
   ];
 
@@ -89,6 +107,60 @@ export default function RiwayatPage() {
       </div>
 
       {detail && <DetailDialog t={detail} onClose={() => setDetail(null)} />}
+      {targetVoid && (
+        <VoidDialog
+          t={targetVoid}
+          pending={batal.isPending}
+          onClose={() => setTargetVoid(null)}
+          onConfirm={() =>
+            batal.mutate(
+              { nomor: targetVoid.nomor, user: user! },
+              { onSuccess: () => setTargetVoid(null), onError: (err) => alert(String(err)) },
+            )
+          }
+        />
+      )}
+    </div>
+  );
+}
+
+function VoidDialog({
+  t,
+  pending,
+  onClose,
+  onConfirm,
+}: {
+  t: TransaksiRiwayat;
+  pending: boolean;
+  onClose: () => void;
+  onConfirm: () => void;
+}) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink/50 p-4 backdrop-blur-sm">
+      <div className="panel w-full max-w-sm p-7">
+        <h2 className="flex items-center gap-2 font-black text-brand">
+          <XCircle className="size-5 text-rose-600" aria-hidden /> Batalkan {t.nomor}
+        </h2>
+        <p className="mt-3 text-sm text-muted">
+          Transaksi <span className="font-bold text-ink">{t.nomor}</span> senilai{" "}
+          <span className="font-bold text-ink">
+            <MoneyDisplay value={t.total} />
+          </span>{" "}
+          akan dibatalkan: stok dikembalikan, jurnal reversal dibentuk, dan riwayat tetap tercatat dengan status
+          &ldquo;Dibatalkan&rdquo;.
+        </p>
+        <div className="mt-4 rounded-xl bg-amber-50 px-3 py-2.5 text-xs text-amber-700">
+          Aksi sensitif — hanya pemilik toko. Tercatat di audit log dengan nama Anda.
+        </div>
+        <div className="mt-5 flex gap-2">
+          <button type="button" disabled={pending} onClick={onConfirm} className="btn-primary flex-1 bg-rose-600 hover:bg-rose-500 disabled:opacity-40">
+            {pending ? "Memproses..." : "Ya, Batalkan"}
+          </button>
+          <button type="button" onClick={onClose} className="btn-secondary">
+            Batal
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

@@ -356,10 +356,10 @@ src/
       keuangan/page.tsx         → Keuangan (4 tab: Kas & Bank, Biaya + form catat, Piutang + bayar, Hutang + bayar)
       akuntansi/page.tsx        → Akuntansi (3 tab: Neraca saldo + badge keseimbangan, Jurnal otomatis expandable, Laba-Rugi KPI + rincian)
       laporan/page.tsx          → Laporan (KPI omzet/persediaan/rata-rata; penjualan per hari; nilai persediaan stok×hargaBeli)
-      pengaturan/page.tsx       → placeholder
+      pengaturan/page.tsx       → Pengaturan (4 tab: Profil Toko edit+pratinjau, Operasional/Akuntansi info menyusul, Keamanan: pengguna + audit log)
   components/
-    app-shell.tsx, sidebar.tsx, app-topbar.tsx, page-header.tsx, kpi-card.tsx,
-    status-badge.tsx, money-display.tsx, data-table.tsx, placeholder-page.tsx, form-field.tsx
+    app-shell.tsx, sidebar.tsx (filter menu per role), app-topbar.tsx (user nyata + logout), page-header.tsx, kpi-card.tsx,
+    status-badge.tsx, money-display.tsx, data-table.tsx, placeholder-page.tsx, form-field.tsx, auth-guard.tsx
     kasir/
       product-catalog.tsx      → pencarian/barcode/kategori/Enter=pilih
       cart-panel.tsx           → keranjang, diskon transaksi, pelanggan, total
@@ -409,8 +409,10 @@ public/
 | `api.shift.buka()` | `POST /api/shifts` | kasir + saldo awal; tolak bila ada shift aktif |
 | `api.shift.mutasiKas()` | `POST /api/shifts/{id}/cash-movements` | masuk/keluar; tolak bila kas tidak cukup |
 | `api.shift.tutup()` | `POST /api/shifts/{id}/close` | uang fisik → selisih tercatat (audit) |
-| `api.transaksi.checkout()` | `POST /api/transactions` | campuran = alokasi; sisa → piutang bila kredit; QRIS → status menunggu; engine yang menghitung jurnal + mutasi stok; tunai terbayar diakumulasikan ke kas shift |
-| `api.transaksi.riwayat()` | `GET /api/transactions` | arsip transaksi: item, diskon, kembalian, piutang, status, kasir, shift |
+| `api.transaksi.checkout()` | `POST /api/transactions` | campuran = alokasi; sisa → piutang bila kredit; QRIS → status menunggu; engine yang menghitung jurnal + mutasi stok; tunai terbayar diakumulasikan ke kas shift; **wajib bawa `idempotensiKunci`** — kunci sama ditolak sebagai transaksi ganda |
+| `api.transaksi.riwayat()` | `GET /api/transactions` | arsip transaksi: item, diskon, kembalian, piutang, status (`lunas|menunggu_pembayaran|dibayar_sebagian|dibatalkan`), kasir, shift, rincian alokasi `pembayaran` |
+| `api.transaksi.batal()` | `POST /api/transactions/{nomor}/void` | **hanya pemilik**; stok dikembalikan, jurnal reversal (Penjualan/Piutang/HPP dibalik, Kas/Bank kredit), kas shift tunai dikurangi, riwayat tetap tercatat status `dibatalkan`, tercatat di audit log |
+| `api.master.penyesuaianStok()` | `POST /api/inventory/adjustments` | **hanya pemilik**; stok sistem → stok fisik + alasan (opname/rusak/hilang/lainnya); jurnal `Selisih stok` ↔ `Persediaan` senilai selisih × hargaBeli; tercatat di audit log |
 | `api.pembelian.list()` | `GET /api/purchases` | faktur pembelian + terbayar |
 | `api.pembelian.buat()` | `POST /api/purchases` | tambah stok, perbarui hargaBeli, bentuk jurnal, kurangi kas/bank atau tambah hutang |
 | `api.hutang.bayar()` | `POST /api/payables/{id}/payments` | kurangi hutang, bentuk jurnal, kurangi kas/bank |
@@ -420,11 +422,16 @@ public/
 | `api.akuntansi.jurnal()` | `GET /api/journal` | semua jurnal otomatis (baris debit/kredit, keterangan, ref) |
 | `api.akuntansi.akun()` | `GET /api/accounts` | saldo per akun (debit/kredit/saldo) — basis neraca saldo |
 | `api.akuntansi.labaRugi()` | `GET /api/income-statement` | pendapatan, HPP, biaya, laba bersih |
+| `api.auth.login()` | `POST /api/auth/login` | username+password → user, access token, refresh token (httpOnly cookie di live) |
+| `api.auth.logout()` | `POST /api/auth/logout` | akhiri sesi, catat audit |
+| `api.auth.users()` | `GET /api/users` | daftar pengguna + peran (kelola oleh engine) |
+| `api.auth.auditList()` | `GET /api/audit-log` | jejak audit (login/logout, nanti: void/penyesuaian stok) |
 
 Semua endpoint membawa `Authorization: Bearer <JWT>`; komputer toko memanggil `http://<server-toko>:<port>/api` (Mode A).
 
 ### Prinsip yang sudah dipegang di frontend
 
+- **Login & hak akses**: halaman `/login` (tanpa shell); sesi di Zustand persist — `user` + `refreshToken` tersimpan, **access token hanya di memori** (tidak ke localStorage); di live, refresh token seharusnya httpOnly cookie dari engine. Role: `pemilik` (akses penuh) & `kasir` (Kasir/Riwayat/Shift). Sidebar memfilter menu per role, `AuthGuard` mem-block route luar izin (redirect kasir → `/kasir`).
 - Kasir **tidak bisa transaksi sebelum shift dibuka**; layar kasir mengarahkan ke halaman Shift.
 - Kas tunai sistem = saldo awal + kas masuk − kas keluar + penjualan tunai (diakumulasi dari checkout); tidak termasuk transfer/QRIS.
 - Stok pada keranjang menghitung dari mock; di live nantinya hasil mutasi engine (frontend tidak menghitung sendiri).
@@ -440,6 +447,11 @@ Semua endpoint membawa `Authorization: Bearer <JWT>`; komputer toko memanggil `h
 Alur utuh yang bisa diuji: buka shift → kasir (F2 cari / Enter tambah / F4 bayar) → pembayaran tunggal/campuran (kembalian, sisa→piutang, QRIS pending) → stok otomatis berkurang → riwayat + detail → dashboard ikut berubah → tutup shift dengan selisih. Semua data in-memory di `mock/db.ts` (reset saat refresh — disengaja untuk mock).
 
 ### Catatan mock (Tahap 3 — P1 fungsional)
+
+- **Auth**: pengguna mock `pemilik/pemilik123` & `kasir/kasir123`; sesi + audit log (login/logout) di `mock/db.ts`; pengaturan = profil toko (Zustand persist, topbar ikut membaca) + daftar pengguna + audit log.
+- **Void transaksi**: tombol Void di Riwayat (hanya pemilik, dialog konfirmasi + peringatan) → `batalTransaksi` mock: stok kembali, jurnal reversal, kas shift tunai berkurang, status `dibatalkan`, audit tercatat.
+- **Penyesuaian stok**: tombol di Produk (hanya pemilik) → pilih produk, stok fisik, alasan; jurnal Selisih stok/Persediaan; audit tercatat.
+- **Idempotensi**: dialog pembayaran membuat `idempotensiKunci` sekali per sesi dialog; mock menolak kunci yang sama (transaksi ganda).
 
 - **Pembelian**: registerPembelian menambah stok, memperbarui hargaBeli produk, membentuk jurnal (Persediaan debit; Kas/Bank/Hutang kredit), mengurangi kas bila tunai/bank.
 - **Hutang/Piutang**: bayarHutang & bayarPiutang memperbarui terbayar/piutang + status transaksi, membentuk jurnal, dan menggerakkan kas/bank.

@@ -3,9 +3,11 @@ import { api } from "@/lib/api/client";
 import type {
   CheckoutPayload,
   PembelianInput,
+  PenyesuaianStokInput,
   Product,
   ShiftBukaInput,
   ShiftMutasiInput,
+  User,
 } from "@/lib/api/types";
 
 export function useProducts() {
@@ -42,6 +44,14 @@ export function useAkun() {
 
 export function useLabaRugi() {
   return useQuery({ queryKey: ["laba-rugi"], queryFn: api.akuntansi.labaRugi });
+}
+
+export function useAuthUsers() {
+  return useQuery({ queryKey: ["users"], queryFn: api.auth.users });
+}
+
+export function useAuditLog() {
+  return useQuery({ queryKey: ["audit"], queryFn: api.auth.auditList });
 }
 
 export function usePembelianMutations() {
@@ -129,7 +139,13 @@ export function useShiftMutations() {
 
 export function useProductMutations() {
   const qc = useQueryClient();
-  const invalidate = () => qc.invalidateQueries({ queryKey: ["products"] });
+  const invalidate = () => {
+    qc.invalidateQueries({ queryKey: ["products"] });
+    qc.invalidateQueries({ queryKey: ["jurnal"] });
+    qc.invalidateQueries({ queryKey: ["akun"] });
+    qc.invalidateQueries({ queryKey: ["laba-rugi"] });
+    qc.invalidateQueries({ queryKey: ["audit"] });
+  };
 
   const create = useMutation({
     mutationFn: (p: Omit<Product, "id">) => api.master.createProduct(p),
@@ -144,8 +160,33 @@ export function useProductMutations() {
     mutationFn: (id: string) => api.master.deleteProduct(id),
     onSuccess: invalidate,
   });
+  const penyesuaianStok = useMutation({
+    mutationFn: (args: { input: PenyesuaianStokInput; user: User }) =>
+      api.master.penyesuaianStok(args.input, args.user),
+    onSuccess: invalidate,
+  });
 
-  return { create, update, remove };
+  return { create, update, remove, penyesuaianStok };
+}
+
+export function useTransaksiMutations() {
+  const qc = useQueryClient();
+  const invalidate = () => {
+    qc.invalidateQueries({ queryKey: ["transaksi"] });
+    qc.invalidateQueries({ queryKey: ["products"] });
+    qc.invalidateQueries({ queryKey: ["shift"] });
+    qc.invalidateQueries({ queryKey: ["jurnal"] });
+    qc.invalidateQueries({ queryKey: ["akun"] });
+    qc.invalidateQueries({ queryKey: ["laba-rugi"] });
+    qc.invalidateQueries({ queryKey: ["audit"] });
+  };
+
+  const batal = useMutation({
+    mutationFn: ({ nomor, user }: { nomor: string; user: User }) => api.transaksi.batal(nomor, user),
+    onSuccess: invalidate,
+  });
+
+  return { batal };
 }
 
 export function useCheckout(onSuccess: (data: Awaited<ReturnType<typeof api.transaksi.checkout>>) => void) {
