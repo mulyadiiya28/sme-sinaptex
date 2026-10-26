@@ -210,3 +210,34 @@ export type ProfilToko = {
   footerStruk: string;
   pajakPersen?: number;
 };
+
+export type Pelanggan = {
+  id: string;
+  nama: string;
+  telepon: string;
+  alamat?: string;
+  batasKredit?: number;
+};
+
+export type ImporProdukBaris = {
+  sku: string;
+  nama: string;
+  barcode: string;
+  satuan: string;
+  kategori: string;
+  hargaBeli: number;
+  hargaJual: number;
+  stok: number;
+  stokMinimum: number;
+};
+
+export type ImporPelangganBaris = {
+  nama: string;
+  telepon: string;
+  alamat: string;
+  batasKredit: number;
+};
+
+export type ImporSaldoAwalBaris = { akun: string; debit: number; kredit: number };
+
+export type HasilImpor = { sukses: number; gagal: number; pesan: string[] };

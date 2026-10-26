@@ -1,21 +1,24 @@
 "use client";
 
-import { useState } from "react";
-import { Building2, CheckCircle2, ShieldCheck } from "lucide-react";
-import type { AuditEntry, User } from "@/lib/api/types";
+import { useRef, useState } from "react";
+import { Building2, CheckCircle2, FileDown, FileUp, ShieldCheck } from "lucide-react";
+import type { AuditEntry, HasilImpor, ImporPelangganBaris, ImporProdukBaris, ImporSaldoAwalBaris, User } from "@/lib/api/types";
 import { DataTable, type Column } from "@/components/data-table";
 import { FormField } from "@/components/form-field";
+import { MoneyDisplay } from "@/components/money-display";
 import { PageHeader } from "@/components/page-header";
 import { StatusBadge } from "@/components/status-badge";
-import { useAuthUsers, useAuditLog } from "@/hooks/queries";
+import { useAkun, useAuditLog, useAuthUsers, useImporMutations } from "@/hooks/queries";
+import { unduhCsv, parseCsv } from "@/lib/csv";
 import { useAuth } from "@/lib/store/auth";
 import { useToko } from "@/lib/store/toko";
 import { cn } from "@/lib/utils";
 
-type Tab = "profil" | "operasional" | "akuntansi" | "keamanan";
+type Tab = "profil" | "migrasi" | "operasional" | "akuntansi" | "keamanan";
 
 const TABS: Array<{ id: Tab; label: string }> = [
   { id: "profil", label: "Profil Toko" },
+  { id: "migrasi", label: "Impor & Migrasi" },
   { id: "operasional", label: "Operasional" },
   { id: "akuntansi", label: "Akuntansi" },
   { id: "keamanan", label: "Keamanan" },
@@ -28,7 +31,7 @@ export default function PengaturanPage() {
     <div>
       <PageHeader
         title="Pengaturan"
-        description="Profil toko, operasional, akuntansi, dan keamanan."
+        description="Profil toko, impor data, operasional, akuntansi, dan keamanan."
       />
       <div className="mb-4 flex flex-wrap gap-2">
         {TABS.map((t) => (
@@ -47,9 +50,248 @@ export default function PengaturanPage() {
       </div>
 
       {tab === "profil" && <PanelProfil />}
+      {tab === "migrasi" && <PanelMigrasi />}
       {tab === "operasional" && <PanelInfo grup="Operasional" />}
       {tab === "akuntansi" && <PanelInfo grup="Akuntansi" />}
       {tab === "keamanan" && <PanelKeamanan />}
+    </div>
+  );
+}
+
+type KartuImporProps<T> = {
+  judul: string;
+  deskripsi: string;
+  namaTemplate: string;
+  headerTemplate: string[];
+  barisContoh: Array<Array<string | number>>;
+  kolom: Column<T>[];
+  jalankan: (rows: T[], user: User) => void;
+  pending: boolean;
+};
+
+function KartuImpor<T extends object>({ judul, deskripsi, namaTemplate, headerTemplate, barisContoh, kolom, jalankan, pending }: KartuImporProps<T>) {
+  const fileRef = useRef<HTMLInputElement>(null);
+  const [namaBerkas, setNamaBerkas] = useState("");
+  const [rows, setRows] = useState<T[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const user = useAuth((s) => s.user);
+
+  async function terimaFile(f: File | undefined) {
+    setError(null);
+    setRows(null);
+    if (!f) return;
+    setNamaBerkas(f.name);
+    try {
+      const teks = await f.text();
+      const parsed = parseCsv(teks);
+      if (parsed.length < 2) throw new Error("Berkas kosong atau hanya berisi header.");
+      const header = parsed[0].map((h) => h.trim().toLowerCase());
+      const cocok = headerTemplate.map((h) => h.trim().toLowerCase());
+      if (header.length !== cocok.length || header.some((h, i) => h !== cocok[i])) {
+        throw new Error(`Header tidak sesuai template: harus "${headerTemplate.join(",")}".`);
+      }
+      const data = parsed.slice(1).map((r) => {
+        const obj: Record<string, string> = {};
+        headerTemplate.forEach((h, i) => {
+          obj[h] = (r[i] ?? "").trim();
+        });
+        return obj;
+      });
+      const map = (obj: Record<string, string>): T => {
+        const cast: Record<string, unknown> = {};
+        for (const [k, v] of Object.entries(obj)) {
+          if (/^(hargaBeli|hargaJual|stok|stokMinimum|batasKredit|debit|kredit)$/.test(k)) {
+            cast[k] = Number(v);
+          } else {
+            cast[k] = v;
+          }
+        }
+        return cast as T;
+      };
+      setRows(data.map(map));
+    } catch (err) {
+      setError(String(err).replace("Error: ", ""));
+    }
+  }
+
+  return (
+    <div className="panel p-5">
+      <h2 className="flex items-center gap-2 text-sm font-bold text-brand">
+        <FileUp className="size-4" aria-hidden /> {judul}
+      </h2>
+      <p className="mt-1 text-xs text-muted">{deskripsi}</p>
+      <div className="mt-3 flex flex-wrap gap-2">
+        <button
+          type="button"
+          className="btn-secondary"
+          onClick={() => unduhCsv(namaTemplate, headerTemplate, barisContoh)}
+        >
+          <FileDown className="size-4" aria-hidden /> Unduh Template
+        </button>
+        <button type="button" className="btn-secondary" onClick={() => fileRef.current?.click()}>
+          Pilih Berkas CSV...
+        </button>
+        <input
+          ref={fileRef}
+          type="file"
+          accept=".csv,text/csv"
+          className="hidden"
+          onChange={(e) => terimaFile(e.target.files?.[0])}
+        />
+        {namaBerkas && <span className="self-center text-xs text-muted">{namaBerkas}</span>}
+      </div>
+      {error && <p className="mt-3 rounded-xl bg-rose-50 px-3 py-2 text-xs text-rose-700">{error}</p>}
+      {rows && (
+        <div className="mt-3">
+          <p className="text-xs font-semibold text-ink">
+            Pratinjau: {rows.length} baris — periksa lalu simpan.
+          </p>
+          <div className="mt-2 max-h-64 overflow-auto">
+            <DataTable<T> columns={kolom} rows={rows} />
+          </div>
+          <button
+            type="button"
+            disabled={pending || rows.length === 0 || !user}
+            className="btn-primary mt-3"
+            onClick={() => {
+              jalankan(rows, user!);
+              setRows(null);
+              setNamaBerkas("");
+              if (fileRef.current) fileRef.current.value = "";
+            }}
+          >
+            {pending ? "Menyimpan..." : `Simpan ${rows.length} Baris`}
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function PanelMigrasi() {
+  const { produk, pelanggan, saldoAwal } = useImporMutations();
+  const akun = useAkun();
+  const user = useAuth((s) => s.user);
+  const [hasil, setHasil] = useState<Record<string, HasilImpor | null>>({});
+  const [error, setError] = useState<string | null>(null);
+  const daftarAkun = (akun.data ?? []).map((a) => a.akun).join(", ");
+
+  if (user?.role !== "pemilik") {
+    return (
+      <div className="panel p-6 text-sm text-muted">
+        Impor data hanya bisa dilakukan oleh pemilik.
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="panel p-5 text-sm">
+        <p className="font-bold text-brand">Migrasi data usaha lama</p>
+        <p className="mt-1 text-xs text-muted">
+          Untuk toko yang sudah berjalan: isi template CSV, unggah, periksa pratinjau, lalu simpan. Saldo awal GL
+          menggantikan modal awal default — jurnal neraca pembuka dibuat otomatis dan wajib seimbang.
+        </p>
+      </div>
+
+      <KartuImpor<ImporProdukBaris>
+        judul="Impor Produk"
+        deskripsi="SKU & nama wajib; harga jual > 0; SKU/barcode duplikat (dengan data lama maupun antar baris) ditolak per baris."
+        namaTemplate="template-produk.csv"
+        headerTemplate={["sku", "nama", "barcode", "satuan", "kategori", "hargaBeli", "hargaJual", "stok", "stokMinimum"]}
+        barisContoh={[["BRG-001", "Beras 5 kg", "8991000010015", "sak", "Sembako", 60000, 75000, 12, 5]]}
+        kolom={[
+          { key: "sku", header: "SKU", render: (r) => <span className="font-mono text-xs">{r.sku}</span> },
+          { key: "nama", header: "Nama", render: (r) => <span className="font-medium">{r.nama}</span> },
+          { key: "barcode", header: "Barcode", render: (r) => <span className="font-mono text-xs text-muted">{r.barcode || "—"}</span> },
+          { key: "satuan", header: "Satuan", align: "center", render: (r) => r.satuan || "pcs" },
+          { key: "hargaBeli", header: "H. beli", align: "right", render: (r) => <MoneyDisplay value={r.hargaBeli} /> },
+          { key: "hargaJual", header: "H. jual", align: "right", render: (r) => <MoneyDisplay value={r.hargaJual} /> },
+          { key: "stok", header: "Stok", align: "center", render: (r) => r.stok },
+          { key: "stokMinimum", header: "Min", align: "center", render: (r) => r.stokMinimum },
+        ]}
+        pending={produk.isPending}
+        jalankan={(rows, u) =>
+          produk.mutate(
+            { rows, user: u },
+            {
+              onSuccess: (res) => setHasil((h) => ({ ...h, produk: res })),
+              onError: (err) => setError(String(err)),
+            },
+          )
+        }
+      />
+
+      <KartuImpor<ImporPelangganBaris>
+        judul="Impor Pelanggan"
+        deskripsi="Nama wajib; nama duplikat ditolak; batasKredit kosong = tanpa limit."
+        namaTemplate="template-pelanggan.csv"
+        headerTemplate={["nama", "telepon", "alamat", "batasKredit"]}
+        barisContoh={[["Bu Sari", "0812xxxxxxx", "Jl. Merdeka No. 3", 500000]]}
+        kolom={[
+          { key: "nama", header: "Nama", render: (r) => <span className="font-medium">{r.nama}</span> },
+          { key: "telepon", header: "Telepon", render: (r) => r.telepon || "—" },
+          { key: "alamat", header: "Alamat", render: (r) => <span className="text-muted">{r.alamat || "—"}</span> },
+          { key: "batasKredit", header: "Batas kredit", align: "right", render: (r) => (r.batasKredit > 0 ? <MoneyDisplay value={r.batasKredit} /> : "—") },
+        ]}
+        pending={pelanggan.isPending}
+        jalankan={(rows, u) =>
+          pelanggan.mutate(
+            { rows, user: u },
+            {
+              onSuccess: (res) => setHasil((h) => ({ ...h, pelanggan: res })),
+              onError: (err) => setError(String(err)),
+            },
+          )
+        }
+      />
+
+      <KartuImpor<ImporSaldoAwalBaris>
+        judul="Impor Saldo Awal GL (Neraca Pembuka)"
+        deskripsi={`Nama akun harus sesuai daftar akun; total debit harus sama dengan total kredit. Menggantikan saldo pembuka sebelumnya.${daftarAkun ? ` Akun tersedia: ${daftarAkun}.` : ""}`}
+        namaTemplate="template-saldo-awal-gl.csv"
+        headerTemplate={["akun", "debit", "kredit"]}
+        barisContoh={[
+          ["Kas", 1500000, 0],
+          ["Bank", 3000000, 0],
+          ["Persediaan", 8250000, 0],
+          ["Modal", 0, 12750000],
+        ]}
+        kolom={[
+          { key: "akun", header: "Akun", render: (r) => <span className="font-medium">{r.akun}</span> },
+          { key: "debit", header: "Debit", align: "right", render: (r) => <MoneyDisplay value={r.debit} /> },
+          { key: "kredit", header: "Kredit", align: "right", render: (r) => <MoneyDisplay value={r.kredit} /> },
+        ]}
+        pending={saldoAwal.isPending}
+        jalankan={(rows, u) =>
+          saldoAwal.mutate(
+            { rows, user: u },
+            {
+              onSuccess: (res) => setHasil((h) => ({ ...h, saldoAwal: res })),
+              onError: (err) => setError(String(err)),
+            },
+          )
+        }
+      />
+
+      {error && <p className="rounded-xl bg-rose-50 px-4 py-3 text-sm text-rose-700">{error}</p>}
+      {Object.entries(hasil).map(([kunci, res]) =>
+        res ? (
+          <div key={kunci} className="panel p-4">
+            <div className="flex items-center gap-2">
+              <CheckCircle2 className="size-4 text-emerald-600" aria-hidden />
+              <p className="text-sm font-bold text-ink">{res.sukses} baris tersimpan</p>
+              <StatusBadge label={`${res.gagal} ditolak`} tone={res.gagal > 0 ? "warning" : "success"} />
+            </div>
+            {res.pesan.length > 0 && (
+              <ul className="mt-2 space-y-1 text-xs text-rose-700">
+                {res.pesan.slice(0, 10).map((p, i) => <li key={i}>• {p}</li>)}
+                {res.pesan.length > 10 && <li>… {res.pesan.length - 10} pesan lainnya</li>}
+              </ul>
+            )}
+          </div>
+        ) : null,
+      )}
     </div>
   );
 }

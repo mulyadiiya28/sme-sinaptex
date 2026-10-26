@@ -5,6 +5,7 @@ import type { Product } from "@/lib/api/types";
 import { MoneyDisplay } from "@/components/money-display";
 import { subtotalLines, pajakNominal, totalTransaksi, useCart } from "@/lib/store/cart";
 import { useToko } from "@/lib/store/toko";
+import { usePelanggan } from "@/hooks/queries";
 import { cn } from "@/lib/utils";
 
 export function CartPanel({
@@ -16,6 +17,7 @@ export function CartPanel({
 }) {
   const { lines, diskonTransaksi, setQty, removeLine, setDiskonTransaksi, setPelanggan } = useCart();
   const pajakPersen = useToko((s) => s.profil.pajakPersen ?? 0);
+  const pelangganList = usePelanggan();
   const subtotal = subtotalLines(lines);
   const pajak = pajakNominal(lines, diskonTransaksi, pajakPersen);
   const total = totalTransaksi(lines, diskonTransaksi, pajak);
@@ -80,10 +82,16 @@ export function CartPanel({
         <div className="flex items-center gap-3">
           <input
             type="text"
+            list="pelanggan-master"
             placeholder="Pelanggan (opsional)"
             className="input flex-1"
             onChange={(e) => setPelanggan(e.target.value || undefined)}
           />
+          <datalist id="pelanggan-master">
+            {(pelangganList.data ?? []).map((p) => (
+              <option key={p.id} value={p.nama} />
+            ))}
+          </datalist>
           <button type="button" onClick={onBatal} className="btn-secondary py-2.5 text-rose-600" aria-label="Batalkan transaksi">
             <X className="size-4" aria-hidden />
           </button>

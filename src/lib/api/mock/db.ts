@@ -1,8 +1,13 @@
 import type {
   Biaya,
+  HasilImpor,
+  ImporPelangganBaris,
+  ImporProdukBaris,
+  ImporSaldoAwalBaris,
   JurnalBaris,
   JurnalEntry,
   LoginResult,
+  Pelanggan,
   Pembelian,
   PembelianInput,
   Product,
@@ -77,6 +82,7 @@ function kasTunaiSistem(shift: ShiftInfo): number {
 export const mockDb = {
   products: [...produkSeed] as Product[],
   retur: [] as ReturPenjualan[],
+  pelanggan: [] as Pelanggan[],
   users: [
     { id: "u1", nama: "Pemilik Toko", username: "pemilik", password: "pemilik123", role: "pemilik" as const },
     { id: "u2", nama: "Kasir 1", username: "kasir", password: "kasir123", role: "kasir" as const },
@@ -123,6 +129,161 @@ export const mockDb = {
     ]),
   ] as JurnalEntry[],
   kas: { tunai: KAS_TUNAI_AWAL, bank: KAS_BANK_AWAL },
+
+  sinkronKasDariJurnal(): void {
+    let tunai = 0;
+    let bank = 0;
+    for (const j of this.jurnal) {
+      for (const b of j.baris) {
+        if (b.akun === "Kas") tunai += b.debit - b.kredit;
+        if (b.akun === "Bank") bank += b.debit - b.kredit;
+      }
+    }
+    this.kas = { tunai, bank };
+  },
+
+  imporProduk(rows: ImporProdukBaris[], user: User): HasilImpor {
+    const hasil: HasilImpor = { sukses: 0, gagal: 0, pesan: [] };
+    const skuDipakai = new Set(this.products.map((p) => p.sku.toLowerCase()));
+    const barcodeDipakai = new Set(this.products.filter((p) => p.barcode).map((p) => p.barcode));
+    const skuDalamBerkas = new Set<string>();
+    const barcodeDalamBerkas = new Set<string>();
+
+    rows.forEach((r, idx) => {
+      const baris = `Baris ${idx + 2}`;
+      if (!r.sku.trim()) {
+        hasil.gagal += 1;
+        hasil.pesan.push(`${baris}: SKU wajib diisi.`);
+        return;
+      }
+      if (!r.nama.trim()) {
+        hasil.gagal += 1;
+        hasil.pesan.push(`${baris}: Nama wajib diisi.`);
+        return;
+      }
+      if (!Number.isFinite(r.hargaJual) || r.hargaJual <= 0) {
+        hasil.gagal += 1;
+        hasil.pesan.push(`${baris}: hargaJual harus angka > 0.`);
+        return;
+      }
+      if (skuDipakai.has(r.sku.trim().toLowerCase()) || skuDalamBerkas.has(r.sku.trim().toLowerCase())) {
+        hasil.gagal += 1;
+        hasil.pesan.push(`${baris}: SKU "${r.sku}" duplikat.`);
+        return;
+      }
+      if (r.barcode.trim() && (barcodeDipakai.has(r.barcode.trim()) || barcodeDalamBerkas.has(r.barcode.trim()))) {
+        hasil.gagal += 1;
+        hasil.pesan.push(`${baris}: barcode "${r.barcode}" duplikat.`);
+        return;
+      }
+      skuDalamBerkas.add(r.sku.trim().toLowerCase());
+      if (r.barcode.trim()) barcodeDalamBerkas.add(r.barcode.trim());
+      this.products.push({
+        id: produkBaruId(),
+        sku: r.sku.trim(),
+        nama: r.nama.trim(),
+        barcode: r.barcode.trim(),
+        satuan: r.satuan.trim() || "pcs",
+        kategori: r.kategori.trim() || "Umum",
+        hargaBeli: Math.max(0, Math.round(r.hargaBeli || 0)),
+        hargaJual: Math.round(r.hargaJual),
+        stok: Math.max(0, Math.round(r.stok || 0)),
+        stokMinimum: Math.max(0, Math.round(r.stokMinimum || 0)),
+        status: "aktif",
+      });
+      hasil.sukses += 1;
+    });
+
+    if (hasil.sukses > 0) this.audit(user, "impor-produk", `${hasil.sukses} produk baru dari berkas (${hasil.gagal} baris ditolak)`);
+    return hasil;
+  },
+
+  imporPelanggan(rows: ImporPelangganBaris[], user: User): HasilImpor {
+    const hasil: HasilImpor = { sukses: 0, gagal: 0, pesan: [] };
+    const namaDipakai = new Set(this.pelanggan.map((p) => p.nama.toLowerCase()));
+    const namaDalamBerkas = new Set<string>();
+
+    rows.forEach((r, idx) => {
+      const baris = `Baris ${idx + 2}`;
+      if (!r.nama.trim()) {
+        hasil.gagal += 1;
+        hasil.pesan.push(`${baris}: nama wajib diisi.`);
+        return;
+      }
+      if (namaDipakai.has(r.nama.trim().toLowerCase()) || namaDalamBerkas.has(r.nama.trim().toLowerCase())) {
+        hasil.gagal += 1;
+        hasil.pesan.push(`${baris}: pelanggan "${r.nama}" sudah terdaftar.`);
+        return;
+      }
+      namaDalamBerkas.add(r.nama.trim().toLowerCase());
+      this.pelanggan.push({
+        id: `plg-${Date.now().toString(36)}-${this.pelanggan.length}`,
+        nama: r.nama.trim(),
+        telepon: r.telepon.trim(),
+        alamat: r.alamat.trim() || undefined,
+        batasKredit: Number.isFinite(r.batasKredit) && r.batasKredit > 0 ? Math.round(r.batasKredit) : undefined,
+      });
+      hasil.sukses += 1;
+    });
+
+    if (hasil.sukses > 0) this.audit(user, "impor-pelanggan", `${hasil.sukses} pelanggan baru dari berkas (${hasil.gagal} baris ditolak)`);
+    return hasil;
+  },
+
+  imporSaldoAwal(rows: ImporSaldoAwalBaris[], user: User): HasilImpor {
+    const hasil: HasilImpor = { sukses: 0, gagal: 0, pesan: [] };
+    const barisJurnal: JurnalBaris[] = [];
+
+    rows.forEach((r, idx) => {
+      const baris = `Baris ${idx + 2}`;
+      const nama = r.akun.trim();
+      const cocok = DAFTAR_AKUN.find((a) => a.toLowerCase() === nama.toLowerCase());
+      if (!cocok) {
+        hasil.gagal += 1;
+        hasil.pesan.push(`${baris}: akun "${r.akun}" tidak dikenal — gunakan nama akun dari daftar.`);
+        return;
+      }
+      if (!Number.isFinite(r.debit) || !Number.isFinite(r.kredit)) {
+        hasil.gagal += 1;
+        hasil.pesan.push(`${baris}: debit/kredit harus angka.`);
+        return;
+      }
+      if (r.debit > 0 && r.kredit > 0) {
+        hasil.gagal += 1;
+        hasil.pesan.push(`${baris}: isi salah satu saja (debit ATAU kredit).`);
+        return;
+      }
+      if (r.debit === 0 && r.kredit === 0) return;
+      barisJurnal.push({ akun: cocok, debit: Math.round(r.debit), kredit: Math.round(r.kredit) });
+      hasil.sukses += 1;
+    });
+
+    if (barisJurnal.length === 0) {
+      hasil.pesan.push("Tidak ada baris valid untuk disimpan.");
+      return hasil;
+    }
+
+    const totalDebit = barisJurnal.reduce((s, b) => s + b.debit, 0);
+    const totalKredit = barisJurnal.reduce((s, b) => s + b.kredit, 0);
+    if (totalDebit !== totalKredit) {
+      hasil.gagal += 1;
+      hasil.pesan.push(`Jurnal tidak seimbang: debit ${totalDebit.toLocaleString("id-ID")} ≠ kredit ${totalKredit.toLocaleString("id-ID")}.`);
+      return hasil;
+    }
+
+    // Ganti saldo pembuka lama (ref OPEN-*) dengan migrasi terbaru
+    this.jurnal = this.jurnal.filter((j) => !j.ref.startsWith("OPEN-"));
+    this.jurnal.unshift(
+      buatJurnal("Saldo awal (migrasi)", "OPEN-MIG", barisJurnal),
+    );
+    this.sinkronKasDariJurnal();
+    this.audit(user, "impor-saldo-awal", `Neraca pembuka diganti: ${barisJurnal.length} baris, total ${totalDebit.toLocaleString("id-ID")}`);
+    return hasil;
+  },
+
+  daftarPelanggan(): Pelanggan[] {
+    return structuredClone(this.pelanggan);
+  },
 
   bukaShift(input: ShiftBukaInput): ShiftInfo {
     if (this.shiftAktif) throw new Error("Masih ada shift aktif. Tutup dulu.");

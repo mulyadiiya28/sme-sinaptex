@@ -3,10 +3,15 @@ import type {
   Biaya,
   CheckoutPayload,
   CheckoutResult,
+  HasilImpor,
+  ImporPelangganBaris,
+  ImporProdukBaris,
+  ImporSaldoAwalBaris,
   JurnalEntry,
   LabaRugi,
   LoginResult,
   PaymentMethod,
+  Pelanggan,
   Pembelian,
   PembelianInput,
   PenyesuaianStokInput,
@@ -101,6 +106,30 @@ export const api = {
       if (API_MODE === "live") throw new Error("API C# belum disambung.");
       await delay(200);
       mockDb.products = mockDb.products.filter((x) => x.id !== id);
+    },
+
+    imporProduk: async (rows: ImporProdukBaris[], user: User): Promise<HasilImpor> => {
+      if (API_MODE === "live") throw new Error("API C# belum disambung.");
+      await delay(500);
+      return mockDb.imporProduk(rows, user);
+    },
+
+    imporPelanggan: async (rows: ImporPelangganBaris[], user: User): Promise<HasilImpor> => {
+      if (API_MODE === "live") throw new Error("API C# belum disambung.");
+      await delay(500);
+      return mockDb.imporPelanggan(rows, user);
+    },
+
+    imporSaldoAwal: async (rows: ImporSaldoAwalBaris[], user: User): Promise<HasilImpor> => {
+      if (API_MODE === "live") throw new Error("API C# belum disambung.");
+      await delay(500);
+      return mockDb.imporSaldoAwal(rows, user);
+    },
+
+    pelanggan: async (): Promise<Pelanggan[]> => {
+      if (API_MODE === "live") throw new Error("API C# belum disambung.");
+      await delay(120);
+      return mockDb.daftarPelanggan();
     },
   },
 

@@ -429,6 +429,10 @@ public/
 | `api.auth.logout()` | `POST /api/auth/logout` | akhiri sesi, catat audit |
 | `api.auth.users()` | `GET /api/users` | daftar pengguna + peran (kelola oleh engine) |
 | `api.auth.auditList()` | `GET /api/audit-log` | jejak audit (login/logout, nanti: void/penyesuaian stok) |
+| `api.master.imporProduk()` | `POST /api/products/import` | **hanya pemilik**; unggah CSV migrasi (sku,nama,barcode,satuan,kategori,hargaBeli,hargaJual,stok,stokMinimum); duplikat SKU/barcode ditolak per baris; respons per baris (sukses/gagal/pesan) |
+| `api.master.imporPelanggan()` | `POST /api/customers/import` | **hanya pemilik**; unggah CSV (nama,telepon,alamat,batasKredit); duplikat nama ditolak per baris |
+| `api.master.imporSaldoAwal()` | `POST /api/accounts/opening-balances` | **hanya pemilik**; unggah CSV neraca pembuka (akun,debit,kredit); nama akun harus sesuai daftar akun; wajib total debit = total kredit; **mengganti** saldo pembuka lama (jurnal ref `OPEN-*` ditarik lalu dibuat jurnal `Saldo awal (migrasi)`), kas/bank disinkron ulang dari jurnal |
+| `api.master.pelanggan()` | `GET /api/customers` | master pelanggan (autofill keranjang kasir) |
 
 Semua endpoint membawa `Authorization: Bearer <JWT>`; komputer toko memanggil `http://<server-toko>:<port>/api` (Mode A).
 
@@ -470,6 +474,14 @@ Alur utuh yang bisa diuji: buka shift → kasir (F2 cari / Enter tambah / F4 bay
 - **Konfirmasi QRIS**: transaksi `menunggu_pembayaran` muncul di panel "Pembayaran menunggu konfirmasi" (tab Kas & Bank, Keuangan); konfirmasi (hanya pemilik) → Bank debit / Penampung gateway kredit, status → `lunas`, audit tercatat.
 - **Buku besar**: tab baru di Akuntansi — pilih akun → mutasi dari jurnal (waktu, keterangan, ref, debit, kredit, saldo berjalan).
 - **Filter tanggal + ekspor CSV**: Riwayat & Laporan punya rentang dari/sampai + tombol Ekspor CSV (BOM UTF-8, quote-escape); Laporan mengecualikan transaksi `dibatalkan`.
+
+### Catatan mock (Impor & migrasi)
+
+- **Tab "Impor & Migrasi"** di Pengaturan (hanya pemilik): 3 kartu — Impor Produk, Impor Pelanggan, Impor Saldo Awal GL — masing-masing: Unduh Template CSV → pilih berkas → pratinjau (DataTable) → Simpan.
+- **Parser CSV** di `src/lib/csv.ts` (`parseCsv` mendukung kutip/escape/BOM; `unduhCsv` BOM UTF-8); template dihasilkan di sisi klien, tanpa dependensi eksternal.
+- **Validasi impor produk**: SKU/nama wajib, harga jual > 0, duplikat SKU/barcode (dengan data lama maupun antar baris) ditolak **per baris** (baris valid tetap masuk) — hasil impor berisi sukses/gagal/pesan per baris, tercatat di audit log.
+- **Impor saldo awal GL** = inisiasi GL untuk migrasi usaha yang sudah jalan: nama akun harus cocok dengan daftar akun engine, total debit harus = total kredit, lalu jurnal `OPEN-MIG` "Saldo awal (migrasi)" dibuat dan jurnal `OPEN-*` lama (modal awal seed) diganti; saldo Kas/Bank dihitung ulang dari jurnal.
+- **Pelanggan**: kini ada master pelanggan di mock (`api.master.pelanggan`, key cache `["pelanggan"]`); input pelanggan di keranjang kasir memakai datalist dari master ini.
 
 ### Cara menjalankan
 

@@ -2,6 +2,9 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api/client";
 import type {
   CheckoutPayload,
+  ImporPelangganBaris,
+  ImporProdukBaris,
+  ImporSaldoAwalBaris,
   PembelianInput,
   PenyesuaianStokInput,
   Product,
@@ -13,6 +16,10 @@ import type {
 
 export function useProducts() {
   return useQuery({ queryKey: ["products"], queryFn: api.master.products });
+}
+
+export function usePelanggan() {
+  return useQuery({ queryKey: ["pelanggan"], queryFn: api.master.pelanggan });
 }
 
 export function useActiveShift() {
@@ -140,6 +147,39 @@ export function useShiftMutations() {
   });
 
   return { buka, mutasiKas, tutup };
+}
+
+export function useImporMutations() {
+  const qc = useQueryClient();
+  const invalidateMaster = () => {
+    qc.invalidateQueries({ queryKey: ["products"] });
+    qc.invalidateQueries({ queryKey: ["pelanggan"] });
+    qc.invalidateQueries({ queryKey: ["audit"] });
+  };
+  const invalidateGl = () => {
+    qc.invalidateQueries({ queryKey: ["jurnal"] });
+    qc.invalidateQueries({ queryKey: ["akun"] });
+    qc.invalidateQueries({ queryKey: ["laba-rugi"] });
+    qc.invalidateQueries({ queryKey: ["audit"] });
+  };
+
+  const produk = useMutation({
+    mutationFn: ({ rows, user }: { rows: ImporProdukBaris[]; user: User }) =>
+      api.master.imporProduk(rows, user),
+    onSuccess: invalidateMaster,
+  });
+  const pelanggan = useMutation({
+    mutationFn: ({ rows, user }: { rows: ImporPelangganBaris[]; user: User }) =>
+      api.master.imporPelanggan(rows, user),
+    onSuccess: invalidateMaster,
+  });
+  const saldoAwal = useMutation({
+    mutationFn: ({ rows, user }: { rows: ImporSaldoAwalBaris[]; user: User }) =>
+      api.master.imporSaldoAwal(rows, user),
+    onSuccess: invalidateGl,
+  });
+
+  return { produk, pelanggan, saldoAwal };
 }
 
 export function useProductMutations() {
