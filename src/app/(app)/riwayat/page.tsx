@@ -1,14 +1,17 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Eye, Search, XCircle } from "lucide-react";
-import type { TransaksiRiwayat } from "@/lib/api/types";
+import { Download, Eye, RotateCcw, Search, XCircle } from "lucide-react";
+import type { ReturInput, TransaksiRiwayat } from "@/lib/api/types";
 import { DataTable, type Column } from "@/components/data-table";
+import { FormField } from "@/components/form-field";
 import { MoneyDisplay } from "@/components/money-display";
 import { PageHeader } from "@/components/page-header";
 import { StatusBadge } from "@/components/status-badge";
 import { useRiwayatTransaksi, useTransaksiMutations } from "@/hooks/queries";
 import { useAuth } from "@/lib/store/auth";
+import { useToko } from "@/lib/store/toko";
+import { cetakStruk } from "@/lib/struk";
 
 const STATUS_TONE = {
   lunas: "success",
@@ -29,12 +32,18 @@ export default function RiwayatPage() {
   const { batal } = useTransaksiMutations();
   const user = useAuth((s) => s.user);
   const [keyword, setKeyword] = useState("");
+  const [dari, setDari] = useState("");
+  const [sampai, setSampai] = useState("");
   const [detail, setDetail] = useState<TransaksiRiwayat | null>(null);
   const [targetVoid, setTargetVoid] = useState<TransaksiRiwayat | null>(null);
+  const [targetRetur, setTargetRetur] = useState<TransaksiRiwayat | null>(null);
 
   const filtered = useMemo(() => {
     const q = keyword.trim().toLowerCase();
     return (riwayat.data ?? []).filter((t) => {
+      const hari = t.waktu.slice(0, 10);
+      if (dari && hari < dari) return false;
+      if (sampai && hari > sampai) return false;
       return (
         !q ||
         t.nomor.toLowerCase().includes(q) ||
@@ -42,7 +51,36 @@ export default function RiwayatPage() {
         (t.pelanggan ?? "").toLowerCase().includes(q)
       );
     });
-  }, [riwayat.data, keyword]);
+  }, [riwayat.data, keyword, dari, sampai]);
+
+  function eksporCsv() {
+    const head = "nomor,waktu,kasir,shift,pelanggan,jumlah_item,subtotal,diskon,pajak,total,kembalian,piutang,status";
+    const rows = filtered.map((t) =>
+      [
+        t.nomor,
+        t.waktu,
+        t.kasir,
+        t.shiftId,
+        t.pelanggan ?? "",
+        t.items.reduce((s, i) => s + i.qty, 0),
+        t.items.reduce((s, i) => s + i.hargaJual * i.qty - i.diskon, 0),
+        t.diskonTransaksi,
+        t.pajak,
+        t.total,
+        t.kembalian,
+        t.piutang,
+        t.status,
+      ]
+        .map((v) => `"${String(v).replace(/"/g, '""')}"`)
+        .join(","),
+    );
+    const blob = new Blob(["\uFEFF" + [head, ...rows].join("\r\n")], { type: "text/csv;charset=utf-8" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = `transaksi-${dari || "semua"}-${sampai || "semua"}.csv`;
+    a.click();
+    URL.revokeObjectURL(a.href);
+  }
 
   const columns: Column<TransaksiRiwayat>[] = [
     { key: "nomor", header: "Nomor", render: (r) => <span className="font-semibold text-brand">{r.nomor}</span> },
@@ -65,14 +103,24 @@ export default function RiwayatPage() {
           <Eye className="size-3.5" aria-hidden /> Detail
         </button>
         {user?.role === "pemilik" && r.status !== "dibatalkan" && (
-          <button
-            type="button"
-            onClick={() => setTargetVoid(r)}
-            title="Batalkan transaksi"
-            className="flex items-center gap-1 rounded-lg border border-line bg-white px-2.5 py-1.5 text-xs font-semibold text-rose-600 transition-colors hover:bg-rose-50"
-          >
-            <XCircle className="size-3.5" aria-hidden /> Void
-          </button>
+          <>
+            <button
+              type="button"
+              onClick={() => setTargetRetur(r)}
+              title="Retur barang"
+              className="flex items-center gap-1 rounded-lg border border-line bg-white px-2.5 py-1.5 text-xs font-semibold text-muted transition-colors hover:text-ink"
+            >
+              <RotateCcw className="size-3.5" aria-hidden /> Retur
+            </button>
+            <button
+              type="button"
+              onClick={() => setTargetVoid(r)}
+              title="Batalkan transaksi"
+              className="flex items-center gap-1 rounded-lg border border-line bg-white px-2.5 py-1.5 text-xs font-semibold text-rose-600 transition-colors hover:bg-rose-50"
+            >
+              <XCircle className="size-3.5" aria-hidden /> Void
+            </button>
+          </>
         )}
       </div>
     ) },
@@ -86,15 +134,26 @@ export default function RiwayatPage() {
       />
 
       <div className="panel p-4">
-        <div className="relative">
-          <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted/60" aria-hidden />
-          <input
-            type="search"
-            value={keyword}
-            onChange={(e) => setKeyword(e.target.value)}
-            placeholder="Cari nomor transaksi, kasir, atau pelanggan..."
-            className="input pl-9"
-          />
+        <div className="flex flex-wrap items-end gap-2.5">
+          <div className="relative flex-1 min-w-[220px]">
+            <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted/60" aria-hidden />
+            <input
+              type="search"
+              value={keyword}
+              onChange={(e) => setKeyword(e.target.value)}
+              placeholder="Cari nomor transaksi, kasir, atau pelanggan..."
+              className="input pl-9"
+            />
+          </div>
+          <FormField label="Dari">
+            <input type="date" value={dari} onChange={(e) => setDari(e.target.value)} className="input w-36" />
+          </FormField>
+          <FormField label="Sampai">
+            <input type="date" value={sampai} onChange={(e) => setSampai(e.target.value)} className="input w-36" />
+          </FormField>
+          <button type="button" onClick={eksporCsv} className="btn-secondary">
+            <Download className="size-4" aria-hidden /> Ekspor CSV
+          </button>
         </div>
 
         {riwayat.isLoading ? (
@@ -120,6 +179,7 @@ export default function RiwayatPage() {
           }
         />
       )}
+      {targetRetur && <ReturDialog t={targetRetur} onClose={() => setTargetRetur(null)} />}
     </div>
   );
 }
@@ -196,6 +256,9 @@ function DetailDialog({ t, onClose }: { t: TransaksiRiwayat; onClose: () => void
           {t.diskonTransaksi > 0 && (
             <div className="flex justify-between"><dt className="text-muted">Diskon transaksi</dt><dd className="text-rose-600">-<MoneyDisplay value={t.diskonTransaksi} /></dd></div>
           )}
+          {t.pajak > 0 && (
+            <div className="flex justify-between"><dt className="text-muted">Pajak</dt><dd><MoneyDisplay value={t.pajak} /></dd></div>
+          )}
           <div className="flex items-baseline justify-between border-t border-dashed border-line pt-2">
             <dt className="font-bold text-ink">Total</dt>
             <MoneyDisplay value={t.total} className="text-lg font-black text-brand" />
@@ -208,9 +271,97 @@ function DetailDialog({ t, onClose }: { t: TransaksiRiwayat; onClose: () => void
           )}
         </dl>
         <p className="mt-4 rounded-xl bg-slate-50 px-3 py-2 text-[11px] text-muted">
-          Nantinya panel ini memuat penelusuran ke jurnal engine (audit trail) dan tombol cetak/retur.
+          Nantinya panel ini memuat penelusuran ke jurnal engine (audit trail).
         </p>
-        <button type="button" onClick={onClose} className="btn-primary mt-4 w-full">Tutup</button>
+        <div className="mt-4 flex gap-2">
+          <button type="button" onClick={() => cetakStruk(useToko.getState().profil, { ...t, waktu: t.waktu, pembayaran: t.pembayaran })} className="btn-secondary flex-1">
+            Cetak Struk
+          </button>
+          <button type="button" onClick={onClose} className="btn-primary flex-1">Tutup</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ReturDialog({ t, onClose }: { t: TransaksiRiwayat; onClose: () => void }) {
+  const { retur } = useTransaksiMutations();
+  const user = useAuth((s) => s.user);
+  const [qty, setQty] = useState<Record<string, number>>({});
+  const [alasan, setAlasan] = useState("barang rusak");
+  const [metodeRefund, setMetodeRefund] = useState<"tunai" | "transfer">("tunai");
+  const [error, setError] = useState<string | null>(null);
+
+  const items = t.items
+    .map((i) => ({ nama: i.nama, qty: qty[i.nama] ?? 0 }))
+    .filter((i) => i.qty > 0);
+  const total = items.reduce((s, it) => {
+    const asli = t.items.find((a) => a.nama === it.nama)!;
+    return s + asli.hargaJual * it.qty - asli.diskon;
+  }, 0);
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink/50 p-4 backdrop-blur-sm" onClick={onClose}>
+      <div className="panel max-h-[90vh] w-full max-w-md overflow-y-auto p-7" onClick={(e) => e.stopPropagation()}>
+        <h2 className="flex items-center gap-2 font-black text-brand">
+          <RotateCcw className="size-5" aria-hidden /> Retur dari {t.nomor}
+        </h2>
+        <p className="mt-1 text-xs text-muted">Tentukan jumlah item yang diretur — stok kembali otomatis dan jurnal retur terbentuk.</p>
+        <form
+          className="mt-4 space-y-3"
+          onSubmit={(e) => {
+            e.preventDefault();
+            setError(null);
+            if (!user) return setError("Sesi tidak ditemukan.");
+            const input: ReturInput = { referensi: t.nomor, items, alasan, metodeRefund };
+            retur.mutate(
+              { input, user },
+              { onSuccess: () => onClose(), onError: (err) => setError(String(err)) },
+            );
+          }}
+        >
+          <div className="space-y-2">
+            {t.items.map((i) => (
+              <div key={i.nama} className="flex items-center justify-between gap-2 rounded-xl border border-line bg-white p-2.5">
+                <div>
+                  <p className="text-sm font-semibold text-ink">{i.nama}</p>
+                  <p className="text-xs text-muted">dibeli {i.qty} × <MoneyDisplay value={i.hargaJual} /></p>
+                </div>
+                <input
+                  type="number"
+                  min={0}
+                  max={i.qty}
+                  value={qty[i.nama] ?? ""}
+                  onChange={(e) => setQty({ ...qty, [i.nama]: Number(e.target.value) })}
+                  className="w-20 rounded-lg border border-line px-2 py-1.5 text-right text-sm tabular-nums"
+                  placeholder={`0–${i.qty}`}
+                />
+              </div>
+            ))}
+          </div>
+          <FormField label="Alasan retur">
+            <input className="input" value={alasan} onChange={(e) => setAlasan(e.target.value)} />
+          </FormField>
+          <FormField label="Metode refund">
+            <select className="input" value={metodeRefund} onChange={(e) => setMetodeRefund(e.target.value as "tunai" | "transfer")}>
+              <option value="tunai">Kembalikan tunai</option>
+              <option value="transfer">Transfer / ke rekening</option>
+            </select>
+          </FormField>
+          {total > 0 && (
+            <div className="flex items-center justify-between rounded-xl bg-amber-50 px-3 py-2.5 text-sm">
+              <span className="font-semibold text-amber-700">Refund</span>
+              <MoneyDisplay value={total} className="font-black text-amber-700" />
+            </div>
+          )}
+          {error && <p className="rounded-xl bg-rose-50 px-3 py-2 text-xs text-rose-700">{error}</p>}
+          <div className="flex gap-2">
+            <button type="submit" disabled={items.length === 0 || retur.isPending} className="btn-primary flex-1 disabled:opacity-40">
+              {retur.isPending ? "Memproses..." : "Proses Retur"}
+            </button>
+            <button type="button" onClick={onClose} className="btn-secondary">Batal</button>
+          </div>
+        </form>
       </div>
     </div>
   );

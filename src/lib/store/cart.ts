@@ -64,6 +64,10 @@ export function subtotalLines(lines: CartLine[]): number {
   return lines.reduce((sum, l) => sum + Math.max(0, l.product.hargaJual * l.qty - l.diskon), 0);
 }
 
-export function totalTransaksi(lines: CartLine[], diskonTransaksi: number): number {
-  return Math.max(0, subtotalLines(lines) - diskonTransaksi);
+export function totalTransaksi(lines: CartLine[], diskonTransaksi: number, pajakNominal = 0): number {
+  return Math.max(0, subtotalLines(lines) - diskonTransaksi) + pajakNominal;
+}
+
+export function pajakNominal(lines: CartLine[], diskonTransaksi: number, persen: number): number {
+  return Math.round(Math.max(0, subtotalLines(lines) - diskonTransaksi) * persen) / 100;
 }

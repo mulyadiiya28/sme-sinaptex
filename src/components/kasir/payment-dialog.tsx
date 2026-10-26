@@ -5,7 +5,9 @@ import { BadgePercent, CheckCircle2, Plus, ReceiptText, XCircle } from "lucide-r
 import type { CheckoutResult, PaymentMethod } from "@/lib/api/types";
 import { MoneyDisplay } from "@/components/money-display";
 import { StatusBadge } from "@/components/status-badge";
-import { totalTransaksi, useCart } from "@/lib/store/cart";
+import { pajakNominal, totalTransaksi, useCart } from "@/lib/store/cart";
+import { useToko } from "@/lib/store/toko";
+import { cetakStruk } from "@/lib/struk";
 import { useCheckout } from "@/hooks/queries";
 
 const METODE: Array<{ id: PaymentMethod; label: string; digital: boolean }> = [
@@ -36,12 +38,13 @@ export function PaymentDialog({
   onClose: (resetCart: boolean) => void;
 }) {
   const cart = useCart();
+  const pajakPersen = useToko((s) => s.profil.pajakPersen ?? 0);
   const [sukses, setSukses] = useState<CheckoutResult | null>(null);
   const kunciIdempotensi = useRef<string>(
     typeof crypto !== "undefined" && "randomUUID" in crypto ? crypto.randomUUID() : `chk-${Date.now()}-${Math.random()}`,
   );
 
-  const total = totalTransaksi(cart.lines, cart.diskonTransaksi);
+  const total = totalTransaksi(cart.lines, cart.diskonTransaksi, pajakNominal(cart.lines, cart.diskonTransaksi, pajakPersen));
 
   const hitungan = useMemo(() => {
     let belum = total;
@@ -70,6 +73,7 @@ export function PaymentDialog({
     mutation.mutate({
       lines: cart.lines,
       diskonTransaksi: cart.diskonTransaksi,
+      pajak: pajakNominal(cart.lines, cart.diskonTransaksi, pajakPersen),
       allocations: cart.allocations,
       gunakanPiutang: cart.gunakanPiutang,
       pelanggan: cart.pelanggan,
@@ -80,6 +84,27 @@ export function PaymentDialog({
   }
 
   if (sukses) {
+    const toko = useToko.getState().profil;
+    const dataStruk = {
+      nomor: sukses.nomor,
+      waktu: new Date().toISOString(),
+      kasir,
+      shiftId,
+      pelanggan: cart.pelanggan,
+      items: cart.lines.map((l) => ({
+        nama: l.product.nama,
+        qty: l.qty,
+        hargaJual: l.product.hargaJual,
+        diskon: l.diskon,
+      })),
+      diskonTransaksi: cart.diskonTransaksi,
+      pajak: pajakNominal(cart.lines, cart.diskonTransaksi, pajakPersen),
+      total: sukses.total,
+      kembalian: sukses.kembalian,
+      piutang: sukses.piutang,
+      pembayaran: cart.allocations,
+    };
+
     return (
       <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink/50 p-4 backdrop-blur-sm">
         <div className="panel w-full max-w-sm p-8 text-center">
@@ -116,11 +141,11 @@ export function PaymentDialog({
               Pembayaran digital menunggu konfirmasi status. Transaksi belum lunas sampai engine memvalidasi.
             </p>
           )}
-          <button type="button" onClick={() => onClose(true)} className="btn-primary mt-5 w-full">
-            Transaksi Baru
+          <button type="button" onClick={() => cetakStruk(toko, dataStruk)} className="btn-secondary mt-2 w-full">
+            <ReceiptText className="size-4" aria-hidden /> Cetak Struk
           </button>
-          <button type="button" onClick={() => onClose(false)} className="btn-secondary mt-2 w-full">
-            Tutup (struk menyusul)
+          <button type="button" onClick={() => onClose(true)} className="btn-primary mt-2 w-full">
+            Transaksi Baru
           </button>
         </div>
       </div>

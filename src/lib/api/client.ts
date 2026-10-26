@@ -11,6 +11,8 @@ import type {
   PembelianInput,
   PenyesuaianStokInput,
   Product,
+  ReturInput,
+  ReturPenjualan,
   ShiftBukaInput,
   ShiftInfo,
   ShiftMutasiInput,
@@ -31,12 +33,12 @@ export function hitungKembalian(total: number, allocations: CheckoutPayload["all
   return Math.max(0, covered - total);
 }
 
-export function hitungTotal(payload: Pick<CheckoutPayload, "lines" | "diskonTransaksi">): number {
+export function hitungTotal(payload: Pick<CheckoutPayload, "lines" | "diskonTransaksi" | "pajak">): number {
   const subtotal = payload.lines.reduce(
     (sum, l) => sum + Math.max(0, l.product.hargaJual * l.qty - l.diskon),
     0,
   );
-  return Math.max(0, subtotal - payload.diskonTransaksi);
+  return Math.max(0, subtotal - payload.diskonTransaksi + payload.pajak);
 }
 
 export const api = {
@@ -243,6 +245,7 @@ export const api = {
           diskon: l.diskon,
         })),
         diskonTransaksi: payload.diskonTransaksi,
+        pajak: payload.pajak,
         total,
         kembalian,
         piutang: jadiPiutang ? sisa : 0,
@@ -263,6 +266,7 @@ export const api = {
         kembalian,
         jadiPiutang ? sisa : 0,
         payload.allocations,
+        payload.pajak,
       );
 
       for (const l of payload.lines) {
@@ -283,6 +287,24 @@ export const api = {
       if (API_MODE === "live") throw new Error("API C# belum disambung.");
       await delay(400);
       return mockDb.batalTransaksi(nomor, user);
+    },
+
+    retur: async (input: ReturInput, user: User): Promise<ReturPenjualan> => {
+      if (API_MODE === "live") throw new Error("API C# belum disambung.");
+      await delay(400);
+      return mockDb.prosesRetur(input, user);
+    },
+
+    riwayatRetur: async (): Promise<ReturPenjualan[]> => {
+      if (API_MODE === "live") throw new Error("API C# belum disambung.");
+      await delay(120);
+      return mockDb.riwayatRetur();
+    },
+
+    konfirmasiDigital: async (nomor: string, user: User): Promise<TransaksiRiwayat> => {
+      if (API_MODE === "live") throw new Error("API C# belum disambung.");
+      await delay(300);
+      return mockDb.konfirmasiDigital(nomor, user);
     },
   },
 };

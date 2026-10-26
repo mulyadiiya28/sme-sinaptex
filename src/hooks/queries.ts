@@ -5,6 +5,7 @@ import type {
   PembelianInput,
   PenyesuaianStokInput,
   Product,
+  ReturInput,
   ShiftBukaInput,
   ShiftMutasiInput,
   User,
@@ -24,6 +25,10 @@ export function useShiftRiwayat() {
 
 export function useRiwayatTransaksi() {
   return useQuery({ queryKey: ["transaksi"], queryFn: api.transaksi.riwayat });
+}
+
+export function useRiwayatRetur() {
+  return useQuery({ queryKey: ["retur"], queryFn: api.transaksi.riwayatRetur });
 }
 
 export function usePembelian() {
@@ -179,14 +184,23 @@ export function useTransaksiMutations() {
     qc.invalidateQueries({ queryKey: ["akun"] });
     qc.invalidateQueries({ queryKey: ["laba-rugi"] });
     qc.invalidateQueries({ queryKey: ["audit"] });
+    qc.invalidateQueries({ queryKey: ["retur"] });
   };
 
   const batal = useMutation({
     mutationFn: ({ nomor, user }: { nomor: string; user: User }) => api.transaksi.batal(nomor, user),
     onSuccess: invalidate,
   });
+  const retur = useMutation({
+    mutationFn: ({ input, user }: { input: ReturInput; user: User }) => api.transaksi.retur(input, user),
+    onSuccess: invalidate,
+  });
+  const konfirmasiDigital = useMutation({
+    mutationFn: ({ nomor, user }: { nomor: string; user: User }) => api.transaksi.konfirmasiDigital(nomor, user),
+    onSuccess: invalidate,
+  });
 
-  return { batal };
+  return { batal, retur, konfirmasiDigital };
 }
 
 export function useCheckout(onSuccess: (data: Awaited<ReturnType<typeof api.transaksi.checkout>>) => void) {

@@ -409,9 +409,12 @@ public/
 | `api.shift.buka()` | `POST /api/shifts` | kasir + saldo awal; tolak bila ada shift aktif |
 | `api.shift.mutasiKas()` | `POST /api/shifts/{id}/cash-movements` | masuk/keluar; tolak bila kas tidak cukup |
 | `api.shift.tutup()` | `POST /api/shifts/{id}/close` | uang fisik → selisih tercatat (audit) |
-| `api.transaksi.checkout()` | `POST /api/transactions` | campuran = alokasi; sisa → piutang bila kredit; QRIS → status menunggu; engine yang menghitung jurnal + mutasi stok; tunai terbayar diakumulasikan ke kas shift; **wajib bawa `idempotensiKunci`** — kunci sama ditolak sebagai transaksi ganda |
-| `api.transaksi.riwayat()` | `GET /api/transactions` | arsip transaksi: item, diskon, kembalian, piutang, status (`lunas|menunggu_pembayaran|dibayar_sebagian|dibatalkan`), kasir, shift, rincian alokasi `pembayaran` |
+| `api.transaksi.checkout()` | `POST /api/transactions` | campuran = alokasi; sisa → piutang bila kredit; QRIS → status menunggu; engine yang menghitung jurnal + mutasi stok; tunai terbayar diakumulasikan ke kas shift; **wajib bawa `idempotensiKunci`** — kunci sama ditolak sebagai transaksi ganda; `pajak` (Rp, dari % profil toko) masuk total & jurnal `Pajak keluaran` |
+| `api.transaksi.riwayat()` | `GET /api/transactions` | arsip transaksi: item, diskon, **pajak**, kembalian, piutang, status (`lunas|menunggu_pembayaran|dibayar_sebagian|dibatalkan`), kasir, shift, rincian alokasi `pembayaran` |
 | `api.transaksi.batal()` | `POST /api/transactions/{nomor}/void` | **hanya pemilik**; stok dikembalikan, jurnal reversal (Penjualan/Piutang/HPP dibalik, Kas/Bank kredit), kas shift tunai dikurangi, riwayat tetap tercatat status `dibatalkan`, tercatat di audit log |
+| `api.transaksi.retur()` | `POST /api/transactions/{nomor}/returns` | **hanya pemilik**; retur per item (qty ≤ pembelian asli) + alasan; stok kembali, refund tunai (kas −) / transfer (bank −); jurnal `Retur penjualan` (debit) ↔ Kas/Bank + HPP dibalik (Persediaan kembali); tercatat di audit log |
+| `api.transaksi.riwayatRetur()` | `GET /api/returns` | arsip retur (ref transaksi, item+qty, alasan, metode refund, nominal) |
+| `api.transaksi.konfirmasiDigital()` | `POST /api/transactions/{nomor}/confirm-payment` | **hanya pemilik**; dana QRIS/gateway "bayar kemudian" dikonfirmasi masuk: Bank debit / Penampung gateway kredit, status → `lunas`; mendukung rekonsiliasi kas & bank |
 | `api.master.penyesuaianStok()` | `POST /api/inventory/adjustments` | **hanya pemilik**; stok sistem → stok fisik + alasan (opname/rusak/hilang/lainnya); jurnal `Selisih stok` ↔ `Persediaan` senilai selisih × hargaBeli; tercatat di audit log |
 | `api.pembelian.list()` | `GET /api/purchases` | faktur pembelian + terbayar |
 | `api.pembelian.buat()` | `POST /api/purchases` | tambah stok, perbarui hargaBeli, bentuk jurnal, kurangi kas/bank atau tambah hutang |
@@ -421,7 +424,7 @@ public/
 | `api.biaya.list()` | `GET /api/expenses` | daftar biaya tercatat |
 | `api.akuntansi.jurnal()` | `GET /api/journal` | semua jurnal otomatis (baris debit/kredit, keterangan, ref) |
 | `api.akuntansi.akun()` | `GET /api/accounts` | saldo per akun (debit/kredit/saldo) — basis neraca saldo |
-| `api.akuntansi.labaRugi()` | `GET /api/income-statement` | pendapatan, HPP, biaya, laba bersih |
+| `api.akuntansi.labaRugi()` | `GET /api/income-statement` | pendapatan, **retur**, HPP, biaya, **pajak**, laba bersih |
 | `api.auth.login()` | `POST /api/auth/login` | username+password → user, access token, refresh token (httpOnly cookie di live) |
 | `api.auth.logout()` | `POST /api/auth/logout` | akhiri sesi, catat audit |
 | `api.auth.users()` | `GET /api/users` | daftar pengguna + peran (kelola oleh engine) |
@@ -457,6 +460,16 @@ Alur utuh yang bisa diuji: buka shift → kasir (F2 cari / Enter tambah / F4 bay
 - **Hutang/Piutang**: bayarHutang & bayarPiutang memperbarui terbayar/piutang + status transaksi, membentuk jurnal, dan menggerakkan kas/bank.
 - **Biaya**: catatBiaya membentuk jurnal Biaya operasional debit / Kas-Bank kredit.
 - **Akuntansi**: jurnal double-entry dari modal awal (Kas 1.5jt, Bank 3jt, Persediaan, Modal), penjualan (Kas/Bank/Piutang debit; Penjualan kredit; HPP/Persediaan), neraca saldo dengan indikator keseimbangan debit=kredit, laba-rugi (pendapatan − HPP − biaya).
+
+### Catatan mock (P1 lanjutan — struk, retur, pajak, buku besar)
+
+- **Struk cetak**: `src/lib/struk.ts` membangun HTML struk 300px gaya printer thermal (identitas toko, item, diskon/pajak, alokasi bayar, kembalian, piutang, footer) + `cetakStruk()` via iframe tersembunyi `window.print()`. Tombol di layar sukses pembayaran & detail riwayat.
+- **Retur penjualan**: dialog Retur di Riwayat (hanya pemilik; qty per item ≤ pembelian asli, alasan, refund tunai/transfer) → `prosesRetur` mock: stok kembali, refund kas/bank, jurnal `Retur penjualan` debit + HPP dibalik (Persediaan kembali), audit `RTN-`.
+- **Pajak**: profil toko punya `pajakPersen` (Pengaturan); cart & dialog bayar menampilkan baris pajak; checkout mengirim `pajak` (Rp); jurnal: Kas/Bank debit total, `Pajak keluaran` kredit, Penjualan kredit neto; laba-rugi = pendapatan − retur − HPP − biaya − pajak.
+- **Akun baru**: `Penampung gateway` (dana QRIS belum terkonfirmasi), `Retur penjualan`, `Pajak keluaran`.
+- **Konfirmasi QRIS**: transaksi `menunggu_pembayaran` muncul di panel "Pembayaran menunggu konfirmasi" (tab Kas & Bank, Keuangan); konfirmasi (hanya pemilik) → Bank debit / Penampung gateway kredit, status → `lunas`, audit tercatat.
+- **Buku besar**: tab baru di Akuntansi — pilih akun → mutasi dari jurnal (waktu, keterangan, ref, debit, kredit, saldo berjalan).
+- **Filter tanggal + ekspor CSV**: Riwayat & Laporan punya rentang dari/sampai + tombol Ekspor CSV (BOM UTF-8, quote-escape); Laporan mengecualikan transaksi `dibatalkan`.
 
 ### Cara menjalankan
 

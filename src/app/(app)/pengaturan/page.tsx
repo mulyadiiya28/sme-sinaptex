@@ -96,6 +96,17 @@ function PanelProfil() {
         <FormField label="Zona waktu">
           <input className="input" value={draft.zonaWaktu} onChange={ubah("zonaWaktu")} placeholder="Asia/Jakarta" />
         </FormField>
+        <FormField label="Pajak transaksi (%)">
+          <input
+            type="number"
+            min={0}
+            max={100}
+            className="input text-right tabular-nums"
+            value={draft.pajakPersen ?? 0}
+            onChange={(e) => setDraft({ ...draft, pajakPersen: Number(e.target.value) })}
+            placeholder="0"
+          />
+        </FormField>
         <FormField label="Catatan footer struk">
           <input className="input" value={draft.footerStruk} onChange={ubah("footerStruk")} />
         </FormField>

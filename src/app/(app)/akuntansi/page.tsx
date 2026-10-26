@@ -11,11 +11,12 @@ import { StatusBadge } from "@/components/status-badge";
 import { useAkun, useJurnal, useLabaRugi } from "@/hooks/queries";
 import { cn } from "@/lib/utils";
 
-type Tab = "akun" | "jurnal" | "laba-rugi";
+type Tab = "akun" | "jurnal" | "buku-besar" | "laba-rugi";
 
 const TABS: Array<{ id: Tab; label: string }> = [
   { id: "akun", label: "Neraca Saldo" },
   { id: "jurnal", label: "Jurnal Otomatis" },
+  { id: "buku-besar", label: "Buku Besar" },
   { id: "laba-rugi", label: "Laba-Rugi" },
 ];
 
@@ -46,6 +47,7 @@ export default function AkuntansiPage() {
 
       {tab === "akun" && <PanelAkun />}
       {tab === "jurnal" && <PanelJurnal />}
+      {tab === "buku-besar" && <PanelBukuBesar />}
       {tab === "laba-rugi" && <PanelLabaRugi />}
     </div>
   );
@@ -150,6 +152,72 @@ function JurnalCard({ entry }: { entry: JurnalEntry }) {
   );
 }
 
+function PanelBukuBesar() {
+  const akun = useAkun();
+  const jurnal = useJurnal();
+  const [terpilih, setTerpilih] = useState("");
+
+  const daftarAkun = (akun.data ?? []).map((a) => a.akun);
+  const baris = (jurnal.data ?? [])
+    .slice()
+    .reverse()
+    .flatMap((j) =>
+      j.baris
+        .filter((b) => b.akun === terpilih)
+        .map((b) => ({ waktu: j.waktu, keterangan: j.keterangan, ref: j.ref, debit: b.debit, kredit: b.kredit })),
+    );
+  let saldoBerjalan = 0;
+  const berjalan = baris.map((b) => {
+    saldoBerjalan += b.debit - b.kredit;
+    return { ...b, saldo: saldoBerjalan };
+  });
+
+  return (
+    <div className="panel p-4">
+      <div className="mb-3 flex flex-wrap items-end gap-3 px-1">
+        <h2 className="text-sm font-bold text-brand">Buku besar</h2>
+        <select className="input max-w-xs" value={terpilih} onChange={(e) => setTerpilih(e.target.value)} disabled={daftarAkun.length === 0}>
+          <option value="">— pilih akun —</option>
+          {daftarAkun.map((a) => (
+            <option key={a} value={a}>{a}</option>
+          ))}
+        </select>
+      </div>
+      {terpilih === "" ? (
+        <p className="px-1 text-sm text-muted">Pilih akun untuk melihat mutasinya.</p>
+      ) : (
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="border-b border-line text-left text-xs uppercase tracking-wide text-muted">
+              <th className="px-3 py-2">Waktu</th>
+              <th className="px-3 py-2">Keterangan</th>
+              <th className="px-3 py-2">Ref</th>
+              <th className="px-3 py-2 text-right">Debit</th>
+              <th className="px-3 py-2 text-right">Kredit</th>
+              <th className="px-3 py-2 text-right">Saldo</th>
+            </tr>
+          </thead>
+          <tbody>
+            {berjalan.map((b, i) => (
+              <tr key={i} className="border-b border-line/60">
+                <td className="px-3 py-2 text-muted">{new Date(b.waktu).toLocaleString("id-ID", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })}</td>
+                <td className="px-3 py-2 font-medium">{b.keterangan}</td>
+                <td className="px-3 py-2 text-muted">{b.ref}</td>
+                <td className="px-3 py-2 text-right tabular-nums">{b.debit ? <MoneyDisplay value={b.debit} /> : "—"}</td>
+                <td className="px-3 py-2 text-right tabular-nums">{b.kredit ? <MoneyDisplay value={b.kredit} /> : "—"}</td>
+                <td className="px-3 py-2 text-right font-bold tabular-nums"><MoneyDisplay value={b.saldo} /></td>
+              </tr>
+            ))}
+            {berjalan.length === 0 && (
+              <tr><td colSpan={6} className="px-3 py-8 text-center text-muted">Tidak ada mutasi pada akun ini.</td></tr>
+            )}
+          </tbody>
+        </table>
+      )}
+    </div>
+  );
+}
+
 function PanelLabaRugi() {
   const lr = useLabaRugi();
   const data: LabaRugi | undefined = lr.data;
@@ -166,8 +234,10 @@ function PanelLabaRugi() {
         <p className="font-bold text-brand">Perhitungan</p>
         <div className="mt-2 space-y-1.5 tabular-nums">
           <Row label="Pendapatan" value={data?.pendapatan ?? 0} />
+          <Row label="Dikurangi: Retur penjualan" value={-(data?.retur ?? 0)} />
           <Row label="Dikurangi: HPP" value={-(data?.hpp ?? 0)} />
           <Row label="Dikurangi: Biaya operasional" value={-(data?.biaya ?? 0)} />
+          <Row label="Dikurangi: Pajak keluaran" value={-(data?.pajak ?? 0)} />
           <div className="border-t border-line pt-1.5">
             <Row label="Laba bersih" value={data?.laba ?? 0} bold />
           </div>

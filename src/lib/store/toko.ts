@@ -11,6 +11,7 @@ const DEFAULT: ProfilToko = {
   mataUang: "IDR",
   zonaWaktu: "Asia/Jakarta",
   footerStruk: "Terima kasih atas kunjungan Anda",
+  pajakPersen: 0,
 };
 
 type TokoState = {

@@ -29,6 +29,7 @@ export type PaymentAllocation = {
 export type CheckoutPayload = {
   lines: CartLine[];
   diskonTransaksi: number;
+  pajak: number;
   allocations: PaymentAllocation[];
   gunakanPiutang: boolean;
   pelanggan?: string;
@@ -88,11 +89,30 @@ export type TransaksiRiwayat = {
   pelanggan?: string;
   items: TransaksiItem[];
   diskonTransaksi: number;
+  pajak: number;
   total: number;
   kembalian: number;
   piutang: number;
   status: "lunas" | "menunggu_pembayaran" | "dibayar_sebagian" | "dibatalkan";
   pembayaran?: Array<{ metode: PaymentMethod; nominal: number }>;
+};
+
+export type ReturPenjualan = {
+  id: string;
+  nomor: string;
+  referensi: string;
+  waktu: string;
+  items: Array<{ nama: string; qty: number; hargaJual: number }>;
+  total: number;
+  alasan: string;
+  metodeRefund: "tunai" | "transfer";
+};
+
+export type ReturInput = {
+  referensi: string;
+  items: Array<{ nama: string; qty: number }>;
+  alasan: string;
+  metodeRefund: "tunai" | "transfer";
 };
 
 export type PenyesuaianStokInput = {
@@ -150,8 +170,10 @@ export type AkunSaldo = { akun: string; debit: number; kredit: number; saldo: nu
 
 export type LabaRugi = {
   pendapatan: number;
+  retur: number;
   hpp: number;
   biaya: number;
+  pajak: number;
   laba: number;
 };
 
@@ -186,4 +208,5 @@ export type ProfilToko = {
   mataUang: string;
   zonaWaktu: string;
   footerStruk: string;
+  pajakPersen?: number;
 };

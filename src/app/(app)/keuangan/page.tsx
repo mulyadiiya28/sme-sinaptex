@@ -9,6 +9,7 @@ import { KpiCard } from "@/components/kpi-card";
 import { MoneyDisplay } from "@/components/money-display";
 import { PageHeader } from "@/components/page-header";
 import { StatusBadge } from "@/components/status-badge";
+import { useAuth } from "@/lib/store/auth";
 import {
   useActiveShift,
   useBiaya,
@@ -16,6 +17,7 @@ import {
   usePembayaranMutations,
   usePembelian,
   useRiwayatTransaksi,
+  useTransaksiMutations,
 } from "@/hooks/queries";
 import { cn } from "@/lib/utils";
 
@@ -66,12 +68,17 @@ function PanelKas() {
   const biaya = useBiaya();
   const pembelian = usePembelian();
   const riwayat = useRiwayatTransaksi();
+  const user = useAuth((s) => s.user);
+  const { konfirmasiDigital } = useTransaksiMutations();
+  const [target, setTarget] = useState<TransaksiRiwayat | null>(null);
 
   const tunai = shift.data?.kasTunaiSistem ?? 0;
   const biayaTransfer = (biaya.data ?? []).filter((b) => b.metode === "transfer").reduce((s, b) => s + b.nominal, 0);
   const pembelianHutang = (pembelian.data ?? []).filter((p) => p.metode === "hutang" && p.terbayar < p.total);
   const totalHutang = pembelianHutang.reduce((s, p) => s + (p.total - p.terbayar), 0);
-  const totalPiutang = (riwayat.data ?? []).reduce((s, t) => s + t.piutang, 0);
+  const transaksiValid = (riwayat.data ?? []).filter((t) => t.status !== "dibatalkan");
+  const totalPiutang = transaksiValid.reduce((s, t) => s + t.piutang, 0);
+  const menunggu = transaksiValid.filter((t) => t.status === "menunggu_pembayaran");
 
   return (
     <div>
@@ -87,13 +94,88 @@ function PanelKas() {
         <KpiCard label="Total hutang" value={<MoneyDisplay value={totalHutang} />} hint="Kepada pemasok" tone="rose" />
         <KpiCard label="Biaya tercatat" value={<MoneyDisplay value={(biaya.data ?? []).reduce((s, b) => s + b.nominal, 0)} />} hint={`Bulan ini · transfer ${new Intl.NumberFormat("id-ID").format(biayaTransfer)}`} tone="navy" />
       </div>
+
+      <div className="panel mt-4 p-5">
+        <div className="flex items-center justify-between">
+          <p className="font-bold text-brand">Pembayaran menunggu konfirmasi</p>
+          <StatusBadge label={`${menunggu.length} tertunda`} tone={menunggu.length > 0 ? "warning" : "success"} />
+        </div>
+        <p className="mt-1 text-xs text-muted">
+          QRIS/gateway yang dipilih pelanggan "bayar kemudian" harus dikonfirmasi setelah dana masuk, sehingga kas/bank tercatat tepat waktu.
+        </p>
+        {menunggu.length > 0 ? (
+          <div className="mt-3 space-y-2">
+            {menunggu.map((t) => (
+              <div key={t.nomor} className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-line bg-white p-3">
+                <div>
+                  <p className="text-sm font-bold text-ink">{t.nomor}</p>
+                  <p className="text-xs text-muted">
+                    {new Date(t.waktu).toLocaleString("id-ID")} · {t.pembayaran?.some((b) => b.metode === "qris") ? "QRIS" : "Gateway"} · {t.kasir}
+                  </p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <MoneyDisplay value={t.total} className="font-bold text-brand" />
+                  {user?.role === "pemilik" ? (
+                    <button
+                      type="button"
+                      className="btn-primary px-3 py-1.5 text-xs"
+                      disabled={konfirmasiDigital.isPending}
+                      onClick={() => setTarget(t)}
+                    >
+                      Konfirmasi
+                    </button>
+                  ) : (
+                    <StatusBadge label="Pemilik" tone="info" />
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <p className="mt-3 text-sm text-muted">Tidak ada pembayaran tertunda — semua dana digital sudah terkonfirmasi.</p>
+        )}
+      </div>
+
       <div className="panel mt-4 p-5 text-sm text-muted">
         <p className="font-bold text-brand">Rekonsiliasi</p>
         <p className="mt-1">
           Kas tunai = saldo awal shift + penjualan tunai + kas masuk − kas keluar (dihitung dari aktivitas nyata).
-          Rekonsiliasi mutasi bank dan pembayaran gateway menyusul di tahap lanjutan.
+          Dana QRIS/gateway masuk ke akun Penampung gateway, lalu dipindahkan ke Bank saat dikonfirmasi.
         </p>
       </div>
+
+      {target && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink/50 p-4 backdrop-blur-sm" onClick={() => setTarget(null)}>
+          <div className="panel max-w-sm p-7" onClick={(e) => e.stopPropagation()}>
+            <h2 className="flex items-center gap-2 font-black text-brand">
+              <ReceiptText className="size-5" aria-hidden /> Konfirmasi dana masuk
+            </h2>
+            <p className="mt-2 text-sm text-muted">
+              Pastikan dana {target.pembayaran?.some((b) => b.metode === "qris") ? "QRIS" : "gateway"} untuk <span className="font-bold text-ink">{target.nomor}</span> sudah terlihat di rekening/portal.
+            </p>
+            <div className="mt-3 flex items-center justify-between rounded-xl bg-slate-50 px-3 py-2.5 text-sm">
+              <span className="font-semibold">Nominal</span>
+              <MoneyDisplay value={target.total} className="font-black text-brand" />
+            </div>
+            <div className="mt-4 flex gap-2">
+              <button
+                type="button"
+                className="btn-primary flex-1"
+                disabled={konfirmasiDigital.isPending}
+                onClick={() =>
+                  konfirmasiDigital.mutate(
+                    { nomor: target.nomor, user: user! },
+                    { onSuccess: () => setTarget(null), onError: (err) => alert(String(err)) },
+                  )
+                }
+              >
+                {konfirmasiDigital.isPending ? "Memproses..." : "Ya, Dana Masuk"}
+              </button>
+              <button type="button" onClick={() => setTarget(null)} className="btn-secondary">Batal</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -166,7 +248,7 @@ function PanelPiutang() {
   const riwayat = useRiwayatTransaksi();
   const { bayarPiutang } = usePembayaranMutations();
   const [target, setTarget] = useState<TransaksiRiwayat | null>(null);
-  const daftar = (riwayat.data ?? []).filter((t) => t.piutang > 0);
+  const daftar = (riwayat.data ?? []).filter((t) => t.status !== "dibatalkan" && t.piutang > 0);
 
   const columns: Column<TransaksiRiwayat>[] = [
     { key: "nomor", header: "Nomor", render: (r) => <span className="font-semibold text-brand">{r.nomor}</span> },

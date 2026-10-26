@@ -3,7 +3,8 @@
 import { Minus, Plus, ShoppingBasket, Trash2, X } from "lucide-react";
 import type { Product } from "@/lib/api/types";
 import { MoneyDisplay } from "@/components/money-display";
-import { subtotalLines, totalTransaksi, useCart } from "@/lib/store/cart";
+import { subtotalLines, pajakNominal, totalTransaksi, useCart } from "@/lib/store/cart";
+import { useToko } from "@/lib/store/toko";
 import { cn } from "@/lib/utils";
 
 export function CartPanel({
@@ -14,8 +15,10 @@ export function CartPanel({
   onBatal: () => void;
 }) {
   const { lines, diskonTransaksi, setQty, removeLine, setDiskonTransaksi, setPelanggan } = useCart();
+  const pajakPersen = useToko((s) => s.profil.pajakPersen ?? 0);
   const subtotal = subtotalLines(lines);
-  const total = totalTransaksi(lines, diskonTransaksi);
+  const pajak = pajakNominal(lines, diskonTransaksi, pajakPersen);
+  const total = totalTransaksi(lines, diskonTransaksi, pajak);
   const totalItem = lines.reduce((s, l) => s + l.qty, 0);
 
   if (lines.length === 0) {
@@ -98,6 +101,9 @@ export function CartPanel({
               className="w-28 rounded-lg border border-line px-2 py-1 text-right text-sm tabular-nums"
             />
           </div>
+          {pajakPersen > 0 && (
+            <RowFlex label={`Pajak (${pajakPersen}%)`} value={pajak} />
+          )}
           <div className="mt-1 flex items-baseline justify-between border-t border-dashed border-line pt-2.5">
             <dt className="font-bold text-ink">Total</dt>
             <MoneyDisplay value={total} className="text-2xl font-black text-brand" />

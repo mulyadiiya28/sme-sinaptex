@@ -1,8 +1,10 @@
 "use client";
 
-import { Store, TrendingUp, Warehouse } from "lucide-react";
+import { useMemo, useState } from "react";
+import { Download, Store, TrendingUp, Warehouse } from "lucide-react";
 import type { Product, TransaksiRiwayat } from "@/lib/api/types";
 import { DataTable, type Column } from "@/components/data-table";
+import { FormField } from "@/components/form-field";
 import { KpiCard } from "@/components/kpi-card";
 import { MoneyDisplay } from "@/components/money-display";
 import { PageHeader } from "@/components/page-header";
@@ -13,8 +15,19 @@ type PenjualanHarian = { tanggal: string; jumlah: number; omzet: number };
 export default function LaporanPage() {
   const riwayat = useRiwayatTransaksi();
   const products = useProducts();
+  const [dari, setDari] = useState("");
+  const [sampai, setSampai] = useState("");
 
-  const transaksi = riwayat.data ?? [];
+  const transaksi = useMemo(() => {
+    const semua = riwayat.data ?? [];
+    return semua.filter((t) => {
+      if (t.status === "dibatalkan") return false;
+      const hari = t.waktu.slice(0, 10);
+      if (dari && hari < dari) return false;
+      if (sampai && hari > sampai) return false;
+      return true;
+    });
+  }, [riwayat.data, dari, sampai]);
   const daftarProduk = (products.data ?? []).filter((p) => p.status === "aktif");
 
   const omzetTotal = transaksi.reduce((s, t) => s + t.total, 0);
@@ -40,12 +53,38 @@ export default function LaporanPage() {
     },
   ];
 
+  function eksporCsv() {
+    const head = "nomor,waktu,kasir,pelanggan,total,pajak,piutang,status";
+    const rows = transaksi.map((t) =>
+      [t.nomor, t.waktu, t.kasir, t.pelanggan ?? "", t.total, t.pajak, t.piutang, t.status]
+        .map((v) => `"${String(v).replace(/"/g, '""')}"`)
+        .join(","),
+    );
+    const blob = new Blob(["\uFEFF" + [head, ...rows].join("\r\n")], { type: "text/csv;charset=utf-8" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = `laporan-penjualan-${dari || "semua"}-${sampai || "semua"}.csv`;
+    a.click();
+    URL.revokeObjectURL(a.href);
+  }
+
   return (
     <div>
       <PageHeader
         title="Laporan"
         description="Ringkasan kinerja usaha dari data transaksi nyata: penjualan harian, nilai persediaan, dan kas."
       />
+      <div className="panel mb-4 flex flex-wrap items-end gap-2.5 p-4">
+        <FormField label="Dari">
+          <input type="date" value={dari} onChange={(e) => setDari(e.target.value)} className="input w-36" />
+        </FormField>
+        <FormField label="Sampai">
+          <input type="date" value={sampai} onChange={(e) => setSampai(e.target.value)} className="input w-36" />
+        </FormField>
+        <button type="button" onClick={eksporCsv} className="btn-secondary">
+          <Download className="size-4" aria-hidden /> Ekspor CSV
+        </button>
+      </div>
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
         <KpiCard
           label="Omzet total"
