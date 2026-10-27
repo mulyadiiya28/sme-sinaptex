@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { LogIn, ShieldCheck } from "lucide-react";
 import type { Role } from "@/lib/api/types";
@@ -22,6 +22,10 @@ export default function LoginPage() {
     try {
       const sesi = await api.auth.login(un, pw);
       setSession(sesi);
+      // Otomatisasi: buka shift bagi kasir setelah login
+      if (sesi.user.role === "kasir") {
+        await api.shift.buka({ kasir: sesi.user.nama, saldoAwal: 1_500_000 });
+      }
       router.replace(sesi.user.role === "kasir" ? "/kasir" : "/");
     } catch (err) {
       setError(String(err instanceof Error ? err.message : err));

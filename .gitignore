@@ -9,3 +9,6 @@ next-env.d.ts
 !.env.example
 .DS_Store
 Thumbs.db
+
+# Nested backend repository (pushed separately to acc-sinaptex)
+/backend/
