@@ -12,3 +12,7 @@ Thumbs.db
 
 # Nested backend repository (pushed separately to acc-sinaptex)
 /backend/
+
+# Arsip unduhan backend & cache npm lokal
+*.zip
+npm-cache/

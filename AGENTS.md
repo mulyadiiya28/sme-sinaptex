@@ -36,19 +36,24 @@ src/
   lib/
     api/types.ts         → domain types (single source of truth / C# contract)
     api/client.ts        → `api` facade, API_MODE mock|live switch
+    api/live.ts          → live client: fetch ke engine C# + pemetaan DTO→domain
     api/mock/db.ts       → in-memory mock engine (double-entry journal, GL, P&L)
     store/               → zustand: auth.ts (persist), cart.ts, toko.ts (persist)
     csv.ts, format.ts, nav.ts, struk.ts, utils.ts
   sw.ts                  → Serwist service worker
 src-tauri/               → Rust shell (tauri-plugin-log only, no native APIs yet)
+backend/                 → nested git repo: engine Accounting Engine (.NET 10)
+tools/                   → bootstrap-backend.py (tenant + owner + RBAC + kas + periode)
 ```
 
 ### Layer rules
 
 - **All data access goes through `src/lib/api/client.ts` (`api.*`).** Components never call
   `mock/db.ts` directly.
-- `API_MODE === "live"` methods currently throw `"API C# belum disambung."` — keep the live
-  branch shape identical to the C# REST contract documented in `knowledge.md`.
+- `API_MODE === "live"` memakai `src/lib/api/live.ts` (fetch ke engine C# + pemetaan DTO→domain);
+  jalur HTTP (header, JWT, refresh, idempotensi) hanya boleh disentuh di file itu. Alur yang engine-nya
+  belum punya endpoint melempar `engineBelumAda(...)` — pesan eksplisit, bukan data mock.
+- Engine (`backend/`) adalah nested git repo: perubahan di sana **tidak** ikut commit repo POS.
 - Business/accounting logic (stok, saldo, jurnal) belongs in the engine layer, not components.
 - `API_MODE` is read from `process.env.NEXT_PUBLIC_API_MODE` (default `mock`).
 

@@ -155,7 +155,32 @@ Semua API pakai `API_MODE = process.env.NEXT_PUBLIC_API_MODE ?? "mock"`.
 
 ## 8. Policy Push
 - **Semua perubahan push ke `sme-sinaptex`** — terpisah dari repo backend, sebagaimana yang telah direncana pengguna.
-- Backend C# belum disambung (ada `throw new Error("API C# belum disambung.")` jika `API_MODE="live"`).
+- Backend C# sudah terpasang di `backend/` (repo nested .NET 10, diabaikan repo POS lewat `/backend/`). Mode live (`NEXT_PUBLIC_API_MODE=live`) menyambung lewat `src/lib/api/live.ts`: login/JWT + refresh, produk, satuan, pelanggan, shift, kasir (batch penjualan), pembelian (batch pembelian), void/retur, neraca saldo, laba-rugi.
+- Alur yang engine-nya belum punya endpoint (impor CSV, penyesuaian stok, biaya, pelunasan piutang/hutang, daftar jurnal, audit log, daftar pengguna) **menampilkan pesan eksplisit**, bukan data palsu. Rincian endpoint & batasnya ada di `knowledge.md` § Kontrak engine AKTUAL.
+- `tools/bootstrap-backend.py` menyiapkan tenant + pemilik (level 99) + RBAC + akun kas + periode fiskal; idempoten, aman diulang.
+
+---
+
+## 8b. Menjalankan Backend (engine Accounting Engine)
+
+```bash
+cd backend
+dotnet build AccountingEngine.slnx
+dotnet ef database update -p src/AccountingEngine.Infrastructure -s src/AccountingEngine.Api
+dotnet run --project src/AccountingEngine.Api/AccountingEngine.Api   # http://localhost:5121
+```
+
+```bash
+# dari root repo POS
+pip install bcrypt
+python tools/bootstrap-backend.py
+curl -X POST http://localhost:5121/api/accounts/seed -H "X-Business-Id: toko-utama"
+```
+
+- Tenant default `toko-utama`, akun `pemilik` / `pemilik123` (level 99 = owner), kas `1121` (default) + `1111`.
+- Chart of accounts: 37 akun SAK EMKM (`POST /api/accounts/seed`); jurnal hanya boleh menyebut akun level 3.
+- `.env.example` → `.env.local` untuk `NEXT_PUBLIC_API_MODE=live`, base URL engine, id tenant, dan kode akun.
+- Diperlukan satu **periode fiskal OPEN** yang menutup tanggal transaksi; `tools/bootstrap-backend.py` membuat periode bulan berjalan.
 
 ---
 

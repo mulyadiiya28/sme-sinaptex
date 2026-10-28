@@ -439,6 +439,51 @@ public/
 
 Semua endpoint membawa `Authorization: Bearer <JWT>`; komputer toko memanggil `http://<server-toko>:<port>/api` (Mode A).
 
+### Kontrak engine AKTUAL (sudah tersambung, `NEXT_PUBLIC_API_MODE=live`)
+
+Engine yang terpasang ada di `backend/` (repo nested, .NET 10, EF Core + SQLite). Client live ada di `src/lib/api/live.ts`; `src/lib/api/client.ts` tetap menjadi satu-satunya pintu masuk (`api.*`).
+
+**Dasar:**
+- `X-Business-Id` = id tenant (default `toko-utama`), `X-Actor-Id` = id user, `X-Actor-Level` = `99` (owner) / `2` (staff). Engine: owner = level **99** (`AccountingRules.ApprovalLevels`), admin RBAC = level **1**.
+- Login → `POST /api/auth/login` → `{ accessToken, refreshToken, expiresAt }`; user dibaca dari klaim JWT (`sub`, `unique_name`, `name`, `authority_level`). Access token hanya di memori; saat 401 client memutar refresh token (`POST /api/auth/refresh`) lalu mengulang request.
+- Endpoint uang wajib `Idempotency-Key`; batch kasir wajib `requestedBy` ≠ `approvedBy`.
+- Kode akun harus **level 3 (postable)** dari chart hasil `POST /api/accounts/seed`: `1121` kas, `1111` bank, `1200` piutang, `1300` persediaan, `2101` hutang, `4000` pendapatan, `5000` HPP, `2402` PPN keluaran. Boleh diubah lewat `.env.local`.
+
+**Tersambung:**
+
+| Fungsi frontend | Endpoint engine | Catatan |
+|---|---|---|
+| `api.auth.login()` / `logout()` | `POST /api/auth/login` · `POST /api/auth/revoke` | JWT + rotasi refresh token |
+| `api.master.products()` | `GET /api/products` + `GET /api/units` + `GET /api/inventory/stock` | stok = facts inventory, bukan kolom produk; `GET /api/products` hanya mengembalikan produk **aktif** → status "nonaktif" tidak terlihat di live mode |
+| `api.master.createProduct()` | `POST /api/products` (+ `POST /api/units` bila satuan baru) | stok awal **tidak** bisa diisi di endpoint produk → masuk lewat pembelian |
+| `api.master.updateProduct()` | `PUT /api/products/{id}` | harga beli/jual tidak menyentuh HPP |
+| `api.master.deleteProduct()` | `POST /api/products/{id}/deactivate` | nonaktifkan, bukan hapus |
+| `api.master.pelanggan()` | `GET /api/customers` | |
+| `api.shift.*` | `GET /api/shifts/active` · `GET /api/shifts` · `POST /api/shifts` · `POST /api/shifts/{id}/cash-movements` · `POST /api/shifts/{id}/close` | shift tersambung ke cash engine: saldo awal & mutasi kas jadi jurnal, `kasTunaiSistem` = saldo akun kas |
+| `api.transaksi.checkout()` | `POST /api/cash-batches/sales` | satu batch = penjualan + pembayaran + alokasi; `outstandingAmount` → piutang; stok harus tersedia (cost layer dari pembelian) |
+| `api.transaksi.riwayat()` | `GET /api/sales` (+ `GET /api/transactions/{id}` untuk kasir) | alokasi/kembalian tidak diekspos engine → piutang & kembalian dihitung 0 pada arsip |
+| `api.transaksi.batal()` | `POST /api/transactions/{id}/void`, fallback `POST /api/sale-returns` | engine menolak void atas transaksi POSTED (409) → pembatalan jatuh ke credit note penuh |
+| `api.transaksi.retur()` | `POST /api/sale-returns` | credit note per item, stok kembali, HPP dibalik |
+| `api.pembelian.list()` / `buat()` | `GET /api/purchases` · `POST /api/cash-batches/purchases` | pembelian kas langsung menambah stok + cost layer |
+| `api.akuntansi.akun()` | `GET /api/reports/trial-balance` | debit/kredit/saldo per akun |
+| `api.akuntansi.labaRugi()` | `GET /api/reports/trial-balance` | diturunkan dari akun: `4xxx` pendapatan, `5000` HPP, `6xxx`+`5100` biaya, `2402` pajak |
+
+**Belum ada di engine (pesan eksplisit, bukan data palsu):**
+
+| Fungsi frontend | Endpoint yang belum ada |
+|---|---|
+| `api.auth.users()` · `ubahUser()` · `hapusUser()` | `GET/PUT/DELETE /api/users` (engine hanya punya `POST /api/users/direct`; peranKasir saja) |
+| `api.auth.auditList()` | `GET /api/audit-log` |
+| `api.transaksi.riwayatRetur()` | `GET /api/sale-returns` |
+| `api.transaksi.konfirmasiDigital()` | `POST /api/transactions/{id}/confirm-payment` (QRIS belum jadi konsep engine) |
+| `api.master.penyesuaianStok()` | `POST /api/inventory/adjustments` |
+| `api.master.imporProduk()` · `imporPelanggan()` · `imporSaldoAwal()` | `POST /api/products/import` · `POST /api/customers/import` · `POST /api/accounts/opening-balances` |
+| `api.biaya.list()` · `catat()` | `GET/POST /api/expenses` |
+| `api.hutang.bayar()` · `api.piutang.bayar()` | `POST /api/purchases/{id}/payments` · `POST /api/sales/{id}/payments` (engine hanya punya uang muka `POST /api/payments/advances`) |
+| `api.akuntansi.jurnal()` | `GET /api/journal` (ada `GET /api/reports/daily-movement` per akun per tanggal) |
+
+**Batas engine yang masih membatasi POS:** pembayaran campuran (tunai + transfer) ditolak — satu batch menerima satu akun kas; pembayaran melebihi total (kembalian) ditolak engine; diskon per item dan diskon transaksi tidak punya field pada dokumen penjualan engine (harga yang dikirim = harga jual bersih per baris).
+
 ### Prinsip yang sudah dipegang di frontend
 
 - **Login & hak akses**: halaman `/login` (tanpa shell); sesi di Zustand persist — `user` + `refreshToken` tersimpan, **access token hanya di memori** (tidak ke localStorage); di live, refresh token seharusnya httpOnly cookie dari engine. Role: `pemilik` (akses penuh) & `kasir` (Kasir/Riwayat/Shift). Sidebar memfilter menu per role, `AuthGuard` mem-block route luar izin (redirect kasir → `/kasir`).

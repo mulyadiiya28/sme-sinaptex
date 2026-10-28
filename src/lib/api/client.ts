@@ -26,6 +26,32 @@ import type {
   User,
 } from "@/lib/api/types";
 import { mockDb, produkBaruId } from "@/lib/api/mock/db";
+import {
+  engineBelumAda,
+  liveAkun,
+  liveBuatUser,
+  liveCheckout,
+  liveCreateProduct,
+  liveDeleteProduct,
+  liveJurnal,
+  liveLabaRugi,
+  liveLogin,
+  liveLogout,
+  livePelanggan,
+  livePembelianBuat,
+  livePembelianList,
+  liveProducts,
+  liveRetur,
+  liveReturRiwayat,
+  liveShiftAktif,
+  liveShiftBuka,
+  liveShiftMutasi,
+  liveShiftRiwayat,
+  liveShiftTutup,
+  liveTransaksiRiwayat,
+  liveUpdateProduct,
+  liveVoidTransaksi,
+} from "@/lib/api/live";
 
 export const API_MODE = process.env.NEXT_PUBLIC_API_MODE ?? "mock";
 
@@ -49,37 +75,37 @@ export function hitungTotal(payload: Pick<CheckoutPayload, "lines" | "diskonTran
 export const api = {
   auth: {
     login: async (username: string, password: string): Promise<LoginResult> => {
-      if (API_MODE === "live") throw new Error("API C# belum disambung.");
+      if (API_MODE === "live") return liveLogin(username, password);
       await delay(400);
       return mockDb.login(username, password);
     },
     logout: async (user?: User): Promise<void> => {
-      if (API_MODE === "live") throw new Error("API C# belum disambung.");
+      if (API_MODE === "live") return liveLogout();
       await delay(150);
       mockDb.logout(user);
     },
     users: async (): Promise<User[]> => {
-      if (API_MODE === "live") throw new Error("API C# belum disambung.");
+      if (API_MODE === "live") return engineBelumAda("Daftar pengguna", "GET /api/users");
       await delay(120);
       return mockDb.users.map(({ password: _, ...u }) => u);
     },
     auditList: async (): Promise<AuditEntry[]> => {
-      if (API_MODE === "live") throw new Error("API C# belum disambung.");
+      if (API_MODE === "live") return engineBelumAda("Jejak audit", "GET /api/audit-log");
       await delay(120);
       return structuredClone(mockDb.auditLog).reverse();
     },
     buatUser: async (input: { nama: string; username: string; password: string; role: User["role"] }, actor: User): Promise<User> => {
-      if (API_MODE === "live") throw new Error("API C# belum disambung.");
+      if (API_MODE === "live") return liveBuatUser(input);
       await delay(300);
       return mockDb.buatUser(input, actor);
     },
     ubahUser: async (id: string, input: { password?: string; role?: User["role"] }, actor: User): Promise<User> => {
-      if (API_MODE === "live") throw new Error("API C# belum disambung.");
+      if (API_MODE === "live") return engineBelumAda("Perubahan pengguna", "PUT /api/users/{id}");
       await delay(300);
       return mockDb.ubahUser(id, input, actor);
     },
     hapusUser: async (id: string, actor: User): Promise<void> => {
-      if (API_MODE === "live") throw new Error("API C# belum disambung.");
+      if (API_MODE === "live") return engineBelumAda("Penghapusan pengguna", "DELETE /api/users/{id}");
       await delay(250);
       mockDb.hapusUser(id, actor);
     },
@@ -87,12 +113,12 @@ export const api = {
 
   master: {
     products: async (): Promise<Product[]> => {
-      if (API_MODE === "live") throw new Error("API C# belum disambung.");
+      if (API_MODE === "live") return liveProducts();
       await delay(150);
       return structuredClone(mockDb.products);
     },
     createProduct: async (p: Omit<Product, "id">): Promise<Product> => {
-      if (API_MODE === "live") throw new Error("API C# belum disambung.");
+      if (API_MODE === "live") return liveCreateProduct(p);
       await delay(250);
       if (p.barcode !== "" && mockDb.products.some((x) => x.barcode === p.barcode)) {
         throw new Error("Barcode sudah dipakai produk lain.");
@@ -102,12 +128,12 @@ export const api = {
       return structuredClone(baru);
     },
     penyesuaianStok: async (input: PenyesuaianStokInput, user: User): Promise<Product> => {
-      if (API_MODE === "live") throw new Error("API C# belum disambung.");
+      if (API_MODE === "live") return engineBelumAda("Penyesuaian stok", "POST /api/inventory/adjustments");
       await delay(300);
       return mockDb.penyesuaianStok(input, user);
     },
     updateProduct: async (id: string, p: Omit<Product, "id">): Promise<Product> => {
-      if (API_MODE === "live") throw new Error("API C# belum disambung.");
+      if (API_MODE === "live") return liveUpdateProduct(id, p);
       await delay(250);
       const idx = mockDb.products.findIndex((x) => x.id === id);
       if (idx === -1) throw new Error("Produk tidak ditemukan.");
@@ -118,31 +144,31 @@ export const api = {
       return structuredClone(mockDb.products[idx]);
     },
     deleteProduct: async (id: string): Promise<void> => {
-      if (API_MODE === "live") throw new Error("API C# belum disambung.");
+      if (API_MODE === "live") return liveDeleteProduct(id);
       await delay(200);
       mockDb.products = mockDb.products.filter((x) => x.id !== id);
     },
 
     imporProduk: async (rows: ImporProdukBaris[], user: User): Promise<HasilImpor> => {
-      if (API_MODE === "live") throw new Error("API C# belum disambung.");
+      if (API_MODE === "live") return engineBelumAda("Impor produk", "POST /api/products/import");
       await delay(500);
       return mockDb.imporProduk(rows, user);
     },
 
     imporPelanggan: async (rows: ImporPelangganBaris[], user: User): Promise<HasilImpor> => {
-      if (API_MODE === "live") throw new Error("API C# belum disambung.");
+      if (API_MODE === "live") return engineBelumAda("Impor pelanggan", "POST /api/customers/import");
       await delay(500);
       return mockDb.imporPelanggan(rows, user);
     },
 
     imporSaldoAwal: async (rows: ImporSaldoAwalBaris[], user: User): Promise<HasilImpor> => {
-      if (API_MODE === "live") throw new Error("API C# belum disambung.");
+      if (API_MODE === "live") return engineBelumAda("Impor saldo awal", "POST /api/accounts/opening-balances");
       await delay(500);
       return mockDb.imporSaldoAwal(rows, user);
     },
 
     pelanggan: async (): Promise<Pelanggan[]> => {
-      if (API_MODE === "live") throw new Error("API C# belum disambung.");
+      if (API_MODE === "live") return livePelanggan();
       await delay(120);
       return mockDb.daftarPelanggan();
     },
@@ -150,27 +176,35 @@ export const api = {
 
   shift: {
     aktif: async (): Promise<ShiftInfo | null> => {
-      if (API_MODE === "live") throw new Error("API C# belum disambung.");
+      if (API_MODE === "live") return liveShiftAktif();
       await delay(100);
       return structuredClone(mockDb.shiftAktif);
     },
     riwayat: async (): Promise<ShiftRiwayat[]> => {
-      if (API_MODE === "live") throw new Error("API C# belum disambung.");
+      if (API_MODE === "live") return liveShiftRiwayat();
       await delay(100);
       return structuredClone(mockDb.shiftRiwayat);
     },
     buka: async (input: ShiftBukaInput): Promise<ShiftInfo> => {
-      if (API_MODE === "live") throw new Error("API C# belum disambung.");
+      if (API_MODE === "live") return liveShiftBuka(input);
       await delay(300);
       return mockDb.bukaShift(input);
     },
     mutasiKas: async (input: ShiftMutasiInput): Promise<ShiftInfo> => {
-      if (API_MODE === "live") throw new Error("API C# belum disambung.");
+      if (API_MODE === "live") {
+        const shift = await liveShiftAktif();
+        if (!shift) throw new Error("Shift belum dibuka.");
+        return liveShiftMutasi(shift.id, input);
+      }
       await delay(250);
       return mockDb.mutasiKas(input);
     },
     tutup: async (uangFisik: number): Promise<ShiftRiwayat> => {
-      if (API_MODE === "live") throw new Error("API C# belum disambung.");
+      if (API_MODE === "live") {
+        const shift = await liveShiftAktif();
+        if (!shift) throw new Error("Shift belum dibuka.");
+        return liveShiftTutup(shift.id, uangFisik);
+      }
       await delay(400);
       return mockDb.tutupShift(uangFisik);
     },
@@ -178,12 +212,12 @@ export const api = {
 
   pembelian: {
     list: async (): Promise<Pembelian[]> => {
-      if (API_MODE === "live") throw new Error("API C# belum disambung.");
+      if (API_MODE === "live") return livePembelianList();
       await delay(150);
       return structuredClone(mockDb.pembelian);
     },
     buat: async (input: PembelianInput): Promise<Pembelian> => {
-      if (API_MODE === "live") throw new Error("API C# belum disambung.");
+      if (API_MODE === "live") return livePembelianBuat(input);
       await delay(400);
       return mockDb.registerPembelian(input);
     },
@@ -191,7 +225,7 @@ export const api = {
 
   hutang: {
     bayar: async (pembelianId: string, nominal: number, metode: "tunai" | "transfer"): Promise<Pembelian> => {
-      if (API_MODE === "live") throw new Error("API C# belum disambung.");
+      if (API_MODE === "live") return engineBelumAda("Pelunasan hutang", "POST /api/purchases/{id}/payments");
       await delay(350);
       return mockDb.bayarHutang(pembelianId, nominal, metode);
     },
@@ -199,7 +233,7 @@ export const api = {
 
   piutang: {
     bayar: async (nomor: string, nominal: number, metode: "tunai" | "transfer"): Promise<TransaksiRiwayat> => {
-      if (API_MODE === "live") throw new Error("API C# belum disambung.");
+      if (API_MODE === "live") return engineBelumAda("Pelunasan piutang", "POST /api/sales/{id}/payments");
       await delay(350);
       return mockDb.bayarPiutang(nomor, nominal, metode);
     },
@@ -207,12 +241,12 @@ export const api = {
 
   biaya: {
     list: async (): Promise<Biaya[]> => {
-      if (API_MODE === "live") throw new Error("API C# belum disambung.");
+      if (API_MODE === "live") return engineBelumAda("Daftar biaya", "GET /api/expenses");
       await delay(120);
       return structuredClone(mockDb.biaya);
     },
     catat: async (input: { kategori: string; nominal: number; metode: "tunai" | "transfer"; catatan?: string }): Promise<Biaya> => {
-      if (API_MODE === "live") throw new Error("API C# belum disambung.");
+      if (API_MODE === "live") return engineBelumAda("Pencatatan biaya", "POST /api/expenses");
       await delay(350);
       return mockDb.catatBiaya(input);
     },
@@ -220,17 +254,17 @@ export const api = {
 
   akuntansi: {
     jurnal: async (): Promise<JurnalEntry[]> => {
-      if (API_MODE === "live") throw new Error("API C# belum disambung.");
+      if (API_MODE === "live") return liveJurnal();
       await delay(120);
       return structuredClone(mockDb.jurnal);
     },
     akun: async (): Promise<ReturnType<typeof mockDb.akunSaldos>> => {
-      if (API_MODE === "live") throw new Error("API C# belum disambung.");
+      if (API_MODE === "live") return liveAkun();
       await delay(120);
       return structuredClone(mockDb.akunSaldos());
     },
     labaRugi: async (): Promise<LabaRugi> => {
-      if (API_MODE === "live") throw new Error("API C# belum disambung.");
+      if (API_MODE === "live") return liveLabaRugi();
       await delay(120);
       return structuredClone(mockDb.labaRugi());
     },
@@ -238,7 +272,7 @@ export const api = {
 
   transaksi: {
     checkout: async (payload: CheckoutPayload): Promise<CheckoutResult> => {
-      if (API_MODE === "live") throw new Error("API C# belum disambung.");
+      if (API_MODE === "live") return liveCheckout(payload);
       await delay(600);
 
       if (!mockDb.shiftAktif) throw new Error("Shift belum dibuka.");
@@ -322,31 +356,31 @@ export const api = {
     },
 
     riwayat: async (): Promise<TransaksiRiwayat[]> => {
-      if (API_MODE === "live") throw new Error("API C# belum disambung.");
+      if (API_MODE === "live") return liveTransaksiRiwayat();
       await delay(120);
       return mockDb.riwayatTransaksi();
     },
 
     batal: async (nomor: string, user: User): Promise<TransaksiRiwayat> => {
-      if (API_MODE === "live") throw new Error("API C# belum disambung.");
+      if (API_MODE === "live") return liveVoidTransaksi(nomor);
       await delay(400);
       return mockDb.batalTransaksi(nomor, user);
     },
 
     retur: async (input: ReturInput, user: User): Promise<ReturPenjualan> => {
-      if (API_MODE === "live") throw new Error("API C# belum disambung.");
+      if (API_MODE === "live") return liveRetur(input);
       await delay(400);
       return mockDb.prosesRetur(input, user);
     },
 
     riwayatRetur: async (): Promise<ReturPenjualan[]> => {
-      if (API_MODE === "live") throw new Error("API C# belum disambung.");
+      if (API_MODE === "live") return liveReturRiwayat();
       await delay(120);
       return mockDb.riwayatRetur();
     },
 
     konfirmasiDigital: async (nomor: string, user: User): Promise<TransaksiRiwayat> => {
-      if (API_MODE === "live") throw new Error("API C# belum disambung.");
+      if (API_MODE === "live") return engineBelumAda("Konfirmasi pembayaran digital", "POST /api/transactions/{id}/confirm-payment");
       await delay(300);
       return mockDb.konfirmasiDigital(nomor, user);
     },

@@ -4,7 +4,7 @@ Smart Retail Operations & Accounting untuk toko UMKM: kasir, persediaan, keuanga
 
 - **Stack**: Next.js (App Router) · TypeScript · Tailwind CSS 4 · TanStack Query · Zustand · Zod · Serwist (PWA)
 - **Mode produksi**: build statis (`next build` → `out/`) yang dibungkus Tauri menjadi `POS-Sinaptex.exe` — komputer toko tanpa Node.js/terminal; engine backend C# berjalan sebagai Windows Service dan menyediakan REST API + JWT.
-- **Saat ini**: data memakai **mock** (`src/lib/api/mock/`), siap ditukar ke API C# nantinya.
+- **Saat ini**: data default memakai **mock** (`src/lib/api/mock/`); engine C# sudah terpasang di `backend/` dan mode `live` (`NEXT_PUBLIC_API_MODE=live`) menyambung sebagian besar alur kasir ke engine sungguhan.
 
 ## Menjalankan
 
@@ -13,6 +13,43 @@ npm install
 npm run dev     # http://localhost:3000 — layar kasir di /kasir
 npm run build   # verifikasi build statis
 ```
+
+## Backend — engine Accounting Engine (C# / .NET 10)
+
+Engine berada di repo nested `backend/` (repo git terpisah, diabaikan repo POS lewat `/backend/`).
+
+```bash
+cd backend
+dotnet build AccountingEngine.slnx
+dotnet ef database update -p src/AccountingEngine.Infrastructure -s src/AccountingEngine.Api
+dotnet run --project src/AccountingEngine.Api/AccountingEngine.Api   # http://localhost:5121
+```
+
+Langkah pertama setelah migrate: buat tenant, pengguna pemilik, RBAC, akun kas, dan periode fiskal berjalan.
+
+```bash
+pip install bcrypt
+python tools/bootstrap-backend.py        # dari root repo POS
+```
+
+Script bersifat idempoten — baris yang sudah ada dilewati. Default: tenant `toko-utama`, akun `pemilik` / `pemilik123` (level 99 = owner di engine), akun kas `1121` (tunai, default) + `1111` (bank).
+
+Seed chart of accounts (37 akun SAK EMKM, level 3 = postable) lewat API:
+
+```bash
+curl -X POST http://localhost:5121/api/accounts/seed -H "X-Business-Id: toko-utama"
+```
+
+Mode POS memakai engine:
+
+```bash
+cp .env.example .env.local      # set NEXT_PUBLIC_API_MODE=live
+npm run dev
+```
+
+Lihat `.env.example` untuk base URL engine, id tenant, dan kode akun. Kode akun wajib level 3 — jurnal hanya boleh menyebut akun postable (`1121`, `1111`, `1200`, `1300`, `2101`, `4000`, `5000`, `2402`).
+
+> Mode live sudah menyambung: login/JWT, produk, satuan, pelanggan, shift, kasir (batch penjualan), pembelian (batch pembelian), void/retur, neraca saldo, laba-rugi. Alur yang engine-nya belum punya endpoint (impor CSV, penyesuaian stok, biaya operasional, pelunasan piutang/hutang, daftar jurnal, audit log, daftar pengguna) menampilkan pesan eksplisit — bukan data palsu. Rinciannya di `knowledge.md` § Kontrak API.
 
 ## Fokus MVP (Tahap 2)
 
