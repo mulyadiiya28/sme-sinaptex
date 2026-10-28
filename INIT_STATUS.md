@@ -29,8 +29,9 @@
 - `.btn-secondary` → putih border `slate-200`, teks `slate-700`
 - `.btn-accent` → orange fill (`color-accent`), hover opacity 90%
 - `.input` → rounded-xl, border `color-line`, focus ring `color-brand/20`
-- `.chip` → active = `border-brand bg-brand text-white`, inactive = `border-line bg-white text-muted`
-- `.money` → `font-tabular-nums font-bold` untuk uang rapi
+- `.label` → label form (`mb-1.5 block text-sm font-medium text-muted`)
+- **Tidak ada** kelas `.chip`, `.money`, `.table`, `.badge-*` di `globals.css` — chip & tabel memakai
+  Tailwind inline, uang memakai utilitas `tabular-nums` lewat `<MoneyDisplay>` (lihat `DESIGN.md` §2)
 - H1 → `font-black text-brand` (navy)
 
 ---
@@ -62,15 +63,15 @@
 - Chip "Shift aktif" warna emerald
 
 ### Kiri: Product Catalog (ditenhance fitur keyboard)
-- Grid 4 kolom xl, gap-3, overflow-y-auto
-- Filter kategori via Chip (active/inactive styling)
-- Setiap produk panel `rounded-2xl`, hover border navy/40
-- **Fitur keyboard baru** (ditambahkan saat init):
-  - `ArrowUp/ArrowDown` navigasi antar produk
-  - `Home/End` ke pertama/terakhir
-  - `Enter` memilih produk yang difokuskan
-  - `Esc` batal & fokus kembali ke input
-  - Auto-focus ke item pertama saat daftar tampil
+- Tabel produk (Produk/Kategori/Harga Jual/Stok/Aksi) dengan scroll vertikal, tanpa grid kartu
+- Filter kategori via tombol pill Tailwind inline (bukan kelas CSS `.chip`)
+- **Fitur keyboard**:
+  - `ArrowUp/ArrowDown` navigasi antar produk tersedia (baris habis dilewati)
+  - `Home/End` ke produk tersedia pertama/terakhir
+  - `ArrowDown` dari kolom pencarian masuk ke daftar
+  - `Enter` menambah produk yang difokuskan (atau hasil pertama dari pencarian)
+  - `Esc` kembali ke kolom pencarian
+  - Fokus pencarian dipertahankan saat katalog tampil; `F2` memfokuskannya lagi
 - Stok warning: `amber-600` menipis, `rose-600` habis
 
 ### Kanan: Cart Panel
@@ -128,7 +129,9 @@
 - `bukaShift` — cek "masih ada shift aktif", buat shift baru
 - `mutasiKas` — masuk/keluar kas (validasi saldo cukup)
 - `tutupShift` — hitung sistem vs uang fisik, selisih, simpan ke riwayat
-- Otomatis: setoran kas `kasTunaiSistem` & `kas.bank` ter-update setiap transaksi
+- Otomatis: `kasTunaiSistem` & `kas.bank` ter-update setiap transaksi. Mock kini mengakumulasi
+  `penjualanTunai` dari checkout tunai, refund retur tunai, dan pelunasan piutang tunai (lihat caveat);
+  live memakai saldo akun kas dari engine.
 
 ---
 
@@ -155,8 +158,8 @@ Semua API pakai `API_MODE = process.env.NEXT_PUBLIC_API_MODE ?? "mock"`.
 
 ## 8. Policy Push
 - **Semua perubahan push ke `sme-sinaptex`** — terpisah dari repo backend, sebagaimana yang telah direncana pengguna.
-- Backend C# sudah terpasang di `backend/` (repo nested .NET 10, diabaikan repo POS lewat `/backend/`). Mode live (`NEXT_PUBLIC_API_MODE=live`) menyambung lewat `src/lib/api/live.ts`: login/JWT + refresh, produk, satuan, pelanggan, shift, kasir (batch penjualan), pembelian (batch pembelian), void/retur, neraca saldo, laba-rugi.
-- Alur yang engine-nya belum punya endpoint (impor CSV, penyesuaian stok, biaya, pelunasan piutang/hutang, daftar jurnal, audit log, daftar pengguna) **menampilkan pesan eksplisit**, bukan data palsu. Rincian endpoint & batasnya ada di `knowledge.md` § Kontrak engine AKTUAL.
+- Backend C# sudah terpasang di `backend/` (repo nested .NET 10, diabaikan repo POS lewat `/backend/`). Mode live (`NEXT_PUBLIC_API_MODE=live`) menyambung lewat `src/lib/api/live.ts`: login/JWT + refresh, produk, satuan, pelanggan, shift, kasir (batch penjualan), pembelian (batch pembelian), void/retur + riwayat retur, neraca saldo, laba-rugi, daftar jurnal, biaya.
+- Alur yang engine-nya belum punya endpoint (impor pelanggan/saldo awal, penyesuaian stok, pelunasan piutang/hutang, audit log, daftar pengguna) **menampilkan pesan eksplisit**, bukan data palsu. Rincian endpoint & batasnya ada di `knowledge.md` § Kontrak engine AKTUAL.
 - `tools/bootstrap-backend.py` menyiapkan tenant + pemilik (level 99) + RBAC + akun kas + periode fiskal; idempoten, aman diulang.
 
 ---
@@ -187,12 +190,13 @@ curl -X POST http://localhost:5121/api/accounts/seed -H "X-Business-Id: toko-uta
 ## 9. Jalankan Uji Coba
 
 ```bash
-cd abc-sinaptex
-npm run dev  # http://localhost:3001 (atau 3000 jika free)
+cd sme-sinaptex
+npm install
+npm run dev  # http://localhost:3000
 ```
 
 **Test alur:**
-1. Buka http://localhost:3001
+1. Buka http://localhost:3000
 2. Login: `kasir` / `kasir123` → langsung ke `/kasir` dengan shift sudah buka
 3. Atau: `pemilik` / `pemilik123` → dashboard utama `/`
 4. Coba navigasi sidebar, filter kategori, tambah produk ke keranjang, bayar (F4)
@@ -202,12 +206,28 @@ npm run dev  # http://localhost:3001 (atau 3000 jika free)
 
 ## 10. Selanjutnya (Saran)
 
-Fitur yang masih bisa ditambahkan di iterasi berikutnya:
-- **Scan barcode** dari keyboard wedge (F2 fokus + Enter sudah ada, bisa tambah scanning manual)
-- **Riwayat transaksi lengkap** dengan filter tanggal & ekspor
-- **Shift tutup & pelaporan uang hari** (sudah ada API, perlu UX)
-- **CRUD Produk** dari halaman Produk (sudah ada mock create/update/delete)
-- **Integrasi printer thermal** untuk struk (Phase 1: dialog cetak, Phase 2: ESC/POS native)
-- **PWA offline** — agar kasir tetap jalan tanpa internet (serwist sudah ada tapi disabled di dev)
+Fitur yang sudah selesai (tidak lagi masuk daftar ini): CRUD produk, tutup shift + selisih UX,
+PWA/Serwist + manifest + ikon, riwayat transaksi dengan filter tanggal & ekspor CSV, void/retur,
+penyesuaian stok, pajak, struk thermal, impor CSV, kelola pengguna, buku besar, mode live (sebagian).
+
+Yang masih terbuka:
+
+**Perbaikan mock (sudah dikerjakan 2026-10-28)**
+- Idempotensi ditegakkan (`mockDb.kunciCheckout`), alokasi pembayaran + kembalian dihitung benar,
+  `penjualanTunai` terakumulasi (checkout/refund retur/pelunasan piutang), role pemilik ditegakkan
+  di mock db, reversal void diperbaiki (pajak + QRIS gateway + piutang terlayar, HPP pakai snapshot
+  harga beli waktu transaksi), retur membalik pajak dan diskon proporsional, `api/calc.ts` dihapus.
+
+**Endpoint engine yang belum ada (menghambat live mode)**
+- `GET/PUT/DELETE /api/users`, `GET /api/audit-log`
+- `POST /api/transactions/{id}/confirm-payment` (QRIS), `POST /api/inventory/adjustments`
+- Impor CSV pelanggan/saldo awal (`/api/customers/import`, `/api/accounts/opening-balances`)
+- Pelunasan hutang/piutang
+
+**Fitur produk**
+- Scan barcode dari keyboard wedge (F2 fokus + Enter sudah ada, bisa tambah scanning manual)
+- Integrasi printer thermal native (ESC/POS) — Phase 1 saat ini dialog cetak browser
+- Transfer kas↔bank, pajak & fee configurable per toko, retention arsip
+- Multi-outlet / multi-gudang (P2)
 
 ---

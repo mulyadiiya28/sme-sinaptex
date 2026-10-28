@@ -3,7 +3,7 @@
 Smart Retail Operations & Accounting untuk toko UMKM: kasir, persediaan, keuangan, dan akuntansi otomatis. Dokumen rencana desain/knowledge utama ada di [`knowledge.md`](./knowledge.md).
 
 - **Stack**: Next.js (App Router) · TypeScript · Tailwind CSS 4 · TanStack Query · Zustand · Zod · Serwist (PWA)
-- **Mode produksi**: build statis (`next build` → `out/`) yang dibungkus Tauri menjadi `POS-Sinaptex.exe` — komputer toko tanpa Node.js/terminal; engine backend C# berjalan sebagai Windows Service dan menyediakan REST API + JWT.
+- **Mode produksi**: build statis (`next build` → `out/`) yang dibungkus Tauri menjadi `POS-Sinaptex.exe` — komputer toko tanpa Node.js/terminal; engine backend C# (ASP.NET Core, .NET 10) berjalan sebagai aplikasi terpisah dan menyediakan REST API + JWT.
 - **Saat ini**: data default memakai **mock** (`src/lib/api/mock/`); engine C# sudah terpasang di `backend/` dan mode `live` (`NEXT_PUBLIC_API_MODE=live`) menyambung sebagian besar alur kasir ke engine sungguhan.
 
 ## Menjalankan
@@ -11,7 +11,10 @@ Smart Retail Operations & Accounting untuk toko UMKM: kasir, persediaan, keuanga
 ```bash
 npm install
 npm run dev     # http://localhost:3000 — layar kasir di /kasir
-npm run build   # verifikasi build statis
+npm run build   # verifikasi build statis → out/
+npx tauri dev   # aplikasi desktop (menjalankan npm run dev otomatis)
+npx tauri build # installer Windows (nsis + msi)
+npx tsc --noEmit # typecheck — repo ini tanpa lint/test tooling
 ```
 
 ## Backend — engine Accounting Engine (C# / .NET 10)
@@ -47,9 +50,9 @@ cp .env.example .env.local      # set NEXT_PUBLIC_API_MODE=live
 npm run dev
 ```
 
-Lihat `.env.example` untuk base URL engine, id tenant, dan kode akun. Kode akun wajib level 3 — jurnal hanya boleh menyebut akun postable (`1121`, `1111`, `1200`, `1300`, `2101`, `4000`, `5000`, `2402`).
+Lihat `.env.example` untuk base URL engine, id tenant, dan kode akun. Kode akun wajib level 3 — jurnal hanya boleh menyebut akun postable (`1121`, `1111`, `1200`, `1300`, `2101`, `4000`, `5000`, `2402`, `6900`).
 
-> Mode live sudah menyambung: login/JWT, produk, satuan, pelanggan, shift, kasir (batch penjualan), pembelian (batch pembelian), void/retur, neraca saldo, laba-rugi. Alur yang engine-nya belum punya endpoint (impor CSV, penyesuaian stok, biaya operasional, pelunasan piutang/hutang, daftar jurnal, audit log, daftar pengguna) menampilkan pesan eksplisit — bukan data palsu. Rinciannya di `knowledge.md` § Kontrak API.
+> Mode live sudah menyambung: login/JWT, produk, satuan, pelanggan, shift, kasir (batch penjualan), pembelian (batch pembelian), void/retur + riwayat retur, impor produk (CSV/XLSX), neraca saldo, laba-rugi, daftar jurnal, biaya operasional. Alur yang engine-nya belum punya endpoint (impor pelanggan, penyesuaian stok, pelunasan piutang/hutang, audit log, daftar pengguna) menampilkan pesan eksplisit — bukan data palsu. Rinciannya di `knowledge.md` § Kontrak API.
 
 ## Fokus MVP (Tahap 2)
 
@@ -70,7 +73,7 @@ Lihat `.env.example` untuk base URL engine, id tenant, dan kode akun. Kode akun 
 - **Pengaturan**: profil toko (nama, alamat, telepon, mata uang, zona waktu, footer struk) — dipakai topbar.
 - **Void transaksi**: pemilik dapat membatalkan transaksi dari Riwayat — stok kembali, jurnal reversal, status `dibatalkan`, tercatat di audit log.
 - **Penyesuaian stok**: pemilik dapat mengganti stok sistem dengan stok fisik (opname/rusak/hilang) — jurnal akun "Selisih stok" otomatis.
-- **Idempotensi**: setiap sesi dialog pembayaran membawa kunci unik; pengiriman ulang dengan kunci sama ditolak.
+- **Idempotensi**: setiap sesi dialog pembayaran membawa kunci unik (`Idempotency-Key`); engine live dan mock sama-sama menolak pengiriman ulang dengan kunci yang sama.
 
 ## PWA (Serwist)
 
@@ -83,3 +86,7 @@ Build statis juga bisa dipakai sebagai **PWA installable** (jalur kedua selain T
 - Catatan: dalam Tauri, registrasi SW bisa ditolak WebView — tidak fatal, Tauri tetap jalur utama produksi.
 
 Data mock tersimpan in-memory (`src/lib/api/mock/db.ts`) dan reset saat refresh — disengaja.
+
+### Caveat mock yang diketahui (bukan fitur)
+
+- Di mode live, engine menolak pembayaran campuran (tunai + non-tunai) dan overpayment; QRIS belum jadi konsep engine.

@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState, useEffect, useRef } from "react";
-import { PackageX, Search } from "lucide-react";
+import { Search, PackageX } from "lucide-react";
 import type { Product } from "@/lib/api/types";
 import { MoneyDisplay } from "@/components/money-display";
 import { cn } from "@/lib/utils";
@@ -37,175 +37,229 @@ export function ProductCatalog({
 
   // --- Navigasi keyboard ---
   const [focusedIndex, setFocusedIndex] = useState(-1);
-  const containerRef = useRef<HTMLDivElement>(null);
+  const searchRef = useRef<HTMLInputElement>(null);
+  const rowRefs = useRef<Array<HTMLTableRowElement | null>>([]);
+
+  const indeksAktif = useMemo(() => {
+    if (focusedIndex >= 0 && visible[focusedIndex]?.stok > 0) return focusedIndex;
+    return visible.findIndex((p) => p.stok > 0);
+  }, [focusedIndex, visible]);
 
   useEffect(() => {
-    // Reset focus saat daftar produk berubah
-    if (visible.length === 0) setFocusedIndex(-1);
-  }, [visible.length]);
+    setFocusedIndex((i) => {
+      if (visible.length === 0) return -1;
+      if (i >= 0 && i < visible.length && visible[i].stok > 0) return i;
+      return visible.findIndex((p) => p.stok > 0);
+    });
+  }, [visible]);
 
-  const navigate = (delta: number) => {
-    if (visible.length === 0) return;
-    setFocusedIndex((i) => Math.max(0, Math.min(visible.length - 1, i + delta)));
+  const fokusBaris = (index: number) => {
+    setFocusedIndex(index);
+    const row = rowRefs.current[index];
+    row?.focus();
+    row?.scrollIntoView({ block: "nearest" });
   };
 
-  useEffect(() => {
-    const handleKey = (e: KeyboardEvent) => {
-      if (!containerRef.current) return;
-      const firstFocusable = containerRef.current.querySelector(":focus-visible");
-      if (!firstFocusable && focusedIndex >= 0) {
-        // Fokus belum di dalam grid, set fokus ke item pertama
-        const items = containerRef.current.querySelectorAll<HTMLButtonElement>(
-          "button:not([disabled])",
-        );
-        if (items.length > 0) {
-          items[0].focus();
-          setFocusedIndex(0);
-        }
+  const pindahBaris = (dari: number, arah: 1 | -1) => {
+    if (visible.length === 0) return;
+    const awal = dari >= 0 && dari < visible.length ? dari : -1;
+    for (let i = awal + arah; i >= 0 && i < visible.length; i += arah) {
+      if (visible[i].stok > 0) {
+        fokusBaris(i);
         return;
       }
-      e.preventDefault();
-      if (e.key === "ArrowDown") {
-        navigate(1);
-      } else if (e.key === "ArrowUp") {
-        navigate(-1);
-      } else if (e.key === "Home") {
-        setFocusedIndex(0);
-      } else if (e.key === "End") {
-        setFocusedIndex(visible.length - 1);
-      } else if (e.key === "Enter") {
-        if (focusedIndex >= 0 && focusedIndex < visible.length) {
-          onPick(visible[focusedIndex]);
-          setKeyword("");
-          setFocusedIndex(-1);
-          // Kembalikan fokus ke input search untuk scan berikutnya
-          const input = containerRef.current?.previousElementSibling?.querySelector<HTMLInputElement>("input");
-          if (input) input.focus();
-        }
-      } else if (e.key === "Escape") {
-        setFocusedIndex(-1);
-        // Fokus kembali ke input search
-        const input = containerRef.current?.previousElementSibling?.querySelector<HTMLInputElement>("input");
-        if (input) input.focus();
-      }
-    };
-    window.addEventListener("keydown", handleKey);
-    return () => window.removeEventListener("keydown", handleKey);
-  }, [focusedIndex, visible.length, onPick]);
-
-  // Auto-focus ke item pertama saat daftar muncul & belum ada fokus
-  useEffect(() => {
-    if (visible.length > 0 && focusedIndex < 0) {
-      const timeout = setTimeout(() => {
-        const items = containerRef.current?.querySelectorAll<HTMLButtonElement>(
-          "button:not([disabled])",
-        );
-        if (items && items.length > 0) {
-          items[0].focus();
-          setFocusedIndex(0);
-        }
-      }, 100);
-      return () => clearTimeout(timeout);
     }
-  }, [visible.length, focusedIndex]);
+  };
+
+  const keUjung = (dariAwal: boolean) => {
+    if (dariAwal) {
+      const index = visible.findIndex((p) => p.stok > 0);
+      if (index >= 0) fokusBaris(index);
+      return;
+    }
+    for (let i = visible.length - 1; i >= 0; i--) {
+      if (visible[i].stok > 0) {
+        fokusBaris(i);
+        return;
+      }
+    }
+  };
+
+  const pilih = (product: Product) => {
+    if (product.stok <= 0) return;
+    onPick(product);
+    setKeyword("");
+    setFocusedIndex(-1);
+    searchRef.current?.focus();
+  };
 
   return (
-    <div className="flex h-full min-h-0 flex-col" ref={containerRef}>
-      <div className="relative">
+    <div className="flex h-full min-h-0 flex-col">
+      <div className="relative mb-3">
         <Search
-          className="pointer-events-none absolute left-3.5 top-1/2 size-5 -translate-y-1/2 text-muted/60"
+          className="pointer-events-none absolute left-3 top-1/2 size-5 -translate-y-1/2 text-muted/60"
           aria-hidden
         />
         <input
           id="pos-product-search"
+          ref={searchRef}
           type="search"
-          placeholder="Scan barcode atau cari nama produk, lalu Enter..."
+          placeholder="Cari nama produk, SKU, atau barcode..."
           value={keyword}
           onChange={(e) => setKeyword(e.target.value)}
           onKeyDown={(e) => {
-            if (e.key === "Enter" && visible.length > 0) {
-              onPick(visible[0]);
-              e.currentTarget.value = "";
-              setKeyword("");
-              setFocusedIndex(-1);
+            if (e.key === "Enter") {
+              const pertama = visible.find((p) => p.stok > 0);
+              if (!pertama) return;
+              e.preventDefault();
+              pilih(pertama);
+            } else if (e.key === "ArrowDown" && visible.length > 0) {
+              e.preventDefault();
+              keUjung(true);
             }
           }}
-          className="input py-3.5 pl-11 text-base"
+          className="input pl-11 text-base"
           autoFocus
         />
       </div>
 
       <div className="mt-3 flex flex-wrap gap-2">
-        <Chip label="Semua" active={kategori === null} onClick={() => setKategori(null)} />
+        <button
+          type="button"
+          onClick={() => setKategori(null)}
+          className={cn(
+            "rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors",
+            kategori === null
+              ? "border-brand bg-brand text-white"
+              : "border-line bg-white text-muted hover:text-ink",
+          )}
+        >
+          Semua
+        </button>
         {kategoris.map((k) => (
-          <Chip key={k} label={k} active={kategori === k} onClick={() => setKategori(k)} />
+          <button
+            key={k}
+            type="button"
+            onClick={() => setKategori(k)}
+            className={cn(
+              "rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors",
+              kategori === k
+                ? "border-brand bg-brand text-white"
+                : "border-line bg-white text-muted hover:text-ink",
+            )}
+          >
+            {k}
+          </button>
         ))}
       </div>
 
-      <div className="mt-4 grid min-h-0 flex-1 auto-rows-min grid-cols-2 gap-3 overflow-y-auto pr-1 md:grid-cols-3 xl:grid-cols-4">
-        {visible.length === 0 ? (
-          <div className="col-span-full flex flex-col items-center gap-2 py-14 text-muted">
-            <PackageX className="size-8" aria-hidden />
-            <p className="text-sm">Produk tidak ditemukan.</p>
-          </div>
-        ) : (
-          visible.map((p, i) => {
-            const habis = p.stok <= 0;
-            const menipis = !habis && p.stok <= p.stokMinimum;
-            return (
-              <button
-                key={p.id}
-                type="button"
-                disabled={habis}
-                onClick={() => onPick(p)}
-                className={cn(
-                  "panel group rounded-2xl p-4 text-left transition",
-                  habis
-                    ? "cursor-not-allowed opacity-40"
-                    : focusedIndex === i
-                      ? "border-brand/30 bg-brand/5 shadow-md"
-                      : "hover:border-brand/40 hover:shadow-md",
-                )}
-                aria-label={p.nama}
-                tabIndex={!habis && focusedIndex === i ? 0 : -1}
-              >
-                <span className="block truncate font-semibold text-ink group-hover:text-brand">
-                  {p.nama}
-                </span>
-                <MoneyDisplay value={p.hargaJual} className="mt-1 block text-sm font-bold text-brand" />
-                <span className="mt-2 flex items-center gap-2 text-xs text-muted">
-                  Stok {p.stok}
-                  {menipis && <span className="font-semibold text-amber-600">· menipis</span>}
-                  {habis && <span className="font-semibold text-rose-600">· habis</span>}
-                </span>
-              </button>
-            );
-          })
-        )}
-      </div>
-    </div>
-  );
-}
+      <div
+        className="mt-4 min-h-0 flex-1 overflow-y-auto border border-line rounded-2xl bg-white"
+        onKeyDown={(e) => {
+          const target = e.target as HTMLElement;
+          const index = Number(target.dataset.index);
+          if (!target.dataset.index || Number.isNaN(index)) return;
 
-function Chip({
-  label,
-  active,
-  onClick,
-}: {
-  label: string;
-  active: boolean;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={cn(
-        "rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors",
-        active ? "border-brand bg-brand text-white" : "border-line bg-white text-muted hover:text-ink",
-      )}
-    >
-      {label}
-    </button>
+          if (e.key === "ArrowDown") {
+            e.preventDefault();
+            pindahBaris(index, 1);
+          } else if (e.key === "ArrowUp") {
+            e.preventDefault();
+            pindahBaris(index, -1);
+          } else if (e.key === "Home") {
+            e.preventDefault();
+            keUjung(true);
+          } else if (e.key === "End") {
+            e.preventDefault();
+            keUjung(false);
+          } else if (e.key === "Enter") {
+            e.preventDefault();
+            if (visible[index]) pilih(visible[index]);
+          } else if (e.key === "Escape") {
+            e.preventDefault();
+            searchRef.current?.focus();
+          }
+        }}
+      >
+        <table className="w-full text-sm border-collapse">
+          <thead>
+            <tr className="bg-slate-50 text-left">
+              <th className="px-4 py-3 font-medium text-muted">Produk</th>
+              <th className="px-4 py-3 font-medium text-muted">Kategori</th>
+              <th className="px-4 py-3 font-medium text-muted text-right">Harga Jual</th>
+              <th className="px-4 py-3 font-medium text-muted text-center">Stok</th>
+              <th className="px-4 py-3 font-medium text-muted text-right">Aksi</th>
+            </tr>
+          </thead>
+          <tbody>
+            {visible.length === 0 ? (
+              <tr>
+                <td colSpan={5} className="px-4 py-14 text-center">
+                  <PackageX className="mx-auto size-8 mb-1.5" aria-hidden />
+                  <p className="text-sm text-muted">Produk tidak ditemukan.</p>
+                </td>
+              </tr>
+            ) : (
+              visible.map((p, i) => {
+                const habis = p.stok <= 0;
+                const menipis = !habis && p.stok <= p.stokMinimum;
+                return (
+                  <tr
+                    key={p.id}
+                    ref={(el) => {
+                      rowRefs.current[i] = el;
+                    }}
+                    data-index={i}
+                    onClick={() => pilih(p)}
+                    onFocus={() => setFocusedIndex(i)}
+                    onMouseEnter={() => setFocusedIndex(i)}
+                    tabIndex={i === indeksAktif ? 0 : -1}
+                    aria-disabled={habis}
+                    className={cn(
+                      "group border-b border-line/40 transition",
+                      habis ? "cursor-not-allowed opacity-60" : "cursor-pointer hover:bg-brand/5",
+                      focusedIndex === i ? "bg-brand/10 ring-1 ring-brand" : "",
+                    )}
+                  >
+                    <td className="px-4 py-3.5">
+                      <span className="block truncate font-semibold text-ink group-hover:text-brand">
+                        {p.nama}
+                      </span>
+                      <span className="text-[11px] text-muted">{p.sku}</span>
+                    </td>
+                    <td className="px-4 py-3.5 text-muted">{p.kategori}</td>
+                    <td className="px-4 py-3.5 text-right tabular-nums font-medium text-ink">
+                      <MoneyDisplay value={p.hargaJual} className="text-brand" />
+                    </td>
+                    <td className="px-4 py-3.5 text-center tabular-nums">
+                      <span
+                        className={cn(
+                          "text-xs font-semibold",
+                          habis
+                            ? "text-rose-600"
+                            : menipis
+                              ? "text-amber-600"
+                              : "text-emerald-600",
+                        )}
+                      >
+                        {habis ? "Habis" : menipis ? `Menipis (${p.stok})` : p.stok}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3.5 text-right">
+                      <span className="text-xs text-muted">Pilih</span>
+                    </td>
+                  </tr>
+                );
+              })
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      <p className="mt-2 text-[11px] text-muted">
+        Tekan F2 untuk fokus pencarian, panah atas/bawah untuk pilih produk, dan Enter untuk
+        tambah ke keranjang.
+      </p>
+    </div>
   );
 }

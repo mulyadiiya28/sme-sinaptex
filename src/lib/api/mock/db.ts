@@ -190,6 +190,7 @@ export const mockDb = {
   },
 
   imporProduk(rows: ImporProdukBaris[], user: User): HasilImpor {
+    if (user.role !== "pemilik") throw new Error("Hanya pemilik yang boleh mengimpor produk.");
     const hasil: HasilImpor = { sukses: 0, gagal: 0, pesan: [] };
     const skuDipakai = new Set(this.products.map((p) => p.sku.toLowerCase()));
     const barcodeDipakai = new Set(this.products.filter((p) => p.barcode).map((p) => p.barcode));
@@ -246,6 +247,7 @@ export const mockDb = {
   },
 
   imporPelanggan(rows: ImporPelangganBaris[], user: User): HasilImpor {
+    if (user.role !== "pemilik") throw new Error("Hanya pemilik yang boleh mengimpor pelanggan.");
     const hasil: HasilImpor = { sukses: 0, gagal: 0, pesan: [] };
     const namaDipakai = new Set(this.pelanggan.map((p) => p.nama.toLowerCase()));
     const namaDalamBerkas = new Set<string>();
@@ -278,6 +280,7 @@ export const mockDb = {
   },
 
   imporSaldoAwal(rows: ImporSaldoAwalBaris[], user: User): HasilImpor {
+    if (user.role !== "pemilik") throw new Error("Hanya pemilik yang boleh mengimpor saldo awal.");
     const hasil: HasilImpor = { sukses: 0, gagal: 0, pesan: [] };
     const barisJurnal: JurnalBaris[] = [];
 
@@ -389,17 +392,24 @@ export const mockDb = {
   },
 
   kunciCheckout: new Set<string>(),
+  piutangTerbayar: new Map<string, Array<{ metode: "tunai" | "transfer"; nominal: number }>>(),
 
   batalTransaksi(nomor: string, user: User): TransaksiRiwayat {
+    if (user.role !== "pemilik") throw new Error("Hanya pemilik yang boleh membatalkan transaksi.");
     const t = this.transaksi.find((x) => x.nomor === nomor);
     if (!t) throw new Error("Transaksi tidak ditemukan.");
     if (t.status === "dibatalkan") throw new Error("Transaksi sudah dibatalkan sebelumnya.");
 
+    const tunaiPortion = (t.pembayaran ?? []).find((b) => b.metode === "tunai")?.nominal ?? 0;
+    const bankPortion = (t.pembayaran ?? []).find((b) => b.metode === "transfer")?.nominal ?? 0;
+    const gatewayPortion = (t.pembayaran ?? []).find((b) => b.metode === "qris")?.nominal ?? 0;
+    const tertagih = this.piutangTerbayar.get(t.nomor) ?? [];
+    const tuneraiTagih = tertagih.filter((p) => p.metode === "tunai").reduce((s, p) => s + p.nominal, 0);
+    const bankTagih = tertagih.filter((p) => p.metode === "transfer").reduce((s, p) => s + p.nominal, 0);
+
     if (t.shiftId === this.shiftAktif?.id) {
-      const tunai = (t.pembayaran ?? []).find((b) => b.metode === "tunai")?.nominal ?? 0;
-      this.shiftAktif.penjualanTunai = Math.max(0, this.shiftAktif.penjualanTunai - tunai);
+      this.shiftAktif.penjualanTunai = Math.max(0, this.shiftAktif.penjualanTunai - tunaiPortion - tuneraiTagih);
       this.shiftAktif.kasTunaiSistem = kasTunaiSistem(this.shiftAktif);
-      this.kas.tunai = Math.max(0, this.kas.tunai - tunai);
     }
 
     for (const item of t.items) {
@@ -407,17 +417,19 @@ export const mockDb = {
       if (p) p.stok += item.qty;
     }
 
-    const baris: JurnalBaris[] = [
-      { akun: "Penjualan", debit: t.total, kredit: 0 },
-    ];
-    const tunaiPortion = (t.pembayaran ?? []).find((b) => b.metode === "tunai")?.nominal ?? 0;
-    const bankPortion = (t.pembayaran ?? []).find((b) => b.metode === "transfer" || b.metode === "qris")?.nominal ?? 0;
+    const baris: JurnalBaris[] = [];
+    baris.push({ akun: "Penjualan", debit: Math.max(0, t.total - t.pajak), kredit: 0 });
+    if (t.pajak > 0) baris.push({ akun: "Pajak keluaran", debit: t.pajak, kredit: 0 });
     if (tunaiPortion > 0) baris.push({ akun: "Kas", debit: 0, kredit: tunaiPortion });
     if (bankPortion > 0) baris.push({ akun: "Bank", debit: 0, kredit: bankPortion });
+    if (gatewayPortion > 0) baris.push({ akun: "Penampung gateway", debit: 0, kredit: gatewayPortion });
+    if (tuneraiTagih > 0) baris.push({ akun: "Kas", debit: 0, kredit: tuneraiTagih });
+    if (bankTagih > 0) baris.push({ akun: "Bank", debit: 0, kredit: bankTagih });
     if (t.piutang > 0) baris.push({ akun: "Piutang usaha", debit: 0, kredit: t.piutang });
     const hpp = t.items.reduce((s, i) => {
       const p = this.products.find((x) => x.nama === i.nama);
-      return s + (p ? p.hargaBeli * i.qty : 0);
+      const beli = i.hargaBeli ?? (p ? p.hargaBeli : 0);
+      return s + beli * i.qty;
     }, 0);
     if (hpp > 0) {
       baris.push({ akun: "Persediaan", debit: hpp, kredit: 0 });
@@ -425,7 +437,9 @@ export const mockDb = {
     }
     this.jurnal.unshift(buatJurnal(`Pembatalan transaksi ${t.nomor}`, `VOID-${t.nomor}`, baris));
 
-    this.kas.bank = Math.max(0, this.kas.bank - bankPortion);
+    this.kas.tunai = Math.max(0, this.kas.tunai - tunaiPortion - tuneraiTagih);
+    this.kas.bank = Math.max(0, this.kas.bank - bankPortion - bankTagih);
+    this.piutangTerbayar.delete(t.nomor);
 
     t.status = "dibatalkan";
     t.piutang = 0;
@@ -434,6 +448,7 @@ export const mockDb = {
   },
 
   penyesuaianStok(input: { productId: string; stokFisik: number; alasan: string }, user: User): Product {
+    if (user.role !== "pemilik") throw new Error("Hanya pemilik yang boleh menyesuaikan stok.");
     const p = this.products.find((x) => x.id === input.productId);
     if (!p) throw new Error("Produk tidak ditemukan.");
     if (input.stokFisik < 0) throw new Error("Stok fisik tidak boleh negatif.");
@@ -459,45 +474,32 @@ export const mockDb = {
 
   jurnalPenjualan(
     payload: { shiftId: string; items: Array<{ nama: string; qty: number; hargaBeli: number }> },
+    portions: { tunai: number; bank: number; gateway: number; piutang: number },
     total: number,
-    kembalian: number,
-    piutang: number,
-    allocations: Array<{ metode: string; nominal: number }>,
     pajak: number,
   ): void {
-    let belum = total - kembalian;
-    let masukTunai = 0;
-    let masukBank = 0;
-    let masukGateway = 0;
     const baris: JurnalBaris[] = [];
-    for (const a of allocations) {
-      if (belum <= 0) break;
-      const masuk = Math.min(a.nominal, belum);
-      if (a.metode === "tunai") masukTunai += masuk;
-      else if (a.metode === "qris") masukGateway += masuk;
-      else masukBank += masuk;
-      belum -= masuk;
-    }
-    if (masukTunai > 0) baris.push({ akun: "Kas", debit: masukTunai, kredit: 0 });
-    if (masukBank > 0) baris.push({ akun: "Bank", debit: masukBank, kredit: 0 });
-    if (masukGateway > 0) baris.push({ akun: "Penampung gateway", debit: masukGateway, kredit: 0 });
-    if (piutang > 0) baris.push({ akun: "Piutang usaha", debit: piutang, kredit: 0 });
+    if (portions.tunai > 0) baris.push({ akun: "Kas", debit: portions.tunai, kredit: 0 });
+    if (portions.bank > 0) baris.push({ akun: "Bank", debit: portions.bank, kredit: 0 });
+    if (portions.gateway > 0) baris.push({ akun: "Penampung gateway", debit: portions.gateway, kredit: 0 });
+    if (portions.piutang > 0) baris.push({ akun: "Piutang usaha", debit: portions.piutang, kredit: 0 });
     baris.push({ akun: "Penjualan", debit: 0, kredit: total - pajak });
     if (pajak > 0) baris.push({ akun: "Pajak keluaran", debit: 0, kredit: pajak });
 
     const hpp = payload.items.reduce((s, i) => s + i.qty * i.hargaBeli, 0);
     if (hpp > 0) {
       baris.push({ akun: "HPP", debit: hpp, kredit: 0 });
-      baris.push({ akun: "Persediaan", debit: 0, kredit: hpp });
+      baris.push({ akun: "Persediaan", kredit: hpp, debit: 0 });
     }
-    this.kas.tunai += masukTunai;
-    this.kas.bank += masukBank;
+    this.kas.tunai += portions.tunai;
+    this.kas.bank += portions.bank;
     this.jurnal.unshift(
       buatJurnal(`Penjualan kasir (shift ${payload.shiftId})`, "penjualan", baris),
     );
   },
 
   konfirmasiDigital(nomor: string, user: User): TransaksiRiwayat {
+    if (user.role !== "pemilik") throw new Error("Hanya pemilik yang boleh mengonfirmasi pembayaran digital.");
     const t = this.transaksi.find((x) => x.nomor === nomor);
     if (!t) throw new Error("Transaksi tidak ditemukan.");
     if (t.status !== "menunggu_pembayaran") throw new Error("Transaksi ini tidak menunggu konfirmasi pembayaran.");
@@ -515,26 +517,40 @@ export const mockDb = {
   },
 
   prosesRetur(input: ReturInput, user: User): ReturPenjualan {
+    if (user.role !== "pemilik") throw new Error("Hanya pemilik yang boleh memproses retur.");
     const t = this.transaksi.find((x) => x.nomor === input.referensi);
     if (!t) throw new Error("Transaksi referensi tidak ditemukan.");
     if (t.status === "dibatalkan") throw new Error("Transaksi referensi sudah dibatalkan.");
     if (input.items.length === 0) throw new Error("Pilih minimal satu item untuk diretur.");
 
-    let total = 0;
+    let grossReturn = 0;
+    let netReturn = 0;
     const items: ReturPenjualan["items"] = [];
     for (const r of input.items) {
       const asli = t.items.find((i) => i.nama === r.nama);
       if (!asli) throw new Error(`Item ${r.nama} tidak ada di transaksi ${t.nomor}.`);
       if (r.qty <= 0 || r.qty > asli.qty) throw new Error(`Qty retur ${r.nama} harus 1–${asli.qty}.`);
-      total += asli.hargaJual * r.qty - asli.diskon;
-      items.push({ nama: r.nama, qty: r.qty, hargaJual: asli.hargaJual });
-
       const p = this.products.find((x) => x.nama === r.nama);
       if (p) p.stok += r.qty;
+      items.push({ nama: r.nama, qty: r.qty, hargaJual: asli.hargaJual });
+      grossReturn += asli.hargaJual * r.qty;
+      netReturn += asli.hargaJual * r.qty - asli.diskon;
     }
 
-    if (input.metodeRefund === "tunai" && total > this.kas.tunai) throw new Error("Saldo kas tunai tidak cukup untuk refund.");
-    if (input.metodeRefund === "transfer" && total > this.kas.bank) throw new Error("Saldo bank tidak cukup untuk refund.");
+    const grossAsli = t.items.reduce((s, i) => s + i.hargaJual * i.qty, 0);
+    const netAsli = Math.max(0, t.total - t.pajak);
+    const share = grossAsli > 0 ? grossReturn / grossAsli : 0; // proporsi item yang diretur
+    const netKembali = Math.round(share * netAsli);             // penjualan neto yang dibatalkan
+    const pajakKembali = Math.round(share * t.pajak);           // pajak keluaran yang dibatalkan
+    const refund = netKembali + pajakKembali;                   // uang yang dikembalikan ke pelanggan
+
+    const sumber = input.metodeRefund === "tunai" ? "Kas" : "Bank";
+    if (input.metodeRefund === "tunai" && refund > this.kas.tunai) {
+      throw new Error("Saldo kas tunai tidak cukup untuk refund.");
+    }
+    if (input.metodeRefund === "transfer" && refund > this.kas.bank) {
+      throw new Error("Saldo bank tidak cukup untuk refund.");
+    }
 
     returCounter += 1;
     const retur: ReturPenjualan = {
@@ -543,31 +559,37 @@ export const mockDb = {
       referensi: input.referensi,
       waktu: waktuSekarang(),
       items,
-      total,
+      total: refund,
       alasan: input.alasan,
       metodeRefund: input.metodeRefund,
     };
     this.retur.unshift(retur);
 
-    const sumber = input.metodeRefund === "tunai" ? "Kas" : "Bank";
-    this.kas[input.metodeRefund === "tunai" ? "tunai" : "bank"] -= total;
+    this.kas[input.metodeRefund === "tunai" ? "tunai" : "bank"] -= refund;
+    if (input.metodeRefund === "tunai" && this.shiftAktif?.id === t.shiftId) {
+      this.shiftAktif.penjualanTunai = Math.max(0, this.shiftAktif.penjualanTunai - refund);
+      this.shiftAktif.kasTunaiSistem = kasTunaiSistem(this.shiftAktif);
+    }
     const hpp = items.reduce((s, i) => {
+      const asli = t.items.find((x) => x.nama === i.nama);
       const p = this.products.find((x) => x.nama === i.nama);
-      return s + (p ? p.hargaBeli * i.qty : 0);
+      const beli = asli?.hargaBeli ?? (p ? p.hargaBeli : 0);
+      return s + beli * i.qty;
     }, 0);
-    const baris: JurnalBaris[] = [
-      { akun: "Retur penjualan", debit: total, kredit: 0 },
-      { akun: sumber, debit: 0, kredit: total },
-    ];
+    const baris: JurnalBaris[] = [];
+    if (netKembali > 0) baris.push({ akun: "Retur penjualan", debit: netKembali, kredit: 0 });
+    if (pajakKembali > 0) baris.push({ akun: "Pajak keluaran", debit: pajakKembali, kredit: 0 });
+    baris.push({ akun: sumber, debit: 0, kredit: refund });
     if (hpp > 0) {
       baris.push({ akun: "Persediaan", debit: hpp, kredit: 0 });
       baris.push({ akun: "HPP", debit: 0, kredit: hpp });
     }
     this.jurnal.unshift(buatJurnal(`Retur penjualan dari ${input.referensi}`, retur.nomor, baris));
 
-    this.audit(user, "retur", `${retur.nomor} dari ${input.referensi} (Rp${total.toLocaleString("id-ID")}) — ${input.alasan}`);
+    this.audit(user, "retur", `${retur.nomor} dari ${input.referensi} (Rp${refund.toLocaleString("id-ID")}) — ${input.alasan}`);
     return structuredClone(retur);
   },
+
 
   riwayatRetur(): ReturPenjualan[] {
     return structuredClone(this.retur);
@@ -640,11 +662,17 @@ export const mockDb = {
     if (t.piutang <= 0) throw new Error("Transaksi ini tidak memiliki piutang.");
     if (nominal > t.piutang) throw new Error(`Nominal melebihi sisa piutang (${t.piutang}).`);
     const sumber = metode === "tunai" ? "Kas" : "Bank";
-    if (metode === "tunai" && nominal > this.kas.tunai + 1e9) throw new Error("Saldo kas tunai tidak cukup.");
 
     t.piutang -= nominal;
     t.status = t.piutang === 0 ? "lunas" : "dibayar_sebagian";
     this.kas[metode === "tunai" ? "tunai" : "bank"] += nominal;
+    const tertagih = this.piutangTerbayar.get(t.nomor) ?? [];
+    tertagih.push({ metode, nominal });
+    this.piutangTerbayar.set(t.nomor, tertagih);
+    if (metode === "tunai" && this.shiftAktif?.id === t.shiftId) {
+      this.shiftAktif.penjualanTunai += nominal;
+      this.shiftAktif.kasTunaiSistem = kasTunaiSistem(this.shiftAktif);
+    }
     this.jurnal.unshift(
       buatJurnal(`Pembayaran piutang ${t.nomor}`, t.nomor, [
         { akun: sumber, debit: nominal, kredit: 0 },

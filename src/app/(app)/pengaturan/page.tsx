@@ -196,7 +196,7 @@ function PanelMigrasi() {
 
       <KartuImpor<ImporProdukBaris>
         judul="Impor Produk"
-        deskripsi="SKU & nama wajib; harga jual > 0; SKU/barcode duplikat (dengan data lama maupun antar baris) ditolak per baris."
+        deskripsi="SKU & nama wajib; harga jual > 0; satuan harus sudah ada di master unit. Mock menolak baris bermasalah satu per satu; mode live all-or-nothing (satu baris ditolak = tidak ada yang disimpan) dan stok awal tidak diimpor."
         namaTemplate="template-produk.csv"
         headerTemplate={["sku", "nama", "barcode", "satuan", "kategori", "hargaBeli", "hargaJual", "stok", "stokMinimum"]}
         barisContoh={[["BRG-001", "Beras 5 kg", "8991000010015", "sak", "Sembako", 60000, 75000, 12, 5]]}

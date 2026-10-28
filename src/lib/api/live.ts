@@ -1,9 +1,15 @@
 import { useAuth } from "@/lib/store/auth";
 import type {
   AkunSaldo,
+  Biaya,
+  BiayaParams,
   CheckoutPayload,
   CheckoutResult,
+  Expense,
+  ImportResult,
+  ImporProdukBaris,
   JurnalEntry,
+  JurnalParams,
   LabaRugi,
   LoginResult,
   Pelanggan,
@@ -12,6 +18,8 @@ import type {
   Product,
   ReturInput,
   ReturPenjualan,
+  ReturRiwayatParams,
+  SaleReturn,
   ShiftBukaInput,
   ShiftInfo,
   ShiftMutasiInput,
@@ -33,6 +41,7 @@ const KODE = {
   pendapatan: process.env.NEXT_PUBLIC_ENGINE_PENDAPATAN ?? "4000",
   hpp: process.env.NEXT_PUBLIC_ENGINE_HPP ?? "5000",
   pajak: process.env.NEXT_PUBLIC_ENGINE_PAJAK ?? "2402",
+  biaya: process.env.NEXT_PUBLIC_ENGINE_BIAYA ?? "6900",
 };
 
 export class LiveApiError extends Error {
@@ -115,18 +124,22 @@ async function perbaruiSesi(refreshToken: string): Promise<{
   }
 }
 
-async function minta<T>(path: string, opsi: OpsiLive = {}, bolehUlang = true): Promise<T> {
+function headerLive(opsi: { json?: boolean; idempotensiKunci?: string } = {}): Record<string, string> {
   const state = useAuth.getState();
-  const headers: Record<string, string> = {
-    "Content-Type": "application/json",
-    "X-Business-Id": BUSINESS_ID,
-  };
+  const headers: Record<string, string> = { "X-Business-Id": BUSINESS_ID };
+  if (opsi.json) headers["Content-Type"] = "application/json";
   if (state.user) {
     headers["X-Actor-Id"] = state.user.id;
     headers["X-Actor-Level"] = state.user.role === "pemilik" ? "99" : "2";
   }
   if (state.accessToken) headers.Authorization = `Bearer ${state.accessToken}`;
   if (opsi.idempotensiKunci) headers["Idempotency-Key"] = opsi.idempotensiKunci;
+  return headers;
+}
+
+async function minta<T>(path: string, opsi: OpsiLive = {}, bolehUlang = true): Promise<T> {
+  const state = useAuth.getState();
+  const headers = headerLive({ json: true, idempotensiKunci: opsi.idempotensiKunci });
 
   const response = await fetch(`${API_BASE_URL}${path}`, {
     method: opsi.method ?? "GET",
@@ -153,6 +166,77 @@ async function minta<T>(path: string, opsi: OpsiLive = {}, bolehUlang = true): P
 
   const teks = await response.text();
   return (teks ? (JSON.parse(teks) as T) : (undefined as T));
+}
+
+async function kirimForm(
+  path: string,
+  form: FormData,
+  idempotensiKunci?: string,
+  bolehUlang = true,
+): Promise<Response> {
+  const state = useAuth.getState();
+  const response = await fetch(`${API_BASE_URL}${path}`, {
+    method: "POST",
+    headers: headerLive({ idempotensiKunci }),
+    body: form,
+    cache: "no-store",
+  });
+
+  if (response.status === 401 && bolehUlang && state.refreshToken && state.user) {
+    const sesiBaru = await perbaruiSesi(state.refreshToken);
+    if (sesiBaru) {
+      state.setSession({
+        user: state.user,
+        accessToken: sesiBaru.accessToken,
+        refreshToken: sesiBaru.refreshToken,
+        kedaluwarsa: sesiBaru.kedaluwarsa,
+      });
+      return kirimForm(path, form, idempotensiKunci, false);
+    }
+  }
+
+  return response;
+}
+
+function buatKunciIdempotensi(): string {
+  return typeof crypto !== "undefined" && "randomUUID" in crypto
+    ? crypto.randomUUID()
+    : `impor-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
+function adalahImportResult(nilai: unknown): nilai is ImportResult {
+  if (!nilai || typeof nilai !== "object") return false;
+  const data = nilai as Partial<ImportResult>;
+  return (
+    typeof data.totalRows === "number"
+    && typeof data.successCount === "number"
+    && typeof data.failedCount === "number"
+    && Array.isArray(data.errors)
+  );
+}
+
+async function bacaImportResult(response: Response): Promise<ImportResult> {
+  const teks = await response.text();
+  let data: unknown;
+  if (teks) {
+    try {
+      data = JSON.parse(teks);
+    } catch {
+      data = undefined;
+    }
+  }
+
+  // Engine menjawab 400 dengan ImportResultDto saat ada baris ditolak —
+  // itu hasil impor yang harus ditampilkan, bukan kegagalan HTTP.
+  if (adalahImportResult(data)) return data;
+  if (!response.ok) {
+    const galat = data as { detail?: string; title?: string; message?: string } | undefined;
+    throw new LiveApiError(
+      galat?.detail ?? galat?.title ?? galat?.message ?? `Impor gagal (${response.status}).`,
+      response.status,
+    );
+  }
+  throw new LiveApiError("Respons impor engine tidak dikenali.", response.status);
 }
 
 export function bacaKlaim(accessToken: string): {
@@ -267,6 +351,22 @@ type BtAkunKas = {
   isActive: boolean;
 };
 type BtGudang = { id: string; code: string; name: string; isDefault: boolean; isActive: boolean };
+type BtJurnalBaris = {
+  accountCode: string;
+  accountName: string | null;
+  debit: number;
+  credit: number;
+  description: string | null;
+};
+type BtJurnal = {
+  id: string;
+  date: string;
+  transactionType: string | null;
+  description: string | null;
+  referenceType: string | null;
+  referenceId: string | null;
+  lines: BtJurnalBaris[];
+};
 
 function kodeAkunDari(accountCode: string): string {
   return accountCode.trim().toUpperCase();
@@ -406,6 +506,47 @@ export async function liveDeleteProduct(id: string): Promise<void> {
   await minta(`/api/products/${id}/deactivate`, { method: "POST" });
 }
 
+/**
+ * Engine hanya punya impor produk (`POST /api/products/import`, multipart).
+ * POS menerima baris CSV yang sudah diparse, jadi baris itu ditulis ulang ke
+ * berkas CSV dengan header yang dikenali engine. Kolom `stok` sengaja tidak
+ * ikut: impor produk engine tidak menerima stok awal.
+ */
+export function fileCsvProdukDariBaris(rows: ImporProdukBaris[]): File {
+  const header = ["sku", "nama", "barcode", "satuan", "kategori", "hargaBeli", "hargaJual", "stokMinimum"];
+  const isi = [
+    header,
+    ...rows.map((r) => [
+      r.sku,
+      r.nama,
+      r.barcode,
+      r.satuan,
+      r.kategori,
+      r.hargaBeli,
+      r.hargaJual,
+      r.stokMinimum,
+    ]),
+  ]
+    .map((baris) => baris.map((sel) => `"${String(sel ?? "").replace(/"/g, '""')}"`).join(","))
+    .join("\r\n");
+  return new File(["\uFEFF" + isi], "produk.csv", { type: "text/csv;charset=utf-8" });
+}
+
+export async function liveImporProduk(file: File): Promise<ImportResult> {
+  const form = new FormData();
+  form.append("file", file, file.name);
+  const response = await kirimForm("/api/products/import", form, buatKunciIdempotensi());
+  return bacaImportResult(response);
+}
+
+export async function liveImporPelanggan(_file: File): Promise<ImportResult> {
+  return engineBelumAda("Impor pelanggan", "POST /api/customers/import");
+}
+
+export async function liveImporSaldoAwal(_file: File): Promise<ImportResult> {
+  return engineBelumAda("Impor saldo awal", "POST /api/accounts/opening-balances");
+}
+
 export async function livePelanggan(): Promise<Pelanggan[]> {
   const pelanggan = await minta<BtPelanggan[]>("/api/customers");
   return pelanggan.map((c) => ({
@@ -523,8 +664,94 @@ export async function liveLabaRugi(): Promise<LabaRugi> {
   };
 }
 
-export async function liveJurnal(): Promise<JurnalEntry[]> {
-  return engineBelumAda("Daftar jurnal", "GET /api/journal");
+export async function liveJurnal(params: JurnalParams = {}): Promise<JurnalEntry[]> {
+  const ukuranHalaman = 200;
+  const hasil: JurnalEntry[] = [];
+
+  for (let halaman = 1; ; halaman++) {
+    const query = new URLSearchParams({
+      page: String(halaman),
+      pageSize: String(ukuranHalaman),
+    });
+    if (params.from) query.set("from", params.from);
+    if (params.to) query.set("to", params.to);
+
+    const rows = await minta<BtJurnal[]>(`/api/journal?${query.toString()}`);
+
+    hasil.push(...rows.map((row) => ({
+      id: row.id,
+      waktu: row.date,
+      keterangan: row.description?.trim() || row.transactionType || "Jurnal",
+      ref: row.referenceId?.trim() || row.referenceType || row.id,
+      baris: row.lines.map((line) => ({
+        akun: line.accountName ? `${line.accountCode} ${line.accountName}` : line.accountCode,
+        debit: line.debit,
+        kredit: line.credit,
+      })),
+    })));
+
+    if (rows.length < ukuranHalaman) break;
+  }
+
+  return hasil;
+}
+
+function biayaDariExpense(expense: Expense): Biaya {
+  return {
+    id: expense.id,
+    waktu: expense.expenseDate,
+    kategori: expense.category,
+    nominal: expense.amount,
+    metode: expense.paymentMethod,
+    catatan: expense.note ?? undefined,
+  };
+}
+
+export async function liveBiayaList(params: BiayaParams = {}): Promise<Biaya[]> {
+  const ukuranHalaman = 200;
+  const hasil: Biaya[] = [];
+
+  for (let halaman = 1; ; halaman++) {
+    const query = new URLSearchParams({
+      page: String(halaman),
+      pageSize: String(ukuranHalaman),
+    });
+    if (params.from) query.set("from", params.from);
+    if (params.to) query.set("to", params.to);
+
+    const rows = await minta<Expense[]>(`/api/expenses?${query.toString()}`);
+
+    hasil.push(...rows.map(biayaDariExpense));
+
+    if (rows.length < ukuranHalaman) break;
+  }
+
+  return hasil;
+}
+
+export async function liveBiayaCatat(input: {
+  kategori: string;
+  nominal: number;
+  metode: "tunai" | "transfer";
+  catatan?: string;
+}): Promise<Biaya> {
+  const actor = useAuth.getState().user?.id ?? ENGINE_APPROVER;
+
+  const hasil = await minta<Expense>("/api/expenses", {
+    method: "POST",
+    idempotensiKunci: buatKunciIdempotensi(),
+    body: {
+      expenseDate: new Date().toISOString(),
+      category: input.kategori,
+      amount: input.nominal,
+      paymentMethod: input.metode,
+      accountCode: KODE.biaya,
+      note: input.catatan,
+      requestedBy: actor,
+    },
+  });
+
+  return biayaDariExpense(hasil);
 }
 
 async function gudangDefault(): Promise<string> {
@@ -935,8 +1162,31 @@ export async function liveRetur(input: ReturInput): Promise<ReturPenjualan> {
   };
 }
 
-export async function liveReturRiwayat(): Promise<ReturPenjualan[]> {
-  return engineBelumAda("Riwayat retur", "GET /api/sale-returns");
+export async function liveReturRiwayat(
+  params: ReturRiwayatParams = {},
+): Promise<ReturPenjualan[]> {
+  const query = new URLSearchParams();
+  if (params.from) query.set("from", params.from);
+  if (params.to) query.set("to", params.to);
+  if (params.page !== undefined) query.set("page", String(params.page));
+  if (params.pageSize !== undefined) query.set("pageSize", String(params.pageSize));
+  const qs = query.toString();
+
+  const rows = await minta<SaleReturn[]>(
+    `/api/sale-returns${qs ? `?${qs}` : ""}`,
+  );
+
+  return rows.map((row) => ({
+    id: row.id,
+    nomor: row.documentNumber ?? row.id,
+    referensi: row.saleId,
+    waktu: row.createdAt,
+    items: [],
+    total: row.totalAmount,
+    alasan: "",
+    pelanggan: row.customerName ?? undefined,
+    status: row.status,
+  }));
 }
 
 export async function liveBuatUser(input: {

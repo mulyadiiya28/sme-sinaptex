@@ -31,7 +31,7 @@
 
 ## 2. Global Styles (`src/app/globals.css`)
 
-Sudah ada — pastikan tidak diubah secular:
+Isi file **saat ini** (42 baris) — jangan tambah utility baru tanpa alasan; pakai Tailwind langsung.
 
 ```css
 @theme {
@@ -49,7 +49,7 @@ Sudah ada — pastikan tidak diubah secular:
 
 body { @apply bg-canvas text-ink antialiased; }
 
-/* Panel utama — sesuai spespec */
+/* Panel utama */
 .panel { @apply rounded-3xl border border-line/80 bg-white/90 backdrop-blur-xl; }
 
 /* Tombol */
@@ -60,27 +60,21 @@ body { @apply bg-canvas text-ink antialiased; }
 /* Input */
 .input { @apply w-full rounded-xl border border-line bg-white px-3.5 py-2.5 text-sm text-ink placeholder:text-muted/70 focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20; }
 .label { @apply mb-1.5 block text-sm font-medium text-muted; }
+```
 
-/* Chip (kategori filter) */
-.chip { @apply rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors; }
-.chip-active { @apply border-brand bg-brand text-white; }
-.chip-inactive { @apply border-line bg-white text-muted hover:text-ink; }
+### Utility yang TIDAK ada (perignon untuk dipakai langsung)
 
-/* Tabel */
-.table { @apply w-full rounded-2xl border border-line/80 bg-white/90 overflow-hidden; }
-.thead { @apply bg-slate-50; }
-.trow { @apply hover:bg-slate-50/70; }
-.tcell { @apply px-4 py-3 text-sm; }
-.tcell-font { @apply font-medium; }
-.tcell-nums { @apply tabular-nums font-mono; }
+Versi awal dokumen ini menyebut `.chip`, `.table`, `.thead`, `.trow`, `.tcell`, `.money*`, `.badge-*`.
+Kelas-kelas itu **tidak pernah dibuat** di `globals.css` dan tidak dipakai di mana pun.
+Pola yang benar sekarang:
 
-/* Uang */
-.money { @apply font-tabular-nums font-bold; }
-.money-sm { @apply text-sm; }
-.money-lg { @apply text-lg; }
-.money-xl { @apply text-2xl font-black; }
+| Kebutuhan | Cara implementasi sekarang |
+|---|---|
+| Chip/filter kategori | Tailwind inline, mis. `rounded-full border px-3 py-1.5 text-xs font-semibold` + warna aktif `bg-brand text-white` |
+| Tabel | `<table class="w-full ...">` + `bg-slate-50` pada `<thead>`, `hover:bg-slate-50/70` pada baris |
+| Uang | `<MoneyDisplay value={...} />` (memakai utilitas Tailwind `tabular-nums`) — **bukan** kelas `.money` |
+| Badge status | `<StatusBadge>` (peta `TONES`: `neutral|info|success|warning|danger`) |
+| Badge statistik | `text-violet-600` / `text-emerald-600` / `text-rose-600` langsung |
 
-/* Badge stat */
-.badge-violet { @apply text-violet-600; }
-.badge-emerald { @apply text-emerald-600; }
-.badge-rose { @apply text-rose-600; }
+`cn()` di `src/lib/utils.ts` hanya join string truthy (tanpa `clsx`/`tailwind-merge`) — tidak ada
+resolusi konflik kelas, jadi hindari menyandikan dua kelas yang sama-sama mengeset property sama.

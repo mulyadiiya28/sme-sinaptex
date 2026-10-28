@@ -100,7 +100,7 @@ function PanelJurnal() {
       {entries.length === 0 && <div className="panel p-6 text-sm text-muted">Belum ada jurnal tercatat.</div>}
       {entries
         .slice()
-        .reverse()
+        .sort((a, b) => new Date(b.waktu).getTime() - new Date(a.waktu).getTime())
         .map((e) => (
           <JurnalCard key={e.id} entry={e} />
         ))}
@@ -160,7 +160,7 @@ function PanelBukuBesar() {
   const daftarAkun = (akun.data ?? []).map((a) => a.akun);
   const baris = (jurnal.data ?? [])
     .slice()
-    .reverse()
+    .sort((a, b) => new Date(a.waktu).getTime() - new Date(b.waktu).getTime())
     .flatMap((j) =>
       j.baris
         .filter((b) => b.akun === terpilih)

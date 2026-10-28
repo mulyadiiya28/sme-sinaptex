@@ -24,7 +24,7 @@ Satu sistem untuk transaksi, kontrol usaha, dan laporan keuangan.
 |---|---|---|
 | Brand primary | `#0B2F6E` | Sidebar, heading H1, tombol utama |
 | Brand hover | `#082657` | Hover tombol navy |
-| Brand accent | `#FF6B00` | Aksen, promosi, penekanan tertentu |
+| Brand accent | `#F97316` | Aksen, promosi, penekanan tertentu |
 | Background | `#F8FAFC` | Latar halaman |
 | Panel | `#FFFFFFE6` | Panel putih semi-transparan |
 | Border | `#E2E8F0` | Garis pembatas |
@@ -359,28 +359,35 @@ src/
       pengaturan/page.tsx       → Pengaturan (4 tab: Profil Toko edit+pratinjau, Operasional/Akuntansi info menyusul, Keamanan: pengguna + audit log)
   components/
     app-shell.tsx, sidebar.tsx (filter menu per role), app-topbar.tsx (user nyata + logout), page-header.tsx, kpi-card.tsx,
-    status-badge.tsx, money-display.tsx, data-table.tsx, placeholder-page.tsx, form-field.tsx, auth-guard.tsx
+    status-badge.tsx, money-display.tsx, data-table.tsx, placeholder-page.tsx, form-field.tsx, auth-guard.tsx, providers.tsx
     kasir/
-      product-catalog.tsx      → pencarian/barcode/kategori/Enter=pilih
+      product-catalog.tsx      → pencarian/barcode/kategori/Enter=pilih + navigasi keyboard
       cart-panel.tsx           → keranjang, diskon transaksi, pelanggan, total
       payment-dialog.tsx       → pembayaran tunggal & campuran + hasil transaksi
     produk/
       product-form-dialog.tsx  → form tambah/edit produk (validasi Zod, hargaBeli + hargaJual)
-  hooks/queries.ts             → useProducts, useActiveShift, useShiftRiwayat, useShiftMutations,
-                                  useProductMutations, useCheckout, useRiwayatTransaksi, usePembelian,
-                                  usePembayaranMutations, useBiaya, useBiayaMutations, useJurnal,
-                                  useAkun, useLabaRugi, usePembelianMutations
+  hooks/queries.ts             → semua query & mutation group TanStack Query:
+                                  useProducts, useActiveShift, useShiftRiwayat, useShiftMutations,
+                                  useProductMutations, useCheckout, useRiwayatTransaksi, useTransaksiMutations,
+                                  usePembelian, usePembelianMutations, useBiaya, useBiayaMutations,
+                                  useJurnal, useAkun, useLabaRugi, useUserMutations, useImporMutations, useAuditLog
   lib/
     format.ts                  → formatIDR (Intl id-ID)
-    nav.ts                     → konfigurasi grup navigasi sidebar
-    utils.ts                   → cn helper
-    store/cart.ts              → Zustand cart + alokasi pembayaran
+    nav.ts                     → konfigurasi grup navigasi sidebar + peta akses per role
+    csv.ts                     → parseCsv / unduhCsv (BOM UTF-8, quote-escape)
+    struk.ts                   → HTML struk thermal + cetakStruk() (iframe + window.print)
+    utils.ts                   → cn helper (join sederhana, tanpa clsx/tailwind-merge)
+    store/auth.ts              → Zustand auth (persist: user + refreshToken + kedaluwarsa)
+    store/toko.ts              → Zustand profil toko + kebijakan kredit (persist)
+    store/cart.ts              → Zustand cart + alokasi pembayaran (tidak dipersist)
     api/
       types.ts                 → kontrak data (Product, ShiftInfo, CheckoutPayload, Pembelian, Biaya,
                                   JurnalEntry, AkunSaldo, LabaRugi, ...) — acuan kontrak C#
-      client.ts                → API_MODE=mock|live; master/shift/transaksi/pembelian/hutang/piutang/biaya/akuntansi
+      client.ts                → API_MODE=mock|live; master/shift/transaksi/pembelian/hutang/piutang/biaya/akuntansi/auth
+      live.ts                  → client HTTP ke engine C# (JWT + refresh, header actor, idempotensi)
       mock/db.ts               → in-memory store + mini engine: produk, shift, riwayat, jurnal double-entry
                                   (modal awal, penjualan+HPP, pembelian, bayar hutang/piutang, biaya), akun saldo, laba-rugi
+  sw.ts                        → konfigurasi Serwist service worker
 public/
   icon-192.png, icon-512.png, icon-maskable-512.png → ikon PWA placeholder (brand + huruf "S", diganti logo asli nanti)
   sw.js                        → service worker hasil bundel @serwist/next (regenerasi saat build)
@@ -396,7 +403,11 @@ public/
 - Batas yang dipegang: service worker hanya meng-cache GET (aset & read). Semua POST/checkout/mutasi tetap butuh engine C# hidup — PWA melindungi tampilan & data baca saat jaringan terputus, bukan pengganti offline-first tulis (queue mutasi = P2).
 - Di dalam Tauri (WebView2, custom protocol) registrasi SW mungkin ditolak browser — tidak masalah; PWA ditargetkan untuk pemakaian via browser/serve statis, Tauri tetap jalur produksi utama.
 
-### Kontrak API yang harus dipenuhi engine C# (versi mock → live)
+### Kontrak API usulan awal (mock → live)
+
+> Tabel ini adalah **usulan awal** blueprint. Engine yang terpasang memakai sebagian endpoint berbeda —
+> mis. checkout menjadi `POST /api/cash-batches/sales`, bukan `POST /api/transactions`.
+> Sumber kebenaran = tabel "Kontrak engine AKTUAL" di bawah.
 
 | Fungsi frontend | Metode & endpoint usul C# | Catatan |
 |---|---|---|
@@ -464,9 +475,13 @@ Engine yang terpasang ada di `backend/` (repo nested, .NET 10, EF Core + SQLite)
 | `api.transaksi.riwayat()` | `GET /api/sales` (+ `GET /api/transactions/{id}` untuk kasir) | alokasi/kembalian tidak diekspos engine → piutang & kembalian dihitung 0 pada arsip |
 | `api.transaksi.batal()` | `POST /api/transactions/{id}/void`, fallback `POST /api/sale-returns` | engine menolak void atas transaksi POSTED (409) → pembatalan jatuh ke credit note penuh |
 | `api.transaksi.retur()` | `POST /api/sale-returns` | credit note per item, stok kembali, HPP dibalik |
+| `api.transaksi.riwayatRetur()` | `GET /api/sale-returns` | daftar retur terbaru; filter tanggal + pagination |
 | `api.pembelian.list()` / `buat()` | `GET /api/purchases` · `POST /api/cash-batches/purchases` | pembelian kas langsung menambah stok + cost layer |
+| `api.master.imporProduk()` | `POST /api/products/import` (multipart, `.csv`/`.xlsx`) | all-or-nothing: satu baris ditolak = tidak ada yang ditulis; `satuan` harus cocok master unit; stok awal tidak diimpor (masuk lewat pembelian) |
+| `api.akuntansi.jurnal()` | `GET /api/journal` | jurnal dokumen + standalone, tanggal efektif, nama akun, filter tanggal + pagination |
 | `api.akuntansi.akun()` | `GET /api/reports/trial-balance` | debit/kredit/saldo per akun |
 | `api.akuntansi.labaRugi()` | `GET /api/reports/trial-balance` | diturunkan dari akun: `4xxx` pendapatan, `5000` HPP, `6xxx`+`5100` biaya, `2402` pajak |
+| `api.biaya.list()` / `catat()` | `GET/POST /api/expenses` | catat = kas keluar + jurnal beban; akun beban `NEXT_PUBLIC_ENGINE_BIAYA` (default `6900`), tunai → kas default, transfer → akun kas `1111`; wajib `Idempotency-Key` |
 
 **Belum ada di engine (pesan eksplisit, bukan data palsu):**
 
@@ -474,21 +489,18 @@ Engine yang terpasang ada di `backend/` (repo nested, .NET 10, EF Core + SQLite)
 |---|---|
 | `api.auth.users()` · `ubahUser()` · `hapusUser()` | `GET/PUT/DELETE /api/users` (engine hanya punya `POST /api/users/direct`; peranKasir saja) |
 | `api.auth.auditList()` | `GET /api/audit-log` |
-| `api.transaksi.riwayatRetur()` | `GET /api/sale-returns` |
 | `api.transaksi.konfirmasiDigital()` | `POST /api/transactions/{id}/confirm-payment` (QRIS belum jadi konsep engine) |
 | `api.master.penyesuaianStok()` | `POST /api/inventory/adjustments` |
-| `api.master.imporProduk()` · `imporPelanggan()` · `imporSaldoAwal()` | `POST /api/products/import` · `POST /api/customers/import` · `POST /api/accounts/opening-balances` |
-| `api.biaya.list()` · `catat()` | `GET/POST /api/expenses` |
+| `api.master.imporPelanggan()` · `imporSaldoAwal()` | `POST /api/customers/import` · `POST /api/accounts/opening-balances` |
 | `api.hutang.bayar()` · `api.piutang.bayar()` | `POST /api/purchases/{id}/payments` · `POST /api/sales/{id}/payments` (engine hanya punya uang muka `POST /api/payments/advances`) |
-| `api.akuntansi.jurnal()` | `GET /api/journal` (ada `GET /api/reports/daily-movement` per akun per tanggal) |
 
 **Batas engine yang masih membatasi POS:** pembayaran campuran (tunai + transfer) ditolak — satu batch menerima satu akun kas; pembayaran melebihi total (kembalian) ditolak engine; dokumen penjualan engine tidak punya field diskon, jadi diskon per baris & diskon transaksi **dilipat ke `unitPrice`** (harga bersih per baris, sisa pembulatan ditanggung baris terakhir) — total dokumen engine tetap sama dengan total yang dilihat kasir, tapi harga jual yang tersimpan sudah bersih dari diskon.
 
 ### Prinsip yang sudah dipegang di frontend
 
 - **Login & hak akses**: halaman `/login` (tanpa shell); sesi di Zustand persist — `user` + `refreshToken` tersimpan, **access token hanya di memori** (tidak ke localStorage); di live, refresh token seharusnya httpOnly cookie dari engine. Role: `pemilik` (akses penuh) & `kasir` (Kasir/Riwayat/Shift). Sidebar memfilter menu per role, `AuthGuard` mem-block route luar izin (redirect kasir → `/kasir`).
-- Kasir **tidak bisa transaksi sebelum shift dibuka**; layar kasir mengarahkan ke halaman Shift.
-- Kas tunai sistem = saldo awal + kas masuk − kas keluar + penjualan tunai (diakumulasi dari checkout); tidak termasuk transfer/QRIS.
+- Kasir **tidak bisa transaksi sebelum shift dibuka**; layar kasir menampilkan panel pemblokir + tombol "Buka Shift" (bukan redirect router otomatis).
+- Kas tunai sistem = saldo awal + kas masuk − kas keluar + penjualan tunai (diakumulasi dari checkout, refund retur tunai, dan pelunasan piutang tunai); tidak termasuk transfer/QRIS. Live mode hitungannya dari engine.
 - Stok pada keranjang menghitung dari mock; di live nantinya hasil mutasi engine (frontend tidak menghitung sendiri).
 - Alokasi campuran divalidasi: digital tidak boleh melebihi sisa; tunai berlebih = kembalian.
 - Sisa hanya boleh jadi piutang jika penjualan kredit diizinkan; tanpa itu konfirmasi terkunci.
@@ -506,7 +518,7 @@ Alur utuh yang bisa diuji: buka shift → kasir (F2 cari / Enter tambah / F4 bay
 - **Auth**: pengguna mock `pemilik/pemilik123` & `kasir/kasir123`; sesi + audit log (login/logout) di `mock/db.ts`; pengaturan = profil toko (Zustand persist, topbar ikut membaca) + daftar pengguna + audit log.
 - **Void transaksi**: tombol Void di Riwayat (hanya pemilik, dialog konfirmasi + peringatan) → `batalTransaksi` mock: stok kembali, jurnal reversal, kas shift tunai berkurang, status `dibatalkan`, audit tercatat.
 - **Penyesuaian stok**: tombol di Produk (hanya pemilik) → pilih produk, stok fisik, alasan; jurnal Selisih stok/Persediaan; audit tercatat.
-- **Idempotensi**: dialog pembayaran membuat `idempotensiKunci` sekali per sesi dialog; mock menolak kunci yang sama (transaksi ganda).
+- **Idempotensi**: dialog pembayaran membuat `idempotensiKunci` sekali per sesi dialog; dikirim sebagai header `Idempotency-Key` dan **ditolak engine** jika kunci sama. Mock juga menegakkan aturan ini (`mockDb.kunciCheckout`).
 
 - **Pembelian**: registerPembelian menambah stok, memperbarui hargaBeli produk, membentuk jurnal (Persediaan debit; Kas/Bank/Hutang kredit), mengurangi kas bila tunai/bank.
 - **Hutang/Piutang**: bayarHutang & bayarPiutang memperbarui terbayar/piutang + status transaksi, membentuk jurnal, dan menggerakkan kas/bank.
@@ -528,6 +540,7 @@ Alur utuh yang bisa diuji: buka shift → kasir (F2 cari / Enter tambah / F4 bay
 - **Tab "Impor & Migrasi"** di Pengaturan (hanya pemilik): 3 kartu — Impor Produk, Impor Pelanggan, Impor Saldo Awal GL — masing-masing: Unduh Template CSV → pilih berkas → pratinjau (DataTable) → Simpan.
 - **Parser CSV** di `src/lib/csv.ts` (`parseCsv` mendukung kutip/escape/BOM; `unduhCsv` BOM UTF-8); template dihasilkan di sisi klien, tanpa dependensi eksternal.
 - **Validasi impor produk**: SKU/nama wajib, harga jual > 0, duplikat SKU/barcode (dengan data lama maupun antar baris) ditolak **per baris** (baris valid tetap masuk) — hasil impor berisi sukses/gagal/pesan per baris, tercatat di audit log.
+- **Impor produk live** mengirim baris yang sudah diparse sebagai CSV multipart ke `POST /api/products/import` (header `sku,nama,barcode,satuan,kategori,hargaBeli,hargaJual,stokMinimum`). Berbeda dari mock, engine menerapkan aturan **all-or-nothing**: satu baris ditolak membatalkan seluruh berkas, `satuan` harus sudah ada di master unit, dan stok awal tidak diimpor (masuk lewat pembelian).
 - **Impor saldo awal GL** = inisiasi GL untuk migrasi usaha yang sudah jalan: nama akun harus cocok dengan daftar akun engine, total debit harus = total kredit, lalu jurnal `OPEN-MIG` "Saldo awal (migrasi)" dibuat dan jurnal `OPEN-*` lama (modal awal seed) diganti; saldo Kas/Bank dihitung ulang dari jurnal.
 - **Pelanggan**: kini ada master pelanggan di mock (`api.master.pelanggan`, key cache `["pelanggan"]`); input pelanggan di keranjang kasir memakai datalist dari master ini.
 
@@ -538,6 +551,29 @@ Alur utuh yang bisa diuji: buka shift → kasir (F2 cari / Enter tambah / F4 bay
 - **Tab Retur** di Riwayat: arsip retur (nomor, ref transaksi, item, alasan, metode refund, nominal).
 - **Panel Akuntansi** di Pengaturan: daftar akun engine + saldo (dari `GET /api/accounts`) — read-only.
 - **Dashboard**: omzet/piutang mengecualikan transaksi `dibatalkan`; peringatan "menunggu konfirmasi" untuk pembayaran digital tertunda; kartu engine akuntansi kini menyatakan aktif.
+
+### Caveat mock terverifikasi (bug, bukan fitur)
+
+- **Live mode** menolak pembayaran campuran (tunai + non-tunai) dan overpayment; QRIS belum jadi
+  konsep engine (konfirmasi digital = `engineBelumAda`).
+
+### Yang sudah diperbaiki pada mock (2026-10-28)
+
+- Idempotensi ditegakkan: `mockDb.kunciCheckout` diisi saat checkout dipakai, checkout dengan kunci
+  sama ditolak.
+- Alokasi pembayaran dihitung ulang: hanya tunai boleh melebihi sisa (kembalian), digital melebihi
+  sisa ditolak, dan jurnal penjualan selalu seimbang (sebelumnya kas overpay membuat jurnal tidak seimbang).
+- `penjualanTunai` sekarang terakumulasi saat checkout, refund retur tunai, dan pelunasan piutang —
+  `kasTunaiSistem` mock jadi benar.
+- Role check pemilik ditegakkan di mock db: void, retur, penyesuaian stok, konfirmasi digital,
+  impor produk/pelanggan/saldo awal.
+- Reversal void diperbaiki: `Penjualan` dibalik net (tanpa pajak), `Pajak keluaran` dibalik,
+  QRIS dibalik ke `Penampung gateway` (bukan Bank), piutang yang sudah terlayar ikut dikembalikan,
+  dan HPP pembalik pakai harga beli **saat transaksi** (disimpan snapshot di `TransaksiItem.hargaBeli`).
+- Retur penjualan dibalik proporsional: `Retur penjualan` + `Pajak keluaran` dibalik sesuai proporsi
+  item yang diretur, diskon transaksi ikut di-proporsi, dan nominal refund sama dengan yang dibayar
+  pelanggan (neto + pajak).
+- Kode mati `src/lib/api/calc.ts` dihapus.
 
 ### Cara menjalankan
 

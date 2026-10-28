@@ -214,13 +214,19 @@ function PanelRetur() {
       <span className="text-muted">{new Date(r.waktu).toLocaleString("id-ID", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })}</span>
     ) },
     { key: "nomor", header: "Nomor retur", render: (r) => <span className="font-semibold text-brand">{r.nomor}</span> },
-    { key: "referensi", header: "Ref. transaksi", render: (r) => r.referensi },
-    { key: "items", header: "Item", render: (r) => (
-      <span>{r.items.map((i) => `${i.qty}× ${i.nama}`).join(", ")}</span>
+    { key: "referensi", header: "Ref. transaksi", render: (r) => (
+      <span>{r.pelanggan ? `${r.referensi} · ${r.pelanggan}` : r.referensi}</span>
     ) },
-    { key: "alasan", header: "Alasan", render: (r) => <span className="text-muted">{r.alasan}</span> },
+    { key: "items", header: "Item", render: (r) => (
+      r.items.length > 0
+        ? <span>{r.items.map((i) => `${i.qty}× ${i.nama}`).join(", ")}</span>
+        : <span className="text-muted">—</span>
+    ) },
+    { key: "alasan", header: "Alasan", render: (r) => <span className="text-muted">{r.alasan || "—"}</span> },
     { key: "metodeRefund", header: "Refund", align: "center", render: (r) => (
-      <StatusBadge label={r.metodeRefund === "tunai" ? "Tunai" : "Transfer"} tone="info" />
+      r.metodeRefund
+        ? <StatusBadge label={r.metodeRefund === "tunai" ? "Tunai" : "Transfer"} tone="info" />
+        : <span className="text-muted">—</span>
     ) },
     { key: "total", header: "Nominal", align: "right", render: (r) => <MoneyDisplay value={r.total} className="font-semibold text-rose-600" /> },
   ];

@@ -1,13 +1,16 @@
 import type {
   AuditEntry,
   Biaya,
+  BiayaParams,
   CheckoutPayload,
   CheckoutResult,
   HasilImpor,
+  ImportResult,
   ImporPelangganBaris,
   ImporProdukBaris,
   ImporSaldoAwalBaris,
   JurnalEntry,
+  JurnalParams,
   LabaRugi,
   LoginResult,
   PaymentMethod,
@@ -18,6 +21,7 @@ import type {
   Product,
   ReturInput,
   ReturPenjualan,
+  ReturRiwayatParams,
   ShiftBukaInput,
   ShiftInfo,
   ShiftMutasiInput,
@@ -28,11 +32,15 @@ import type {
 import { mockDb, produkBaruId } from "@/lib/api/mock/db";
 import {
   engineBelumAda,
+  fileCsvProdukDariBaris,
   liveAkun,
+  liveBiayaCatat,
+  liveBiayaList,
   liveBuatUser,
   liveCheckout,
   liveCreateProduct,
   liveDeleteProduct,
+  liveImporProduk,
   liveJurnal,
   liveLabaRugi,
   liveLogin,
@@ -59,17 +67,20 @@ const delay = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 let nomorBerikut = 25;
 
-export function hitungKembalian(total: number, allocations: CheckoutPayload["allocations"]): number {
-  const covered = allocations.reduce((sum, a) => sum + a.nominal, 0);
-  return Math.max(0, covered - total);
-}
-
 export function hitungTotal(payload: Pick<CheckoutPayload, "lines" | "diskonTransaksi" | "pajak">): number {
   const subtotal = payload.lines.reduce(
     (sum, l) => sum + Math.max(0, l.product.hargaJual * l.qty - l.diskon),
     0,
   );
   return Math.max(0, subtotal - payload.diskonTransaksi + payload.pajak);
+}
+
+function keHasilImpor(hasil: ImportResult): HasilImpor {
+  return {
+    sukses: hasil.successCount,
+    gagal: hasil.failedCount,
+    pesan: hasil.errors.map((e) => e.message),
+  };
 }
 
 export const api = {
@@ -150,7 +161,7 @@ export const api = {
     },
 
     imporProduk: async (rows: ImporProdukBaris[], user: User): Promise<HasilImpor> => {
-      if (API_MODE === "live") return engineBelumAda("Impor produk", "POST /api/products/import");
+      if (API_MODE === "live") return keHasilImpor(await liveImporProduk(fileCsvProdukDariBaris(rows)));
       await delay(500);
       return mockDb.imporProduk(rows, user);
     },
@@ -240,21 +251,21 @@ export const api = {
   },
 
   biaya: {
-    list: async (): Promise<Biaya[]> => {
-      if (API_MODE === "live") return engineBelumAda("Daftar biaya", "GET /api/expenses");
+    list: async (params?: BiayaParams): Promise<Biaya[]> => {
+      if (API_MODE === "live") return liveBiayaList(params);
       await delay(120);
       return structuredClone(mockDb.biaya);
     },
     catat: async (input: { kategori: string; nominal: number; metode: "tunai" | "transfer"; catatan?: string }): Promise<Biaya> => {
-      if (API_MODE === "live") return engineBelumAda("Pencatatan biaya", "POST /api/expenses");
+      if (API_MODE === "live") return liveBiayaCatat(input);
       await delay(350);
       return mockDb.catatBiaya(input);
     },
   },
 
   akuntansi: {
-    jurnal: async (): Promise<JurnalEntry[]> => {
-      if (API_MODE === "live") return liveJurnal();
+    jurnal: async (params?: JurnalParams): Promise<JurnalEntry[]> => {
+      if (API_MODE === "live") return liveJurnal(params);
       await delay(120);
       return structuredClone(mockDb.jurnal);
     },
@@ -282,28 +293,38 @@ export const api = {
       }
 
       const total = hitungTotal(payload);
-      const kembalian = hitungKembalian(total, payload.allocations);
-      const terbayar = payload.allocations.reduce((sum, a) => sum + a.nominal, 0) - kembalian;
-      const sisa = Math.max(0, total - terbayar);
+
+      let belum = total;
+      let kembalian = 0;
+      let masukTunai = 0;
+      let masukBank = 0;
+      let masukGateway = 0;
+      const pembayaran: Array<{ metode: PaymentMethod; nominal: number }> = [];
+      for (const a of payload.allocations) {
+        if (belum <= 0) break;
+        const nominal = Math.max(0, a.nominal);
+        if (a.metode !== "tunai" && nominal > belum) {
+          throw new Error("Pembayaran digital tidak boleh melebihi sisa pembayaran.");
+        }
+        const masuk = Math.min(nominal, belum);
+        if (a.metode === "tunai") {
+          masukTunai += masuk;
+          kembalian += Math.max(0, nominal - masuk);
+        } else if (a.metode === "qris") masukGateway += masuk;
+        else masukBank += masuk;
+        if (masuk > 0) pembayaran.push({ metode: a.metode, nominal: masuk });
+        belum -= masuk;
+      }
+
+      const sisa = Math.max(0, belum);
       const jadiPiutang = sisa > 0 && payload.gunakanPiutang;
-      const digitalPending = payload.allocations.some((a) => a.metode === "qris");
+      const digitalPending = pembayaran.some((p) => p.metode === "qris");
 
       if (sisa > 0 && !jadiPiutang) {
         throw new Error("Pembayaran kurang dan penjualan kredit tidak diizinkan.");
       }
 
-      let belum = total - kembalian;
-      let masukTunai = 0;
-      let masukBank = 0;
-      const pembayaran: Array<{ metode: PaymentMethod; nominal: number }> = [];
-      for (const a of payload.allocations) {
-        if (belum <= 0) break;
-        const masuk = Math.min(a.nominal, belum);
-        if (a.metode === "tunai") masukTunai += masuk;
-        else masukBank += masuk;
-        if (masuk > 0) pembayaran.push({ metode: a.metode, nominal: masuk });
-        belum -= masuk;
-      }
+      mockDb.kunciCheckout.add(payload.idempotensiKunci);
 
       nomorBerikut += 1;
       const status: CheckoutResult["status"] =
@@ -321,6 +342,7 @@ export const api = {
           qty: l.qty,
           hargaJual: l.product.hargaJual,
           diskon: l.diskon,
+          hargaBeli: l.product.hargaBeli,
         })),
         diskonTransaksi: payload.diskonTransaksi,
         pajak: payload.pajak,
@@ -340,12 +362,17 @@ export const api = {
             hargaBeli: l.product.hargaBeli,
           })),
         },
+        {
+          tunai: masukTunai,
+          bank: masukBank,
+          gateway: masukGateway,
+          piutang: jadiPiutang ? sisa : 0,
+        },
         total,
-        kembalian,
-        jadiPiutang ? sisa : 0,
-        payload.allocations,
         payload.pajak,
       );
+
+      if (masukTunai > 0) mockDb.catatPenjualanTunai(masukTunai);
 
       for (const l of payload.lines) {
         const p = mockDb.products.find((x) => x.id === l.product.id);
@@ -373,8 +400,8 @@ export const api = {
       return mockDb.prosesRetur(input, user);
     },
 
-    riwayatRetur: async (): Promise<ReturPenjualan[]> => {
-      if (API_MODE === "live") return liveReturRiwayat();
+    riwayatRetur: async (params?: ReturRiwayatParams): Promise<ReturPenjualan[]> => {
+      if (API_MODE === "live") return liveReturRiwayat(params);
       await delay(120);
       return mockDb.riwayatRetur();
     },

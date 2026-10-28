@@ -79,6 +79,7 @@ export type TransaksiItem = {
   qty: number;
   hargaJual: number;
   diskon: number;
+  hargaBeli?: number; // snapshot HPP pada saat transaksi, untuk pembalikan akurat saat void
 };
 
 export type TransaksiRiwayat = {
@@ -97,6 +98,23 @@ export type TransaksiRiwayat = {
   pembayaran?: Array<{ metode: PaymentMethod; nominal: number }>;
 };
 
+export type SaleReturn = {
+  id: string;
+  documentNumber: string | null;
+  saleId: string;
+  customerName: string | null;
+  totalAmount: number;
+  status: string;
+  createdAt: string;
+};
+
+export type ReturRiwayatParams = {
+  from?: string;
+  to?: string;
+  page?: number;
+  pageSize?: number;
+};
+
 export type ReturPenjualan = {
   id: string;
   nomor: string;
@@ -105,7 +123,9 @@ export type ReturPenjualan = {
   items: Array<{ nama: string; qty: number; hargaJual: number }>;
   total: number;
   alasan: string;
-  metodeRefund: "tunai" | "transfer";
+  metodeRefund?: "tunai" | "transfer";
+  pelanggan?: string;
+  status?: string;
 };
 
 export type ReturInput = {
@@ -156,6 +176,42 @@ export type Biaya = {
   catatan?: string;
 };
 
+export type BiayaParams = {
+  from?: string;
+  to?: string;
+};
+
+export type Expense = {
+  id: string;
+  businessId: string;
+  expenseDate: string;
+  category: string;
+  amount: number;
+  paymentMethod: "tunai" | "transfer";
+  note?: string | null;
+  expenseAccountCode: string;
+  paymentAccountCode: string;
+  cashAccountId: string;
+  cashMovementId: string;
+  journalId?: string | null;
+  requestedBy: string;
+  version: number;
+  createdAt: string;
+  replayed: boolean;
+};
+
+export type CreateExpenseRequest = {
+  expenseDate?: string;
+  category: string;
+  amount: number;
+  paymentMethod: "tunai" | "transfer";
+  accountCode?: string;
+  expenseAccountCode?: string;
+  paymentAccountCode?: string;
+  note?: string;
+  requestedBy?: string;
+};
+
 export type JurnalBaris = { akun: string; debit: number; kredit: number };
 
 export type JurnalEntry = {
@@ -164,6 +220,11 @@ export type JurnalEntry = {
   keterangan: string;
   ref: string;
   baris: JurnalBaris[];
+};
+
+export type JurnalParams = {
+  from?: string;
+  to?: string;
 };
 
 export type AkunSaldo = { akun: string; debit: number; kredit: number; saldo: number };
@@ -241,3 +302,12 @@ export type ImporPelangganBaris = {
 export type ImporSaldoAwalBaris = { akun: string; debit: number; kredit: number };
 
 export type HasilImpor = { sukses: number; gagal: number; pesan: string[] };
+
+export type ImportRowError = { rowNumber: number; message: string };
+
+export type ImportResult = {
+  totalRows: number;
+  successCount: number;
+  failedCount: number;
+  errors: ImportRowError[];
+};

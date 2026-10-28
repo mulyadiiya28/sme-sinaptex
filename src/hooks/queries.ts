@@ -35,7 +35,7 @@ export function useRiwayatTransaksi() {
 }
 
 export function useRiwayatRetur() {
-  return useQuery({ queryKey: ["retur"], queryFn: api.transaksi.riwayatRetur });
+  return useQuery({ queryKey: ["retur"], queryFn: () => api.transaksi.riwayatRetur() });
 }
 
 export function usePembelian() {
@@ -43,11 +43,11 @@ export function usePembelian() {
 }
 
 export function useBiaya() {
-  return useQuery({ queryKey: ["biaya"], queryFn: api.biaya.list });
+  return useQuery({ queryKey: ["biaya"], queryFn: () => api.biaya.list() });
 }
 
 export function useJurnal() {
-  return useQuery({ queryKey: ["jurnal"], queryFn: api.akuntansi.jurnal });
+  return useQuery({ queryKey: ["jurnal"], queryFn: () => api.akuntansi.jurnal() });
 }
 
 export function useAkun() {
