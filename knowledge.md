@@ -482,7 +482,7 @@ Engine yang terpasang ada di `backend/` (repo nested, .NET 10, EF Core + SQLite)
 | `api.hutang.bayar()` · `api.piutang.bayar()` | `POST /api/purchases/{id}/payments` · `POST /api/sales/{id}/payments` (engine hanya punya uang muka `POST /api/payments/advances`) |
 | `api.akuntansi.jurnal()` | `GET /api/journal` (ada `GET /api/reports/daily-movement` per akun per tanggal) |
 
-**Batas engine yang masih membatasi POS:** pembayaran campuran (tunai + transfer) ditolak — satu batch menerima satu akun kas; pembayaran melebihi total (kembalian) ditolak engine; diskon per item dan diskon transaksi tidak punya field pada dokumen penjualan engine (harga yang dikirim = harga jual bersih per baris).
+**Batas engine yang masih membatasi POS:** pembayaran campuran (tunai + transfer) ditolak — satu batch menerima satu akun kas; pembayaran melebihi total (kembalian) ditolak engine; dokumen penjualan engine tidak punya field diskon, jadi diskon per baris & diskon transaksi **dilipat ke `unitPrice`** (harga bersih per baris, sisa pembulatan ditanggung baris terakhir) — total dokumen engine tetap sama dengan total yang dilihat kasir, tapi harga jual yang tersimpan sudah bersih dari diskon.
 
 ### Prinsip yang sudah dipegang di frontend
 

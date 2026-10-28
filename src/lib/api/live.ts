@@ -567,6 +567,44 @@ function ringkasAlokasi(payload: CheckoutPayload): {
   return { tunai, nontunai, total: bersih };
 }
 
+function bulat2(nilai: number): number {
+  return Math.round(nilai * 100) / 100;
+}
+
+/**
+ * Engine tidak punya field diskon pada dokumen penjualan — yang boleh dictate
+ * total adalah `unitPrice` per baris. Jadi diskon POS (per baris maupun diskon
+ * transaksi) dipotong di harga: harga yang dikirim = harga bersih, dan total
+ * dokumen engine jadi sama dengan total yang dilihat kasir.
+ */
+function barisHargaBersih(payload: CheckoutPayload): {
+  productId: string;
+  qty: number;
+  unitPrice: number;
+}[] {
+  const bersihPerBaris = payload.lines.map((l) => ({
+    productId: l.product.id,
+    qty: l.qty,
+    harga: bulat2(Math.max(0, l.product.hargaJual * l.qty - l.diskon)),
+  }));
+  const totalBaris = bersihPerBaris.reduce((s, b) => s + b.harga, 0);
+  const target = bulat2(Math.max(0, totalBaris - payload.diskonTransaksi));
+
+  const hasil: { productId: string; qty: number; unitPrice: number }[] = [];
+  let sisa = target;
+
+  bersihPerBaris.forEach((baris, index) => {
+    const terakhir = index === bersihPerBaris.length - 1;
+    const proporsi = totalBaris > 0 ? baris.harga / totalBaris : 0;
+    const jumlahBaris = terakhir ? sisa : Math.min(bulat2(target * proporsi), sisa);
+    const unitPrice = baris.qty > 0 ? bulat2(jumlahBaris / baris.qty) : 0;
+    hasil.push({ productId: baris.productId, qty: baris.qty, unitPrice });
+    sisa = bulat2(sisa - bulat2(unitPrice * baris.qty));
+  });
+
+  return hasil;
+}
+
 export async function liveCheckout(payload: CheckoutPayload): Promise<CheckoutResult> {
   const gudang = await gudangDefault();
   const ringkasan = ringkasAlokasi(payload);
@@ -617,11 +655,11 @@ export async function liveCheckout(payload: CheckoutPayload): Promise<CheckoutRe
       description: `Kasir ${payload.kasir} · shift ${payload.shiftId}`,
       taxable: payload.pajak > 0,
       taxAmount: payload.pajak > 0 ? payload.pajak : null,
-      lines: payload.lines.map((l) => ({
-        productId: l.product.id,
+      lines: barisHargaBersih(payload).map((baris) => ({
+        productId: baris.productId,
         warehouseId: gudang,
-        quantity: l.qty,
-        unitPrice: l.product.hargaJual,
+        quantity: baris.qty,
+        unitPrice: baris.unitPrice,
       })),
     },
   });
@@ -637,7 +675,6 @@ export async function liveCheckout(payload: CheckoutPayload): Promise<CheckoutRe
     status,
   };
 }
-
 async function cariPelangganId(nama: string): Promise<string | null> {
   const pelanggan = await minta<BtPelanggan[]>("/api/customers");
   const cocok = pelanggan.find((c) => c.name.toLowerCase() === nama.trim().toLowerCase());
