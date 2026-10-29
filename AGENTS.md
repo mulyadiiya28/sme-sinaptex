@@ -99,16 +99,29 @@ penyesuaian stok (`POST /api/inventory/adjustments`), konfirmasi QRIS
 (`POST /api/sales/{id}/confirm-payment`), buat user kasir (`POST /api/users/direct`),
 daftar/ubah/hapus user (`GET/PUT/DELETE /api/users`), jejak audit (`GET /api/audit-log`).
 
-Belum ada endpoint engine (lempar `engineBelumAda`, status 501).
+Tidak ada lagi jalur 501: `engineBelumAda` sudah dihapus. Bila akun kas untuk kode akun yang dipakai
+checkout/pelunasan/biaya belum ada, POS membuatnya lewat `POST /api/cash-accounts`.
 
 Perilaku live yang menyimpang dari mock:
 
-- `liveCheckout` menolak pembayaran campuran (tunai + non-tunai) dan overpayment; `kembalian` selalu 0.
+- `liveCheckout` menolak pembayaran campuran (tunai + non-tunai), overpayment, dan **pembayaran 0**
+  (penjualan kredit tanpa uang muka) — batch penjualan engine menolak `paymentAmount: 0` dengan 409.
+  `kembalian` selalu 0.
+- `livePembelianBuat` menolak `metode: "hutang"` (pembelian 100% hutang) dengan alasan yang sama;
+  pembelian DP sebagian didukung dan sisanya jadi hutang.
 - `liveVoidTransaksi` memanggil void engine; bila engine menolak 409 (POSTED tidak boleh di-void),
   POS jatuh ke retur penuh (`liveRetur`).
-- `liveBuatUser` hanya menerima peran kasir; membuat pemilik → 501.
+- `liveBuatUser` hanya menerima peran kasir; membuat pemilik ditolak di POS.
 - `liveTransaksiRiwayat` kehilangan `diskon` (0), `kembalian` (0), `shiftId` (""), dan status
-  pembayaran digital (dipetakan dari status penjualan).
+  pembayaran digital (dipetakan dari status penjualan). `piutang` diambil dari
+  `GET /api/reports/ar-ap/aging?side=RECEIVABLE` (`outstandingAmount` per `invoiceNumber`), karena
+  dokumen penjualan tidak menyimpannya.
+- `livePembelianList` juga memakai `?side=PAYABLE`: `terbayar = total − outstanding` dan
+  `metode = outstanding > 0 ? "hutang" : "tunai"`. Jangan pakai `payableAmount` dokumen — itu nilai
+  hutang **bruto**, bukan sisa.
+- `liveBayarPiutang` menerjemahkan nomor dokumen (`SALE-00001`) menjadi id penjualan dulu
+  (`cariPenjualanByNomor`); rute engine hanya menerima id. `outstandingAfter` dari respons engine
+  **mengabaikan DP batch**, jadi sisa piutang/hutang dihitung ulang dari laporan aging.
 - Impor produk live bersifat all-or-nothing (satu baris ditolak = tidak ada yang ditulis), hanya
   menerima `satuan` yang sudah ada di master unit engine, dan tidak mengimpor stok awal.
 - Diskon POS + diskon per baris dilebur ke `unitPrice` (sisa pembulatan ke baris terakhir), karena
@@ -131,6 +144,10 @@ Perilaku live yang menyimpang dari mock:
 - Money: selalu `<MoneyDisplay value={...} />` / `formatIDR()`; jangan tulis string mata uang manual.
 - Tabel: pakai `<DataTable<T> columns={...} rows={...} rowKey={...} empty={...} />` dari
   `src/components/data-table.tsx`; baris kustom (mis. katalog kasir) boleh `<table>` langsung.
+  Saat memuat, kirim `loading` (+ `skeletonRows`) — tabel merender baris skeleton, bukan teks "Memuat...".
+- Loading state: `<Skeleton>`, `<TableSkeleton>`, `<KpiSkeleton>`, `<ListSkeleton>` dari
+  `src/components/skeleton.tsx` (Tailwind `animate-pulse`). Halaman yang datanya belum siap merender
+  kerangka layout aslinya, bukan satu baris teks di tengah layar.
 - Status: string-literal unions + label/tone map. Peta `STATUS_LABEL`/`STATUS_TONE` masih duplikat
   per halaman; `StatusBadge` punya `TONES` bersama (`neutral|info|success|warning|danger`).
 - Zustand: satu store per concern, `type XState` eksplisit, `persist` seperlunya
@@ -159,14 +176,17 @@ Perilaku live yang menyimpang dari mock:
 ## Domain Rules
 
 - Kasir tidak boleh bertransaksi sebelum shift terbuka; layar POS menampilkan panel pemblokir + link Buka Shift.
-  Login role kasir otomatis membuka shift (`saldoAwal` 1.500.000) di halaman login.
+  Shift **tidak** dibuka otomatis saat login: kasir/pemilik membuka shift sendiri di menu Shift, nama kasir
+  mengikuti akun yang sedang masuk (bukan input bebas), dan kas awal diisi sesuai uang fisik di laci
+  (nilai awal dari Pengaturan → Operasional, `useToko().kebijakan.saldoAwalShift`).
 - Checkout membawa `idempotensiKunci` (`crypto.randomUUID()` per sesi dialog). Mock menolak kunci yang
   sudah dipakai via `mockDb.kunciCheckout`; live mengirimnya sebagai `Idempotency-Key`.
 - Alokasi pembayaran (mock, diproses berurutan): **tunai** boleh melebihi sisa dan kelebihannya jadi
   kembalian; **transfer/qris** tidak boleh melebihi sisa (ditolak). Kekurangan hanya boleh jadi piutang
   bila `gunakanPiutang` dan `useToko().kebijakan.izinkanKredit` (default `true`) tidak memblokirnya.
 - Status pembayaran: `lunas | menunggu_pembayaran | dibayar_sebagian | dibatalkan` (terpisah dari status
-  transaksi). QRIS membuat status `menunggu_pembayaran` sampai owner mengonfirmasi (mock; live = 501).
+  transaksi). QRIS membuat status `menunggu_pembayaran` sampai owner mengonfirmasi (mock); di live
+  konfirmasi memanggil `POST /api/sales/{id}/confirm-payment`.
 - Void/retur/penyesuaian stok/konfirmasi digital/impor = owner only. Mock menegakkan role di `mockDb`
   (`user.role !== "pemilik"` → error); live memetakan ke otorisasi/approval engine. Transaksi asli tetap
   direferensikan, jurnal pembalik diposting.

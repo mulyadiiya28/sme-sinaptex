@@ -7,6 +7,7 @@ import { DataTable, type Column } from "@/components/data-table";
 import { FormField } from "@/components/form-field";
 import { MoneyDisplay } from "@/components/money-display";
 import { PageHeader } from "@/components/page-header";
+import { TableSkeleton } from "@/components/skeleton";
 import { StatusBadge } from "@/components/status-badge";
 import { useRiwayatRetur, useRiwayatTransaksi, useTransaksiMutations } from "@/hooks/queries";
 import { useAuth } from "@/lib/store/auth";
@@ -177,12 +178,17 @@ export default function RiwayatPage() {
           </button>
         </div>
 
-        {riwayat.isLoading ? (
-          <p className="py-12 text-center text-sm text-muted">Memuat riwayat...</p>
-        ) : riwayat.isError ? (
+        {riwayat.isError ? (
           <p className="py-12 text-center text-sm text-rose-600">Gagal memuat riwayat.</p>
         ) : (
-          <DataTable columns={columns} rows={filtered} rowKey={(r) => r.nomor} empty="Belum ada transaksi. Mulai dari layar Kasir." className="mt-2" />
+          <DataTable
+            columns={columns}
+            rows={filtered}
+            rowKey={(r) => r.nomor}
+            loading={riwayat.isLoading}
+            empty="Belum ada transaksi. Mulai dari layar Kasir."
+            className="mt-2"
+          />
         )}
       </div>
       )}
@@ -234,7 +240,7 @@ function PanelRetur() {
   return (
     <div className="panel p-4">
       {retur.isLoading ? (
-        <p className="py-12 text-center text-sm text-muted">Memuat riwayat retur...</p>
+        <TableSkeleton kolom={7} baris={4} />
       ) : (
         <DataTable columns={columns} rows={retur.data ?? []} rowKey={(r) => r.nomor} empty="Belum ada retur." />
       )}

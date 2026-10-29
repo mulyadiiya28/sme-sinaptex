@@ -46,15 +46,14 @@ export default function PembelianPage() {
       />
 
       <div className="panel p-4">
-        {pembelian.isLoading ? (
-          <p className="py-12 text-center text-sm text-muted">Memuat faktur...</p>
-        ) : pembelian.isError ? (
+        {pembelian.isError ? (
           <p className="py-12 text-center text-sm text-rose-600">Gagal memuat faktur pembelian.</p>
         ) : (
           <DataTable
             columns={columns}
             rows={pembelian.data ?? []}
             rowKey={(r) => r.id}
+            loading={pembelian.isLoading}
             empty="Belum ada pembelian."
           />
         )}

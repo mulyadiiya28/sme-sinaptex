@@ -58,13 +58,6 @@ export class LiveApiError extends Error {
   }
 }
 
-export function engineBelumAda(nama: string, endpoint: string): never {
-  throw new LiveApiError(
-    `${nama} belum tersedia di engine C# — belum ada ${endpoint}.`,
-    501,
-  );
-}
-
 type OpsiLive = {
   method?: "GET" | "POST" | "PUT" | "DELETE";
   body?: unknown;
@@ -311,6 +304,14 @@ type BtPenjualan = {
   totalAmount: number;
   taxAmount: number;
   items: BtItem[];
+};
+type BtAging = {
+  invoices: {
+    invoiceNumber: string;
+    invoiceTotal: number;
+    allocatedTotal: number;
+    outstandingAmount: number;
+  }[];
 };
 type BtTransaksi = {
   id: string;
@@ -580,67 +581,42 @@ export async function liveImporSaldoAwal(file: File): Promise<ImportResult> {
 }
 
 export async function livePenyesuaianStok(input: PenyesuaianStokInput): Promise<Product> {
-  // Get current stock to compute delta
-  const stock = await minta<{ quantities: Record<string, number> }>("/api/inventory/stock");
-  const currentQty = stock.quantities[input.productId] ?? 0;
-  const delta = input.stokFisik - currentQty;
+  const [produk, satuan, stok] = await Promise.all([
+    minta<BtProduk[]>("/api/products"),
+    minta<BtSatuan[]>("/api/units"),
+    minta<BtStok>("/api/inventory/stock"),
+  ]);
 
+  const target = produk.find((p) => p.id === input.productId);
+  if (!target) throw new LiveApiError("Produk tidak ditemukan.", 404);
+
+  const jumlahStok = new Map(stok.items.map((s) => [s.productId, s.quantity]));
+  const delta = input.stokFisik - (jumlahStok.get(input.productId) ?? 0);
   if (delta === 0) {
     throw new LiveApiError("Stok fisik sama dengan stok sistem — tidak ada penyesuaian.", 400);
   }
 
-  // Get default warehouse
-  const warehouses = await minta<BtGudang[]>("/api/warehouses");
-  const defaultWarehouse = warehouses.find((w) => w.isDefault) ?? warehouses[0];
-  if (!defaultWarehouse) {
-    throw new LiveApiError("Tidak ada gudang tersedia untuk penyesuaian stok.", 400);
-  }
+  const warehouseId = await gudangDefault();
+  const masuk = delta > 0;
 
-  const direction = delta > 0 ? "IN" : "OUT";
-  const movementType = delta > 0
-    ? "STOCK_ADJUSTMENT_IN"
-    : "STOCK_ADJUSTMENT_OUT";
-  const quantity = Math.abs(delta);
+  await minta<unknown>("/api/inventory/adjustments", {
+    method: "POST",
+    idempotensiKunci: buatKunciIdempotensi(),
+    body: {
+      productId: input.productId,
+      warehouseId,
+      direction: masuk ? "IN" : "OUT",
+      quantity: Math.abs(delta),
+      movementType: masuk ? "STOCK_ADJUSTMENT_IN" : "STOCK_ADJUSTMENT_OUT",
+      costingMethod: "AVERAGE",
+      ...(masuk ? { unitCost: target.purchasePrice } : {}),
+      reason: input.alasan || null,
+    },
+  });
 
-  // For inbound, we need a unit cost. Use current product's purchase price.
-  let unitCost: number | undefined;
-  if (direction === "IN") {
-    const products = await minta<BtProduk[]>("/api/products");
-    const product = products.find((p) => p.id === input.productId);
-    unitCost = product?.purchasePrice ?? 0;
-  }
-
-  await kirimForm("/api/inventory/adjustments", (() => {
-    const form = new FormData();
-    form.append("productId", input.productId);
-    form.append("warehouseId", defaultWarehouse.id);
-    form.append("direction", direction);
-    form.append("quantity", quantity.toString());
-    form.append("movementType", movementType);
-    form.append("costingMethod", "AVERAGE");
-    if (unitCost !== undefined) form.append("unitCost", unitCost.toString());
-    if (input.alasan) form.append("reason", input.alasan);
-    return form;
-  })(), buatKunciIdempotensi());
-
-  // Return updated product (simplified)
-  const products = await minta<BtProduk[]>("/api/products");
-  const updated = products.find((p) => p.id === input.productId);
-  if (!updated) throw new LiveApiError("Produk tidak ditemukan setelah penyesuaian.", 404);
-
-  return {
-    id: updated.id,
-    sku: updated.code,
-    barcode: updated.barcode ?? "",
-    nama: updated.name,
-    satuan: "", // would need unit lookup
-    kategori: updated.category ?? "",
-    hargaBeli: updated.purchasePrice,
-    hargaJual: updated.salePrice,
-    stok: input.stokFisik,
-    stokMinimum: updated.minimumStock,
-    status: updated.isActive ? "aktif" : "nonaktif",
-  };
+  const sesudah = await minta<BtStok>("/api/inventory/stock");
+  const stokBaru = new Map(sesudah.items.map((s) => [s.productId, s.quantity]));
+  return petakanProduk(target, new Map(satuan.map((u) => [u.id, u.name])), stokBaru);
 }
 
 export async function liveKonfirmasiDigital(nomor: string): Promise<TransaksiRiwayat> {
@@ -888,7 +864,10 @@ export async function liveBayarPiutang(input: {
   metode: "tunai" | "transfer";
 }): Promise<TransaksiRiwayat> {
   const actor = useAuth.getState().user?.id ?? ENGINE_APPROVER;
-  const cashAccountId = input.metode === "tunai" ? KODE.kas : KODE.bank;
+  const cashAccountId = await akunKasDefault(input.metode === "tunai" ? KODE.kas : KODE.bank);
+  // Engine menuntut id penjualan pada rute ini, sedangkan UI memegang nomor
+  // dokumen (SALE-00001), jadi nomornya harus diterjemahkan lebih dulu.
+  const penjualan = await cariPenjualanByNomor(input.nomor);
 
   const hasil = await minta<{
     paymentTransactionId: string;
@@ -900,7 +879,7 @@ export async function liveBayarPiutang(input: {
     allocationsCreated: number;
     journalIds: string[];
     approvalRequired: boolean;
-  }>(`/api/sales/${input.nomor}/payments`, {
+  }>(`/api/sales/${penjualan.id}/payments`, {
     method: "POST",
     idempotensiKunci: buatKunciIdempotensi(),
     body: {
@@ -912,7 +891,17 @@ export async function liveBayarPiutang(input: {
     },
   });
 
-  const piutangLama = Math.max(0, hasil.outstandingBefore);
+  // `outstandingAfter` dari engine mengabaikan DP yang sudah dibayar lewat
+  // batch penjualan (mis. total 6000, DP 1000, bayar 2000 -> engine bilang
+  // 4000 padahal sisanya 3000). Sisa yang benar hanya ada di AR ageing.
+  const ar = await minta<BtAging>("/api/reports/ar-ap/aging?side=RECEIVABLE").catch(
+    () => ({ invoices: [] }),
+  );
+  const nomor = penjualan.saleNumber ?? penjualan.id;
+  const sisaPiutang =
+    ar.invoices.find((i) => i.invoiceNumber === nomor)?.outstandingAmount ??
+    Math.max(0, hasil.outstandingAfter);
+
   return {
     nomor: hasil.paymentTransactionId,
     waktu: new Date().toISOString(),
@@ -923,8 +912,8 @@ export async function liveBayarPiutang(input: {
     pajak: 0,
     total: 0,
     kembalian: 0,
-    piutang: Math.max(0, piutangLama - hasil.amount),
-    status: hasil.outstandingAfter > 0 ? "dibayar_sebagian" : "lunas",
+    piutang: Math.max(0, sisaPiutang),
+    status: sisaPiutang > 0 ? "dibayar_sebagian" : "lunas",
     pembayaran: [{ metode: input.metode, nominal: hasil.amount }],
   };
 }
@@ -935,7 +924,7 @@ export async function liveBayarHutang(input: {
   metode: "tunai" | "transfer";
 }): Promise<Pembelian> {
   const actor = useAuth.getState().user?.id ?? ENGINE_APPROVER;
-  const cashAccountId = input.metode === "tunai" ? KODE.kas : KODE.bank;
+  const cashAccountId = await akunKasDefault(input.metode === "tunai" ? KODE.kas : KODE.bank);
 
   const hasil = await minta<{
     paymentTransactionId: string;
@@ -959,16 +948,31 @@ export async function liveBayarHutang(input: {
     },
   });
 
-  // Return minimal Pembelian with payment info embedded in metode field
+  // Sama seperti pelunasan piutang: `outstandingAfter` mengabaikan DP batch,
+  // dan `terbayar` bukan sekadar pembayaran terakhir — keduanya dihitung dari
+  // dokumen + AP ageing.
+  const [pembelian, ap] = await Promise.all([
+    minta<BtPembelian[]>(`/api/purchases?${rentangDaftar()}`),
+    minta<BtAging>("/api/reports/ar-ap/aging?side=PAYABLE").catch(() => ({
+      invoices: [],
+    })),
+  ]);
+  const dokumen = pembelian.find((p) => p.id === input.pembelianId);
+  const nomor = dokumen?.purchaseNumber ?? input.pembelianId;
+  const sisaHutang =
+    ap.invoices.find((i) => i.invoiceNumber === nomor)?.outstandingAmount ??
+    Math.max(0, hasil.outstandingAfter);
+  const total = dokumen?.totalAmount ?? 0;
+
   return {
     id: input.pembelianId,
-    nomor: hasil.paymentTransactionId,
-    waktu: new Date().toISOString(),
-    pemasok: "",
+    nomor,
+    waktu: dokumen?.purchaseDate ?? new Date().toISOString(),
+    pemasok: dokumen?.supplierId ?? "",
     items: [],
-    total: 0,
-    metode: "hutang",
-    terbayar: hasil.amount,
+    total,
+    metode: sisaHutang > 0 ? "hutang" : "tunai",
+    terbayar: Math.max(0, total - sisaHutang),
   };
 }
 
@@ -990,7 +994,16 @@ async function akunKasDefault(kodeAkun: string): Promise<string> {
   if (cocok) return cocok.id;
   const defaultKas = daftar.find((a) => a.isDefault && a.isActive);
   if (defaultKas) return defaultKas.id;
-  return engineBelumAda("Akun kas", "POST /api/cash-accounts");
+  const dibuat = await minta<BtAkunKas>("/api/cash-accounts", {
+    method: "POST",
+    body: {
+      name: `Kas ${kodeAkun}`,
+      accountCode: kodeAkun,
+      description: "Dibuat otomatis oleh POS",
+      isDefault: !daftar.some((a) => a.isDefault),
+    },
+  });
+  return dibuat.id;
 }
 
 function ringkasAlokasi(payload: CheckoutPayload): {
@@ -1067,6 +1080,16 @@ export async function liveCheckout(payload: CheckoutPayload): Promise<CheckoutRe
       400,
     );
   }
+  // Batch penjualan engine menolak pembayaran 0 (409 "A payment must be
+  // greater than zero"), jadi penjualan kredit tanpa uang muka tidak bisa
+  // lewat jalur kasir. Alur dokumen kredit butuh maker-checker (pembuat dan
+  // penyetuju harus dua akun berbeda) yang belum ada di POS.
+  if (dibayar <= 0) {
+    throw new LiveApiError(
+      "Penjualan kredit tanpa uang muka belum didukung mode live (engine menolak pembayaran 0). Isi nominal bayar minimal sebagian — sisanya otomatis tercatat sebagai piutang.",
+      400,
+    );
+  }
 
   const cashAccountId = await akunKasDefault(
     ringkasan.tunai > 0 ? KODE.kas : KODE.bank,
@@ -1127,13 +1150,21 @@ async function cariPelangganId(nama: string): Promise<string | null> {
 }
 
 export async function liveTransaksiRiwayat(): Promise<TransaksiRiwayat[]> {
-  const [penjualan, produk, pelanggan] = await Promise.all([
+  const [penjualan, produk, pelanggan, ar] = await Promise.all([
     minta<BtPenjualan[]>(`/api/sales?${rentangDaftar()}`),
     minta<BtProduk[]>("/api/products"),
     minta<BtPelanggan[]>("/api/customers"),
+    minta<BtAging>(
+      "/api/reports/ar-ap/aging?side=RECEIVABLE",
+    ).catch(() => ({ invoices: [] })),
   ]);
   const namaProduk = new Map(produk.map((p) => [p.id, p.name]));
   const namaPelanggan = new Map(pelanggan.map((c) => [c.id, c.name]));
+  // Dokumen penjualan tidak menyimpan sisa piutang; angka itu hanya ada di
+  // laporan AR ageing, jadi diambil sekali dan dipetakan lewat nomor dokumen.
+  const sisaPiutang = new Map(
+    ar.invoices.map((i) => [i.invoiceNumber, i.outstandingAmount]),
+  );
 
   const hasil: TransaksiRiwayat[] = [];
   for (const sale of penjualan) {
@@ -1143,15 +1174,21 @@ export async function liveTransaksiRiwayat(): Promise<TransaksiRiwayat[]> {
     } catch {
       transaksi = undefined;
     }
-    const status: TransaksiRiwayat["status"] =
-      sale.status === "VOIDED" || sale.status === "CANCELLED"
-        ? "dibatalkan"
-        : sale.status === "POSTED"
+    const nomor = sale.saleNumber ?? sale.id;
+    const dibatalkan = sale.status === "VOIDED" || sale.status === "CANCELLED";
+    const piutang = dibatalkan ? 0 : (sisaPiutang.get(nomor) ?? 0);
+    const status: TransaksiRiwayat["status"] = dibatalkan
+      ? "dibatalkan"
+      : sale.status !== "POSTED"
+        ? "menunggu_pembayaran"
+        : piutang <= 0
           ? "lunas"
-          : "menunggu_pembayaran";
+          : piutang >= sale.totalAmount
+            ? "menunggu_pembayaran"
+            : "dibayar_sebagian";
 
     hasil.push({
-      nomor: sale.saleNumber ?? sale.id,
+      nomor,
       waktu: sale.saleDate,
       kasir: transaksi?.requestedBy ?? "-",
       shiftId: "",
@@ -1166,7 +1203,7 @@ export async function liveTransaksiRiwayat(): Promise<TransaksiRiwayat[]> {
       pajak: sale.taxAmount,
       total: sale.totalAmount,
       kembalian: 0,
-      piutang: 0,
+      piutang,
       status,
     });
   }
@@ -1174,35 +1211,57 @@ export async function liveTransaksiRiwayat(): Promise<TransaksiRiwayat[]> {
 }
 
 export async function livePembelianList(): Promise<Pembelian[]> {
-  const [pembelian, produk, pemasok] = await Promise.all([
+  const [pembelian, produk, pemasok, ap] = await Promise.all([
     minta<BtPembelian[]>(`/api/purchases?${rentangDaftar()}`),
     minta<BtProduk[]>("/api/products"),
     minta<{ id: string; name: string }[]>("/api/suppliers"),
+    minta<BtAging>("/api/reports/ar-ap/aging?side=PAYABLE").catch(() => ({
+      invoices: [],
+    })),
   ]);
   const namaProduk = new Map(produk.map((p) => [p.id, p.name]));
   const namaPemasok = new Map(pemasok.map((s) => [s.id, s.name]));
+  // `payableAmount` pada dokumen adalah nilai hutang bruto, bukan sisa —
+  // sisa hutang yang sebenarnya hanya ada di laporan AP ageing.
+  const sisaHutang = new Map(
+    ap.invoices.map((i) => [i.invoiceNumber, i.outstandingAmount]),
+  );
 
-  return pembelian.map((p) => ({
-    id: p.id,
-    nomor: p.purchaseNumber ?? p.id,
-    pemasok: p.supplierId ? namaPemasok.get(p.supplierId) ?? p.supplierId : "-",
-    waktu: p.purchaseDate,
-    items: p.items.map((item) => ({
-      productId: item.productId,
-      nama: namaProduk.get(item.productId) ?? item.productId,
-      qty: item.quantity,
-      hargaBeli: item.unitCost,
-    })),
-    total: p.totalAmount,
-    metode: p.payableAmount >= p.totalAmount ? "hutang" : "tunai",
-    terbayar: p.totalAmount - p.payableAmount,
-  }));
+  return pembelian.map((p) => {
+    const nomor = p.purchaseNumber ?? p.id;
+    const outstanding = sisaHutang.get(nomor) ?? 0;
+    return {
+      id: p.id,
+      nomor,
+      pemasok: p.supplierId ? namaPemasok.get(p.supplierId) ?? p.supplierId : "-",
+      waktu: p.purchaseDate,
+      items: p.items.map((item) => ({
+        productId: item.productId,
+        nama: namaProduk.get(item.productId) ?? item.productId,
+        qty: item.quantity,
+        hargaBeli: item.unitCost,
+      })),
+      total: p.totalAmount,
+      metode: outstanding > 0 ? "hutang" : "tunai",
+      terbayar: Math.max(0, p.totalAmount - outstanding),
+    };
+  });
 }
 
 export async function livePembelianBuat(input: PembelianInput): Promise<Pembelian> {
   const gudang = await gudangDefault();
   const actor = useAuth.getState().user?.id ?? ENGINE_APPROVER;
   const total = input.items.reduce((sum, i) => sum + i.hargaBeli * i.qty, 0);
+
+  // Sama seperti penjualan: batch pembelian engine menolak pembayaran 0, dan
+  // alur dokumen kredit butuh penyetuju kedua. Jadi pembelian 100% hutang
+  // ditolak di sini dengan pesan yang jelas, bukan 409 berbahasa Inggris.
+  if (input.metode === "hutang") {
+    throw new LiveApiError(
+      "Pembelian 100% hutang belum didukung mode live (engine menolak pembayaran 0). Bayar minimal sebagian sebagai uang muka — sisanya tercatat sebagai hutang.",
+      400,
+    );
+  }
 
   const hasil = await minta<{
     documentId: string;
@@ -1216,7 +1275,7 @@ export async function livePembelianBuat(input: PembelianInput): Promise<Pembelia
       approvedBy: actor === ENGINE_APPROVER ? `${ENGINE_APPROVER}-otorisasi` : ENGINE_APPROVER,
       supplierId: null,
       cashAccountId: await akunKasDefault(input.metode === "bank" ? KODE.bank : KODE.kas),
-      paymentAmount: input.metode === "hutang" ? 0 : total,
+      paymentAmount: total,
       costingMethod: "AVERAGE",
       payableAccountCode: KODE.hutang,
       inventoryAccountCode: KODE.persediaan,
@@ -1238,8 +1297,8 @@ export async function livePembelianBuat(input: PembelianInput): Promise<Pembelia
     waktu: new Date().toISOString(),
     items: input.items,
     total: hasil.documentTotal,
-    metode: input.metode === "bank" ? "bank" : input.metode === "hutang" ? "hutang" : "tunai",
-    terbayar: input.metode === "hutang" ? 0 : hasil.documentTotal,
+    metode: input.metode === "bank" ? "bank" : "tunai",
+    terbayar: hasil.documentTotal,
   };
 }
 

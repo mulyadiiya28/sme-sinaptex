@@ -6,6 +6,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { LockKeyhole } from "lucide-react";
 import { NAV_GROUPS } from "@/lib/nav";
 import { useAuth } from "@/lib/store/auth";
+import { Skeleton } from "@/components/skeleton";
 
 export function AuthGuard({ children }: { children: React.ReactNode }) {
   const user = useAuth((s) => s.user);
@@ -32,7 +33,19 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
   }, [user, pathname, router]);
 
   if (!siap || !user) {
-    return <div className="grid min-h-screen place-items-center text-sm text-muted">Memuat sesi...</div>;
+    return (
+      <div className="grid min-h-screen place-items-center px-6">
+        <div className="w-full max-w-4xl space-y-3">
+          <Skeleton className="h-8 w-44" />
+          <Skeleton className="h-4 w-72" />
+          <div className="grid grid-cols-1 gap-4 pt-4 sm:grid-cols-3">
+            {Array.from({ length: 3 }).map((_, i) => (
+              <Skeleton key={i} className="h-24 rounded-3xl" />
+            ))}
+          </div>
+        </div>
+      </div>
+    );
   }
   return <>{children}</>;
 }

@@ -16,13 +16,13 @@ const DEFAULT: ProfilToko = {
 
 type TokoState = {
   profil: ProfilToko;
-  kebijakan: { izinkanKredit: boolean };
+  kebijakan: { izinkanKredit: boolean; saldoAwalShift: number };
   simpan: (p: ProfilToko) => void;
   simpanKebijakan: (k: TokoState["kebijakan"]) => void;
   reset: () => void;
 };
 
-const DEFAULT_KEBIJAKAN: TokoState["kebijakan"] = { izinkanKredit: true };
+const DEFAULT_KEBIJAKAN: TokoState["kebijakan"] = { izinkanKredit: true, saldoAwalShift: 0 };
 
 export const useToko = create<TokoState>()(
   persist(

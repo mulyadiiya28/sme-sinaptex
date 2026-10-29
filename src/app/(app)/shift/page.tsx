@@ -4,11 +4,14 @@ import { useState } from "react";
 import { ArrowDownCircle, ArrowUpCircle, DoorOpen, LogIn, ShieldCheck } from "lucide-react";
 import { PageHeader } from "@/components/page-header";
 import { FormField } from "@/components/form-field";
+import { KpiSkeleton, Skeleton, TableSkeleton } from "@/components/skeleton";
 import { StatusBadge } from "@/components/status-badge";
 import { KpiCard } from "@/components/kpi-card";
 import { MoneyDisplay } from "@/components/money-display";
 import { useActiveShift, useShiftMutations, useShiftRiwayat } from "@/hooks/queries";
 import type { ShiftMutasiInput } from "@/lib/api/types";
+import { useAuth } from "@/lib/store/auth";
+import { useToko } from "@/lib/store/toko";
 
 export default function ShiftPage() {
   const shift = useActiveShift();
@@ -19,15 +22,22 @@ export default function ShiftPage() {
     <div>
       <PageHeader
         title="Shift Kasir"
-        description="Buka shift dengan saldo awal, catat kas masuk/keluar, lalu tutup shift dan tinjau selisih."
+        description="Buka shift dengan kas awal di laci, catat kas masuk/keluar, lalu tutup shift dan tinjau selisih."
       />
 
       {shift.isLoading ? (
-        <p className="py-12 text-center text-sm text-muted">Memuat...</p>
+        <ShiftSkeleton />
       ) : shift.data ? (
         <PanelShiftAktif shift={shift.data} mutasiKas={mutasiKas} tutup={tutup} />
       ) : (
         <PanelBukaShift buka={buka} />
+      )}
+
+      {riwayat.isLoading && (
+        <div className="panel mt-6 p-5">
+          <Skeleton className="h-4 w-32" />
+          <TableSkeleton kolom={6} baris={3} className="mt-3 px-0" />
+        </div>
       )}
 
       {riwayat.data && riwayat.data.length > 0 && (
@@ -73,8 +83,9 @@ function PanelBukaShift({
 }: {
   buka: ReturnType<typeof useShiftMutations>["buka"];
 }) {
-  const [kasir, setKasir] = useState("");
-  const [saldoAwal, setSaldoAwal] = useState(200000);
+  const user = useAuth((s) => s.user);
+  const saldoDefault = useToko((s) => s.kebijakan.saldoAwalShift ?? 0);
+  const [saldoAwal, setSaldoAwal] = useState(saldoDefault);
   const [error, setError] = useState<string | null>(null);
 
   return (
@@ -83,22 +94,33 @@ function PanelBukaShift({
         <DoorOpen className="size-6" aria-hidden />
       </span>
       <h2 className="mt-3 text-center font-black text-brand">Buka Shift</h2>
-      <p className="text-center text-xs text-muted">Kasir perlu shift aktif sebelum bisa transaksi.</p>
+      <p className="text-center text-xs text-muted">
+        Hitung uang tunai di laci, lalu buka shift. Nama kasir mengikuti akun yang sedang masuk.
+      </p>
       <form
         className="mt-5 space-y-4"
         onSubmit={(e) => {
           e.preventDefault();
-          if (!kasir.trim()) return setError("Nama kasir wajib diisi.");
+          if (!user) return setError("Sesi berakhir — silakan masuk ulang.");
+          setError(null);
           buka.mutate(
-            { kasir, saldoAwal },
+            { kasir: user.nama, saldoAwal },
             { onError: (err) => setError(String(err)) },
           );
         }}
       >
-        <FormField label="Nama kasir" error={error}>
-          <input className="input" value={kasir} onChange={(e) => setKasir(e.target.value)} placeholder="cth. Andi" autoFocus />
+        <FormField label="Kasir bertugas">
+          <div className="input flex items-center justify-between bg-slate-50/80">
+            <span className="font-semibold text-ink">{user?.nama ?? "—"}</span>
+            <span className="text-[11px] text-muted">
+              @{user?.username} · {user?.role === "pemilik" ? "Pemilik" : "Kasir"}
+            </span>
+          </div>
         </FormField>
-        <FormField label="Saldo awal kas (Rp)">
+        <FormField
+          label="Kas awal di laci (Rp)"
+          hint="Diisi sesuai uang fisik yang benar-benar ada di laci saat shift mulai."
+        >
           <input
             type="number" min={0} className="input text-right tabular-nums"
             value={saldoAwal || ""} onChange={(e) => setSaldoAwal(Number(e.target.value))}
@@ -107,11 +129,30 @@ function PanelBukaShift({
         {error && (
           <p className="rounded-xl bg-rose-50 px-3 py-2 text-xs text-rose-700">{error}</p>
         )}
-        <button type="submit" className="btn-primary w-full" disabled={buka.isPending}>
+        <button type="submit" className="btn-primary w-full" disabled={buka.isPending || !user}>
           <LogIn className="size-4" aria-hidden />
           {buka.isPending ? "Membuka..." : "Buka Shift"}
         </button>
       </form>
+    </div>
+  );
+}
+
+function ShiftSkeleton() {
+  return (
+    <div>
+      <KpiSkeleton kolom={3} />
+      <div className="mt-6 grid grid-cols-1 gap-4 xl:grid-cols-2">
+        {Array.from({ length: 2 }).map((_, i) => (
+          <div key={i} className="panel space-y-3 p-5">
+            <Skeleton className="h-4 w-32" />
+            <Skeleton className="h-3 w-56" />
+            <Skeleton className="h-11 w-full rounded-xl" />
+            <Skeleton className="h-11 w-full rounded-xl" />
+            <Skeleton className="h-10 w-28 rounded-xl" />
+          </div>
+        ))}
+      </div>
     </div>
   );
 }

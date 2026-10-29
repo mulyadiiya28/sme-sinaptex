@@ -420,6 +420,21 @@ function KebijakanOperasional() {
       <p className="mt-1.5 text-xs text-muted">
         Bila nonaktif, kasir harus melunasi seluruh sisa — kotak piutang di dialog pembayaran terkunci. Di live, kebijakan ini divalidasi ulang oleh engine C#.
       </p>
+
+      <div className="mt-5 border-t border-line pt-4">
+        <p className="text-sm font-semibold text-ink">Kas awal laci saat buka shift</p>
+        <div className="mt-2 max-w-48">
+          <FormField label="Nilai default (Rp)" hint="Kasir tetap menyesuaikan dengan uang fisik di laci.">
+            <input
+              type="number"
+              min={0}
+              className="input text-right tabular-nums"
+              value={kebijakan.saldoAwalShift ?? 0}
+              onChange={(e) => simpanKebijakan({ ...kebijakan, saldoAwalShift: Number(e.target.value) })}
+            />
+          </FormField>
+        </div>
+      </div>
     </div>
   );
 }
@@ -544,14 +559,14 @@ function PanelKeamanan() {
         )}
         {error && <p className="mb-3 rounded-xl bg-rose-50 px-3 py-2 text-xs text-rose-700">{error}</p>}
         {sukses && <p className="mb-3 rounded-xl bg-emerald-50 px-3 py-2 text-xs text-emerald-700">{sukses}</p>}
-        <DataTable columns={kolomUser} rows={users.data ?? []} rowKey={(r) => r.id} empty="Belum ada pengguna." />
+        <DataTable columns={kolomUser} rows={users.data ?? []} rowKey={(r) => r.id} loading={users.isLoading} empty="Belum ada pengguna." />
         <p className="mt-3 px-1 text-xs text-muted">
           Password disimpan oleh engine; di live, tambah/ubah/hapus pengguna tetap lewat API C# dengan audit log.
         </p>
       </div>
       <div className="panel p-4">
         <h2 className="mb-3 px-1 text-sm font-bold text-brand">Audit log sesi</h2>
-        <DataTable columns={kolomAudit} rows={audit.data ?? []} rowKey={(r) => r.id} empty="Belum ada aktivitas tercatat." />
+        <DataTable columns={kolomAudit} rows={audit.data ?? []} rowKey={(r) => r.id} loading={audit.isLoading} empty="Belum ada aktivitas tercatat." />
       </div>
 
       {targetUbah && (

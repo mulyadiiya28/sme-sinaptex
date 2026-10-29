@@ -124,12 +124,16 @@ export default function ProdukPage() {
           </div>
         </div>
 
-        {products.isLoading ? (
-          <p className="py-12 text-center text-sm text-muted">Memuat produk...</p>
-        ) : products.isError ? (
+        {products.isError ? (
           <p className="py-12 text-center text-sm text-rose-600">Gagal memuat produk.</p>
         ) : (
-          <DataTable columns={columns} rows={filtered} empty="Produk tidak ditemukan." className="mt-2" />
+          <DataTable
+            columns={columns}
+            rows={filtered}
+            loading={products.isLoading}
+            empty="Produk tidak ditemukan."
+            className="mt-2"
+          />
         )}
       </div>
 

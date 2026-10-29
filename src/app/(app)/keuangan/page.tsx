@@ -8,6 +8,7 @@ import { FormField } from "@/components/form-field";
 import { KpiCard } from "@/components/kpi-card";
 import { MoneyDisplay } from "@/components/money-display";
 import { PageHeader } from "@/components/page-header";
+import { KpiSkeleton } from "@/components/skeleton";
 import { StatusBadge } from "@/components/status-badge";
 import { useAuth } from "@/lib/store/auth";
 import {
@@ -79,21 +80,26 @@ function PanelKas() {
   const transaksiValid = (riwayat.data ?? []).filter((t) => t.status !== "dibatalkan");
   const totalPiutang = transaksiValid.reduce((s, t) => s + t.piutang, 0);
   const menunggu = transaksiValid.filter((t) => t.status === "menunggu_pembayaran");
+  const memuat = shift.isLoading || biaya.isLoading || pembelian.isLoading || riwayat.isLoading;
 
   return (
     <div>
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <KpiCard
-          label="Kas tunai (sistem)"
-          value={shift.data ? <MoneyDisplay value={tunai} /> : <span className="text-sm text-muted">Belum ada shift</span>}
-          hint={shift.data ? `Shift ${shift.data.id}` : "Buka shift di menu Shift Kasir"}
-          tone="emerald"
-          icon={<Wallet className="size-4" aria-hidden />}
-        />
-        <KpiCard label="Total piutang" value={<MoneyDisplay value={totalPiutang} />} hint="Penjualan kredit belum lunas" tone="violet" />
-        <KpiCard label="Total hutang" value={<MoneyDisplay value={totalHutang} />} hint="Kepada pemasok" tone="rose" />
-        <KpiCard label="Biaya tercatat" value={<MoneyDisplay value={(biaya.data ?? []).reduce((s, b) => s + b.nominal, 0)} />} hint={`Bulan ini · transfer ${new Intl.NumberFormat("id-ID").format(biayaTransfer)}`} tone="navy" />
-      </div>
+      {memuat ? (
+        <KpiSkeleton />
+      ) : (
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          <KpiCard
+            label="Kas tunai (sistem)"
+            value={shift.data ? <MoneyDisplay value={tunai} /> : <span className="text-sm text-muted">Belum ada shift</span>}
+            hint={shift.data ? `Shift ${shift.data.id}` : "Buka shift di menu Shift Kasir"}
+            tone="emerald"
+            icon={<Wallet className="size-4" aria-hidden />}
+          />
+          <KpiCard label="Total piutang" value={<MoneyDisplay value={totalPiutang} />} hint="Penjualan kredit belum lunas" tone="violet" />
+          <KpiCard label="Total hutang" value={<MoneyDisplay value={totalHutang} />} hint="Kepada pemasok" tone="rose" />
+          <KpiCard label="Biaya tercatat" value={<MoneyDisplay value={(biaya.data ?? []).reduce((s, b) => s + b.nominal, 0)} />} hint={`Bulan ini · transfer ${new Intl.NumberFormat("id-ID").format(biayaTransfer)}`} tone="navy" />
+        </div>
+      )}
 
       <div className="panel mt-4 p-5">
         <div className="flex items-center justify-between">
@@ -238,7 +244,7 @@ function PanelBiaya() {
         </form>
       </div>
       <div className="panel p-4 xl:col-span-2">
-        <DataTable columns={columns} rows={biaya.data ?? []} rowKey={(r) => r.id} empty="Belum ada biaya tercatat." />
+        <DataTable columns={columns} rows={biaya.data ?? []} rowKey={(r) => r.id} loading={biaya.isLoading} empty="Belum ada biaya tercatat." />
       </div>
     </div>
   );
@@ -265,7 +271,7 @@ function PanelPiutang() {
 
   return (
     <div className="panel p-4">
-      <DataTable columns={columns} rows={daftar} rowKey={(r) => r.nomor} empty="Tidak ada piutang — semua penjualan kredit lunas." />
+      <DataTable columns={columns} rows={daftar} rowKey={(r) => r.nomor} loading={riwayat.isLoading} empty="Tidak ada piutang — semua penjualan kredit lunas." />
       {target && (
         <BayarDialog
           judul={`Pelunasan piutang ${target.nomor}`}
@@ -303,7 +309,7 @@ function PanelHutang() {
 
   return (
     <div className="panel p-4">
-      <DataTable columns={columns} rows={hutang} rowKey={(r) => r.id} empty="Tidak ada hutang ke pemasok." />
+      <DataTable columns={columns} rows={hutang} rowKey={(r) => r.id} loading={pembelian.isLoading} empty="Tidak ada hutang ke pemasok." />
       {target && (
         <BayarDialog
           judul={`Pelunasan hutang ${target.nomor}`}

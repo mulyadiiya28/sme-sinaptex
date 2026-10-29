@@ -7,6 +7,7 @@ import { DataTable, type Column } from "@/components/data-table";
 import { KpiCard } from "@/components/kpi-card";
 import { MoneyDisplay } from "@/components/money-display";
 import { PageHeader } from "@/components/page-header";
+import { KpiSkeleton, ListSkeleton, Skeleton, TableSkeleton } from "@/components/skeleton";
 import { StatusBadge } from "@/components/status-badge";
 import { useAkun, useJurnal, useLabaRugi } from "@/hooks/queries";
 import { cn } from "@/lib/utils";
@@ -77,6 +78,7 @@ function PanelAkun() {
         columns={columns}
         rows={rows}
         rowKey={(r) => r.akun}
+        loading={akun.isLoading}
         empty="Belum ada saldo akun."
       />
       <div className="mt-3 flex justify-end gap-6 border-t border-line px-3 pt-3 text-sm font-bold">
@@ -94,6 +96,8 @@ function PanelAkun() {
 function PanelJurnal() {
   const jurnal = useJurnal();
   const entries = jurnal.data ?? [];
+
+  if (jurnal.isLoading) return <ListSkeleton baris={4} />;
 
   return (
     <div className="space-y-3">
@@ -172,6 +176,15 @@ function PanelBukuBesar() {
     return { ...b, saldo: saldoBerjalan };
   });
 
+  if (akun.isLoading || jurnal.isLoading) {
+    return (
+      <div className="panel p-4">
+        <Skeleton className="h-4 w-32" />
+        <TableSkeleton kolom={6} baris={5} className="mt-3 px-0" />
+      </div>
+    );
+  }
+
   return (
     <div className="panel p-4">
       <div className="mb-3 flex flex-wrap items-end gap-3 px-1">
@@ -221,6 +234,20 @@ function PanelBukuBesar() {
 function PanelLabaRugi() {
   const lr = useLabaRugi();
   const data: LabaRugi | undefined = lr.data;
+
+  if (lr.isLoading) {
+    return (
+      <div className="space-y-4">
+        <KpiSkeleton />
+        <div className="panel space-y-2.5 p-5">
+          <Skeleton className="h-4 w-28" />
+          {Array.from({ length: 5 }).map((_, i) => (
+            <Skeleton key={i} className="h-4 w-full" />
+          ))}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-4">

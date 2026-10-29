@@ -5,6 +5,7 @@ import { AlertTriangle, Calculator, Store, TrendingUp, Wallet } from "lucide-rea
 import { PageHeader } from "@/components/page-header";
 import { KpiCard } from "@/components/kpi-card";
 import { MoneyDisplay } from "@/components/money-display";
+import { KpiSkeleton, Skeleton } from "@/components/skeleton";
 import { StatusBadge } from "@/components/status-badge";
 import { useActiveShift, useProducts, useRiwayatTransaksi } from "@/hooks/queries";
 import type { TransaksiRiwayat } from "@/lib/api/types";
@@ -15,7 +16,7 @@ export default function DashboardPage() {
   const riwayat = useRiwayatTransaksi();
 
   if (products.isLoading || riwayat.isLoading) {
-    return <p className="py-16 text-center text-sm text-muted">Memuat dashboard...</p>;
+    return <DashboardSkeleton />;
   }
 
   const hari = new Date().toISOString().slice(0, 10);
@@ -30,7 +31,7 @@ export default function DashboardPage() {
     <div>
       <PageHeader
         title="Dashboard"
-        description="Gambaran kesehatan usaha dalam satu layar — dihitung dari transaksi nyata (mock engine)."
+        description="Gambaran kesehatan usaha dalam satu layar — dihitung dari transaksi nyata."
         actions={
           <Link href="/kasir" className="btn-accent">
             <Calculator className="size-4" aria-hidden />
@@ -115,6 +116,43 @@ export default function DashboardPage() {
               </p>
             </li>
           </ul>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function DashboardSkeleton() {
+  return (
+    <div>
+      <PageHeader
+        title="Dashboard"
+        description="Gambaran kesehatan usaha dalam satu layar — dihitung dari transaksi nyata."
+        actions={<Skeleton className="h-10 w-32 rounded-xl" />}
+      />
+      <KpiSkeleton />
+      <div className="mt-6 grid grid-cols-1 gap-4 xl:grid-cols-3">
+        <div className="panel col-span-2 p-5">
+          <Skeleton className="h-4 w-40" />
+          <div className="mt-5 space-y-4">
+            {Array.from({ length: 5 }).map((_, i) => (
+              <div key={i} className="flex items-center justify-between gap-3">
+                <div className="flex-1 space-y-2">
+                  <Skeleton className="h-4 w-2/3" />
+                  <Skeleton className="h-3 w-1/3" />
+                </div>
+                <Skeleton className="h-6 w-24" />
+              </div>
+            ))}
+          </div>
+        </div>
+        <div className="panel p-5">
+          <Skeleton className="h-4 w-24" />
+          <div className="mt-4 space-y-3">
+            {Array.from({ length: 3 }).map((_, i) => (
+              <Skeleton key={i} className="h-16 rounded-2xl" />
+            ))}
+          </div>
         </div>
       </div>
     </div>

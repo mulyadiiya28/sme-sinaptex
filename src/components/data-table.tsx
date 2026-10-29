@@ -1,3 +1,4 @@
+import { Skeleton } from "@/components/skeleton";
 import { cn } from "@/lib/utils";
 
 export type Column<T> = {
@@ -13,12 +14,16 @@ export function DataTable<T extends object>({
   rows,
   rowKey,
   empty = "Tidak ada data.",
+  loading = false,
+  skeletonRows = 6,
   className,
 }: {
   columns: Array<Column<T>>;
   rows: T[];
   rowKey?: (row: T) => string;
   empty?: string;
+  loading?: boolean;
+  skeletonRows?: number;
   className?: string;
 }) {
   return (
@@ -41,7 +46,31 @@ export function DataTable<T extends object>({
           </tr>
         </thead>
         <tbody>
-          {rows.length === 0 ? (
+          {loading ? (
+            Array.from({ length: skeletonRows }).map((_, r) => (
+              <tr key={`skeleton-${r}`} className="border-b border-line/60 last:border-0">
+                {columns.map((col) => (
+                  <td
+                    key={col.key}
+                    className={cn(
+                      "px-4 py-3.5",
+                      col.align === "right" && "text-right",
+                      col.align === "center" && "text-center",
+                    )}
+                  >
+                    <Skeleton
+                      className={cn(
+                        "h-4",
+                        col.align === "right" && "ml-auto w-20",
+                        col.align === "center" && "mx-auto w-12",
+                        !col.align && "w-full max-w-[70%]",
+                      )}
+                    />
+                  </td>
+                ))}
+              </tr>
+            ))
+          ) : rows.length === 0 ? (
             <tr>
               <td colSpan={columns.length} className="px-4 py-10 text-center text-muted">
                 {empty}

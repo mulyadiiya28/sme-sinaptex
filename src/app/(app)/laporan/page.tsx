@@ -8,6 +8,7 @@ import { FormField } from "@/components/form-field";
 import { KpiCard } from "@/components/kpi-card";
 import { MoneyDisplay } from "@/components/money-display";
 import { PageHeader } from "@/components/page-header";
+import { KpiSkeleton } from "@/components/skeleton";
 import { useProducts, useRiwayatTransaksi } from "@/hooks/queries";
 
 type PenjualanHarian = { tanggal: string; jumlah: number; omzet: number };
@@ -33,6 +34,7 @@ export default function LaporanPage() {
   const omzetTotal = transaksi.reduce((s, t) => s + t.total, 0);
   const nilaiPersediaan = daftarProduk.reduce((s, p) => s + p.stok * p.hargaBeli, 0);
   const perHarian = agregasiHarian(transaksi);
+  const memuat = riwayat.isLoading || products.isLoading;
 
   const kolomHarian: Column<PenjualanHarian>[] = [
     { key: "tanggal", header: "Tanggal", render: (r) => <span className="font-medium">{r.tanggal}</span> },
@@ -85,37 +87,55 @@ export default function LaporanPage() {
           <Download className="size-4" aria-hidden /> Ekspor CSV
         </button>
       </div>
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-        <KpiCard
-          label="Omzet total"
-          value={<MoneyDisplay value={omzetTotal} />}
-          hint={`${transaksi.length} transaksi`}
-          tone="navy"
-          icon={<TrendingUp className="size-4" aria-hidden />}
-        />
-        <KpiCard
-          label="Nilai persediaan"
-          value={<MoneyDisplay value={nilaiPersediaan} />}
-          hint={`${daftarProduk.length} produk aktif`}
-          tone="violet"
-          icon={<Warehouse className="size-4" aria-hidden />}
-        />
-        <KpiCard
-          label="Rata-rata per transaksi"
-          value={<MoneyDisplay value={transaksi.length ? Math.round(omzetTotal / transaksi.length) : 0} />}
-          tone="emerald"
-          icon={<Store className="size-4" aria-hidden />}
-        />
-      </div>
+      {memuat ? (
+        <KpiSkeleton kolom={3} />
+      ) : (
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+          <KpiCard
+            label="Omzet total"
+            value={<MoneyDisplay value={omzetTotal} />}
+            hint={`${transaksi.length} transaksi`}
+            tone="navy"
+            icon={<TrendingUp className="size-4" aria-hidden />}
+          />
+          <KpiCard
+            label="Nilai persediaan"
+            value={<MoneyDisplay value={nilaiPersediaan} />}
+            hint={`${daftarProduk.length} produk aktif`}
+            tone="violet"
+            icon={<Warehouse className="size-4" aria-hidden />}
+          />
+          <KpiCard
+            label="Rata-rata per transaksi"
+            value={<MoneyDisplay value={transaksi.length ? Math.round(omzetTotal / transaksi.length) : 0} />}
+            tone="emerald"
+            icon={<Store className="size-4" aria-hidden />}
+          />
+        </div>
+      )}
 
       <div className="mt-4 grid grid-cols-1 gap-4 xl:grid-cols-2">
         <div className="panel p-4">
           <h2 className="mb-3 px-1 text-sm font-bold text-brand">Penjualan per hari</h2>
-          <DataTable columns={kolomHarian} rows={perHarian} rowKey={(r) => r.tanggal} empty="Belum ada penjualan." />
+          <DataTable
+            columns={kolomHarian}
+            rows={perHarian}
+            rowKey={(r) => r.tanggal}
+            loading={memuat}
+            skeletonRows={4}
+            empty="Belum ada penjualan."
+          />
         </div>
         <div className="panel p-4">
           <h2 className="mb-3 px-1 text-sm font-bold text-brand">Nilai persediaan (stok × harga beli)</h2>
-          <DataTable columns={kolomPersediaan} rows={daftarProduk} rowKey={(r) => r.id} empty="Belum ada produk." />
+          <DataTable
+            columns={kolomPersediaan}
+            rows={daftarProduk}
+            rowKey={(r) => r.id}
+            loading={memuat}
+            skeletonRows={4}
+            empty="Belum ada produk."
+          />
         </div>
       </div>
     </div>

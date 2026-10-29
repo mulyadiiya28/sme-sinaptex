@@ -22,10 +22,7 @@ export default function LoginPage() {
     try {
       const sesi = await api.auth.login(un, pw);
       setSession(sesi);
-      // Otomatisasi: buka shift bagi kasir setelah login
-      if (sesi.user.role === "kasir") {
-        await api.shift.buka({ kasir: sesi.user.nama, saldoAwal: 1_500_000 });
-      }
+      // Shift dibuka sendiri oleh kasir di menu Shift (kas awal dihitung dari laci).
       router.replace(sesi.user.role === "kasir" ? "/kasir" : "/");
     } catch (err) {
       setError(String(err instanceof Error ? err.message : err));
@@ -84,7 +81,7 @@ export default function LoginPage() {
           </form>
 
           <div className="mt-6 rounded-xl bg-brand/5 p-4 text-xs text-muted">
-            <p className="font-bold text-brand">Akun demo (mock)</p>
+            <p className="font-bold text-brand">Akun demo</p>
             <div className="mt-2 grid grid-cols-1 gap-1.5">
               {(
                 [
