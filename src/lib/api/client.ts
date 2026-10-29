@@ -32,20 +32,30 @@ import type {
 import { mockDb, produkBaruId } from "@/lib/api/mock/db";
 import {
   engineBelumAda,
+  fileCsvPelangganDariBaris,
   fileCsvProdukDariBaris,
+  fileCsvSaldoAwalDariBaris,
   liveAkun,
+  liveAuditLog,
+  liveBayarHutang,
+  liveBayarPiutang,
   liveBiayaCatat,
   liveBiayaList,
   liveBuatUser,
   liveCheckout,
   liveCreateProduct,
   liveDeleteProduct,
+  liveHapusUser,
+  liveImporPelanggan,
   liveImporProduk,
+  liveImporSaldoAwal,
   liveJurnal,
+  liveKonfirmasiDigital,
   liveLabaRugi,
   liveLogin,
   liveLogout,
   livePelanggan,
+  livePenyesuaianStok,
   livePembelianBuat,
   livePembelianList,
   liveProducts,
@@ -57,7 +67,9 @@ import {
   liveShiftRiwayat,
   liveShiftTutup,
   liveTransaksiRiwayat,
+  liveUbahUser,
   liveUpdateProduct,
+  liveUsers,
   liveVoidTransaksi,
 } from "@/lib/api/live";
 
@@ -96,12 +108,12 @@ export const api = {
       mockDb.logout(user);
     },
     users: async (): Promise<User[]> => {
-      if (API_MODE === "live") return engineBelumAda("Daftar pengguna", "GET /api/users");
+      if (API_MODE === "live") return liveUsers();
       await delay(120);
       return mockDb.users.map(({ password: _, ...u }) => u);
     },
     auditList: async (): Promise<AuditEntry[]> => {
-      if (API_MODE === "live") return engineBelumAda("Jejak audit", "GET /api/audit-log");
+      if (API_MODE === "live") return liveAuditLog();
       await delay(120);
       return structuredClone(mockDb.auditLog).reverse();
     },
@@ -111,12 +123,12 @@ export const api = {
       return mockDb.buatUser(input, actor);
     },
     ubahUser: async (id: string, input: { password?: string; role?: User["role"] }, actor: User): Promise<User> => {
-      if (API_MODE === "live") return engineBelumAda("Perubahan pengguna", "PUT /api/users/{id}");
+      if (API_MODE === "live") return liveUbahUser(id, input);
       await delay(300);
       return mockDb.ubahUser(id, input, actor);
     },
     hapusUser: async (id: string, actor: User): Promise<void> => {
-      if (API_MODE === "live") return engineBelumAda("Penghapusan pengguna", "DELETE /api/users/{id}");
+      if (API_MODE === "live") return liveHapusUser(id);
       await delay(250);
       mockDb.hapusUser(id, actor);
     },
@@ -139,7 +151,7 @@ export const api = {
       return structuredClone(baru);
     },
     penyesuaianStok: async (input: PenyesuaianStokInput, user: User): Promise<Product> => {
-      if (API_MODE === "live") return engineBelumAda("Penyesuaian stok", "POST /api/inventory/adjustments");
+      if (API_MODE === "live") return livePenyesuaianStok(input);
       await delay(300);
       return mockDb.penyesuaianStok(input, user);
     },
@@ -167,13 +179,13 @@ export const api = {
     },
 
     imporPelanggan: async (rows: ImporPelangganBaris[], user: User): Promise<HasilImpor> => {
-      if (API_MODE === "live") return engineBelumAda("Impor pelanggan", "POST /api/customers/import");
+      if (API_MODE === "live") return keHasilImpor(await liveImporPelanggan(fileCsvPelangganDariBaris(rows)));
       await delay(500);
       return mockDb.imporPelanggan(rows, user);
     },
 
     imporSaldoAwal: async (rows: ImporSaldoAwalBaris[], user: User): Promise<HasilImpor> => {
-      if (API_MODE === "live") return engineBelumAda("Impor saldo awal", "POST /api/accounts/opening-balances");
+      if (API_MODE === "live") return keHasilImpor(await liveImporSaldoAwal(fileCsvSaldoAwalDariBaris(rows)));
       await delay(500);
       return mockDb.imporSaldoAwal(rows, user);
     },
@@ -236,7 +248,7 @@ export const api = {
 
   hutang: {
     bayar: async (pembelianId: string, nominal: number, metode: "tunai" | "transfer"): Promise<Pembelian> => {
-      if (API_MODE === "live") return engineBelumAda("Pelunasan hutang", "POST /api/purchases/{id}/payments");
+      if (API_MODE === "live") return liveBayarHutang({ pembelianId, nominal, metode });
       await delay(350);
       return mockDb.bayarHutang(pembelianId, nominal, metode);
     },
@@ -244,7 +256,7 @@ export const api = {
 
   piutang: {
     bayar: async (nomor: string, nominal: number, metode: "tunai" | "transfer"): Promise<TransaksiRiwayat> => {
-      if (API_MODE === "live") return engineBelumAda("Pelunasan piutang", "POST /api/sales/{id}/payments");
+      if (API_MODE === "live") return liveBayarPiutang({ nomor, nominal, metode });
       await delay(350);
       return mockDb.bayarPiutang(nomor, nominal, metode);
     },
@@ -407,7 +419,7 @@ export const api = {
     },
 
     konfirmasiDigital: async (nomor: string, user: User): Promise<TransaksiRiwayat> => {
-      if (API_MODE === "live") return engineBelumAda("Konfirmasi pembayaran digital", "POST /api/transactions/{id}/confirm-payment");
+      if (API_MODE === "live") return liveKonfirmasiDigital(nomor);
       await delay(300);
       return mockDb.konfirmasiDigital(nomor, user);
     },

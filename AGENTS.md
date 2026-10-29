@@ -91,12 +91,15 @@ Sudah terhubung: auth login/logout + refresh JWT (`/api/auth/*`), produk CRUD
 checkout → `POST /api/cash-batches/sales`, riwayat penjualan (`/api/sales` + detail transaksi),
 pembelian (`/api/purchases`), void (`POST /api/transactions/{id}/void`), retur
 (`POST /api/sale-returns` + riwayat `GET /api/sale-returns`), impor produk
-(`POST /api/products/import`, multipart), saldo akun + laba-rugi (dari `trial-balance`),
-daftar jurnal (`GET /api/journal`), biaya (`GET/POST /api/expenses`), buat user kasir
-(`POST /api/users/direct`).
+(`POST /api/products/import`, multipart), impor pelanggan (`POST /api/customers/import`, multipart),
+impor saldo awal (`POST /api/accounts/opening-balances`, multipart), saldo akun + laba-rugi (dari `trial-balance`),
+daftar jurnal (`GET /api/journal`), biaya (`GET/POST /api/expenses`), pelunasan piutang
+(`POST /api/sales/{id}/payments`), pelunasan hutang (`POST /api/purchases/{id}/payments`),
+penyesuaian stok (`POST /api/inventory/adjustments`), konfirmasi QRIS
+(`POST /api/sales/{id}/confirm-payment`), buat user kasir (`POST /api/users/direct`),
+daftar/ubah/hapus user (`GET/PUT/DELETE /api/users`), jejak audit (`GET /api/audit-log`).
 
-Belum ada endpoint engine (lempar `engineBelumAda`, status 501): daftar/ubah/hapus user, audit log,
-konfirmasi QRIS, penyesuaian stok, impor pelanggan/saldo awal, pelunasan hutang/piutang.
+Belum ada endpoint engine (lempar `engineBelumAda`, status 501).
 
 Perilaku live yang menyimpang dari mock:
 

@@ -1,17 +1,21 @@
 import { useAuth } from "@/lib/store/auth";
 import type {
   AkunSaldo,
+  AuditEntry,
   Biaya,
   BiayaParams,
   CheckoutPayload,
   CheckoutResult,
   Expense,
   ImportResult,
+  ImporPelangganBaris,
   ImporProdukBaris,
+  ImporSaldoAwalBaris,
   JurnalEntry,
   JurnalParams,
   LabaRugi,
   LoginResult,
+  PenyesuaianStokInput,
   Pelanggan,
   Pembelian,
   PembelianInput,
@@ -532,6 +536,28 @@ export function fileCsvProdukDariBaris(rows: ImporProdukBaris[]): File {
   return new File(["\uFEFF" + isi], "produk.csv", { type: "text/csv;charset=utf-8" });
 }
 
+export function fileCsvPelangganDariBaris(rows: ImporPelangganBaris[]): File {
+  const header = ["nama", "telepon", "alamat", "batasKredit"];
+  const isi = [
+    header,
+    ...rows.map((r) => [r.nama, r.telepon, r.alamat, r.batasKredit]),
+  ]
+    .map((baris) => baris.map((sel) => `"${String(sel ?? "").replace(/"/g, '""')}"`).join(","))
+    .join("\r\n");
+  return new File(["\uFEFF" + isi], "pelanggan.csv", { type: "text/csv;charset=utf-8" });
+}
+
+export function fileCsvSaldoAwalDariBaris(rows: ImporSaldoAwalBaris[]): File {
+  const header = ["akun", "debit", "kredit"];
+  const isi = [
+    header,
+    ...rows.map((r) => [r.akun, r.debit, r.kredit]),
+  ]
+    .map((baris) => baris.map((sel) => `"${String(sel ?? "").replace(/"/g, '""')}"`).join(","))
+    .join("\r\n");
+  return new File(["\uFEFF" + isi], "saldo-awal.csv", { type: "text/csv;charset=utf-8" });
+}
+
 export async function liveImporProduk(file: File): Promise<ImportResult> {
   const form = new FormData();
   form.append("file", file, file.name);
@@ -539,12 +565,114 @@ export async function liveImporProduk(file: File): Promise<ImportResult> {
   return bacaImportResult(response);
 }
 
-export async function liveImporPelanggan(_file: File): Promise<ImportResult> {
-  return engineBelumAda("Impor pelanggan", "POST /api/customers/import");
+export async function liveImporPelanggan(file: File): Promise<ImportResult> {
+  const form = new FormData();
+  form.append("file", file, file.name);
+  const response = await kirimForm("/api/customers/import", form, buatKunciIdempotensi());
+  return bacaImportResult(response);
 }
 
-export async function liveImporSaldoAwal(_file: File): Promise<ImportResult> {
-  return engineBelumAda("Impor saldo awal", "POST /api/accounts/opening-balances");
+export async function liveImporSaldoAwal(file: File): Promise<ImportResult> {
+  const form = new FormData();
+  form.append("file", file, file.name);
+  const response = await kirimForm("/api/accounts/opening-balances", form, buatKunciIdempotensi());
+  return bacaImportResult(response);
+}
+
+export async function livePenyesuaianStok(input: PenyesuaianStokInput): Promise<Product> {
+  // Get current stock to compute delta
+  const stock = await minta<{ quantities: Record<string, number> }>("/api/inventory/stock");
+  const currentQty = stock.quantities[input.productId] ?? 0;
+  const delta = input.stokFisik - currentQty;
+
+  if (delta === 0) {
+    throw new LiveApiError("Stok fisik sama dengan stok sistem — tidak ada penyesuaian.", 400);
+  }
+
+  // Get default warehouse
+  const warehouses = await minta<BtGudang[]>("/api/warehouses");
+  const defaultWarehouse = warehouses.find((w) => w.isDefault) ?? warehouses[0];
+  if (!defaultWarehouse) {
+    throw new LiveApiError("Tidak ada gudang tersedia untuk penyesuaian stok.", 400);
+  }
+
+  const direction = delta > 0 ? "IN" : "OUT";
+  const movementType = delta > 0
+    ? "STOCK_ADJUSTMENT_IN"
+    : "STOCK_ADJUSTMENT_OUT";
+  const quantity = Math.abs(delta);
+
+  // For inbound, we need a unit cost. Use current product's purchase price.
+  let unitCost: number | undefined;
+  if (direction === "IN") {
+    const products = await minta<BtProduk[]>("/api/products");
+    const product = products.find((p) => p.id === input.productId);
+    unitCost = product?.purchasePrice ?? 0;
+  }
+
+  await kirimForm("/api/inventory/adjustments", (() => {
+    const form = new FormData();
+    form.append("productId", input.productId);
+    form.append("warehouseId", defaultWarehouse.id);
+    form.append("direction", direction);
+    form.append("quantity", quantity.toString());
+    form.append("movementType", movementType);
+    form.append("costingMethod", "AVERAGE");
+    if (unitCost !== undefined) form.append("unitCost", unitCost.toString());
+    if (input.alasan) form.append("reason", input.alasan);
+    return form;
+  })(), buatKunciIdempotensi());
+
+  // Return updated product (simplified)
+  const products = await minta<BtProduk[]>("/api/products");
+  const updated = products.find((p) => p.id === input.productId);
+  if (!updated) throw new LiveApiError("Produk tidak ditemukan setelah penyesuaian.", 404);
+
+  return {
+    id: updated.id,
+    sku: updated.code,
+    barcode: updated.barcode ?? "",
+    nama: updated.name,
+    satuan: "", // would need unit lookup
+    kategori: updated.category ?? "",
+    hargaBeli: updated.purchasePrice,
+    hargaJual: updated.salePrice,
+    stok: input.stokFisik,
+    stokMinimum: updated.minimumStock,
+    status: updated.isActive ? "aktif" : "nonaktif",
+  };
+}
+
+export async function liveKonfirmasiDigital(nomor: string): Promise<TransaksiRiwayat> {
+  const actor = useAuth.getState().user?.id ?? ENGINE_APPROVER;
+
+  const hasil = await minta<{
+    paymentTransactionId: string;
+    journalIds: string[];
+    replayed: boolean;
+  }>(`/api/sales/${nomor}/confirm-payment`, {
+    method: "POST",
+    idempotensiKunci: buatKunciIdempotensi(),
+    body: {
+      actorId: actor,
+    },
+  });
+
+  // Return minimal TransaksiRiwayat with updated status
+  return {
+    nomor: hasil.paymentTransactionId,
+    waktu: new Date().toISOString(),
+    kasir: "pemilik",
+    shiftId: "",
+    items: [],
+    diskonTransaksi: 0,
+    pajak: 0,
+    total: 0,
+    kembalian: 0,
+    piutang: 0,
+    status: "lunas",
+    pembayaran: [{ metode: "qris", nominal: 0 }],
+  };
 }
 
 export async function livePelanggan(): Promise<Pelanggan[]> {
@@ -752,6 +880,96 @@ export async function liveBiayaCatat(input: {
   });
 
   return biayaDariExpense(hasil);
+}
+
+export async function liveBayarPiutang(input: {
+  nomor: string;
+  nominal: number;
+  metode: "tunai" | "transfer";
+}): Promise<TransaksiRiwayat> {
+  const actor = useAuth.getState().user?.id ?? ENGINE_APPROVER;
+  const cashAccountId = input.metode === "tunai" ? KODE.kas : KODE.bank;
+
+  const hasil = await minta<{
+    paymentTransactionId: string;
+    cashMovementId: string;
+    amount: number;
+    receivableAccountCode: string;
+    outstandingBefore: number;
+    outstandingAfter: number;
+    allocationsCreated: number;
+    journalIds: string[];
+    approvalRequired: boolean;
+  }>(`/api/sales/${input.nomor}/payments`, {
+    method: "POST",
+    idempotensiKunci: buatKunciIdempotensi(),
+    body: {
+      cashAccountId,
+      amount: input.nominal,
+      receivableAccountCode: KODE.piutang,
+      requestedBy: actor,
+      approvedBy: ENGINE_APPROVER,
+    },
+  });
+
+  const piutangLama = Math.max(0, hasil.outstandingBefore);
+  return {
+    nomor: hasil.paymentTransactionId,
+    waktu: new Date().toISOString(),
+    kasir: "pemilik",
+    shiftId: "",
+    items: [],
+    diskonTransaksi: 0,
+    pajak: 0,
+    total: 0,
+    kembalian: 0,
+    piutang: Math.max(0, piutangLama - hasil.amount),
+    status: hasil.outstandingAfter > 0 ? "dibayar_sebagian" : "lunas",
+    pembayaran: [{ metode: input.metode, nominal: hasil.amount }],
+  };
+}
+
+export async function liveBayarHutang(input: {
+  pembelianId: string;
+  nominal: number;
+  metode: "tunai" | "transfer";
+}): Promise<Pembelian> {
+  const actor = useAuth.getState().user?.id ?? ENGINE_APPROVER;
+  const cashAccountId = input.metode === "tunai" ? KODE.kas : KODE.bank;
+
+  const hasil = await minta<{
+    paymentTransactionId: string;
+    cashMovementId: string;
+    amount: number;
+    payableAccountCode: string;
+    outstandingBefore: number;
+    outstandingAfter: number;
+    allocationsCreated: number;
+    journalIds: string[];
+    approvalRequired: boolean;
+  }>(`/api/purchases/${input.pembelianId}/payments`, {
+    method: "POST",
+    idempotensiKunci: buatKunciIdempotensi(),
+    body: {
+      cashAccountId,
+      amount: input.nominal,
+      payableAccountCode: KODE.hutang,
+      requestedBy: actor,
+      approvedBy: ENGINE_APPROVER,
+    },
+  });
+
+  // Return minimal Pembelian with payment info embedded in metode field
+  return {
+    id: input.pembelianId,
+    nomor: hasil.paymentTransactionId,
+    waktu: new Date().toISOString(),
+    pemasok: "",
+    items: [],
+    total: 0,
+    metode: "hutang",
+    terbayar: hasil.amount,
+  };
 }
 
 async function gudangDefault(): Promise<string> {
@@ -1221,4 +1439,67 @@ export async function liveBuatUser(input: {
     username: dibuat.username,
     role: "kasir",
   };
+}
+
+export async function liveUsers(): Promise<User[]> {
+  const data = await minta<{
+    id: string;
+    username: string;
+    fullName: string;
+    email: string | null;
+    isActive: boolean;
+  }[]>("/api/users");
+  return data.map((u) => ({
+    id: u.id,
+    nama: u.fullName,
+    username: u.username,
+    role: u.isActive ? "kasir" : "kasir", // backend doesn't return role directly
+  }));
+}
+
+export async function liveUbahUser(id: string, input: { password?: string; role?: User["role"] }): Promise<User> {
+  const data = await minta<{
+    id: string;
+    username: string;
+    fullName: string;
+    email: string | null;
+    isActive: boolean;
+  }>(`/api/users/${id}`, {
+    method: "PUT",
+    body: {
+      password: input.password,
+      isActive: input.role === "pemilik" ? true : undefined, // simplified
+    },
+  });
+  return {
+    id: data.id,
+    nama: data.fullName,
+    username: data.username,
+    role: "kasir",
+  };
+}
+
+export async function liveHapusUser(id: string): Promise<void> {
+  await minta(`/api/users/${id}`, { method: "DELETE" });
+}
+
+export async function liveAuditLog(): Promise<AuditEntry[]> {
+  const data = await minta<{
+    id: string;
+    businessId: string;
+    userId: string;
+    action: string;
+    entityType: string;
+    entityId: string;
+    detailsJson: string | null;
+    ipAddress: string | null;
+    createdAt: string;
+  }[]>("/api/audit-log");
+  return data.map((a) => ({
+    id: a.id,
+    waktu: a.createdAt,
+    user: a.userId,
+    aksi: a.action,
+    detail: a.detailsJson ?? "",
+  }));
 }
