@@ -5,9 +5,11 @@ import type {
   ImporPelangganBaris,
   ImporProdukBaris,
   ImporSaldoAwalBaris,
+  NeracaParams,
   PembelianInput,
   PenyesuaianStokInput,
   Product,
+  ProfilPerusahaan,
   ReturInput,
   ShiftBukaInput,
   ShiftMutasiInput,
@@ -50,8 +52,27 @@ export function useJurnal() {
   return useQuery({ queryKey: ["jurnal"], queryFn: () => api.akuntansi.jurnal() });
 }
 
-export function useAkun() {
-  return useQuery({ queryKey: ["akun"], queryFn: api.akuntansi.akun });
+export function useAkun(params: NeracaParams = {}) {
+  return useQuery({
+    queryKey: ["akun", params.from ?? "", params.to ?? ""],
+    queryFn: () => api.akuntansi.akun(params),
+  });
+}
+
+export function useProfilPerusahaan() {
+  return useQuery({ queryKey: ["profil-perusahaan"], queryFn: api.pengaturan.profil });
+}
+
+export function usePengaturanMutations() {
+  const qc = useQueryClient();
+  const simpanProfil = useMutation({
+    mutationFn: (input: ProfilPerusahaan) => api.pengaturan.simpanProfil(input),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["profil-perusahaan"] });
+    },
+  });
+
+  return { simpanProfil };
 }
 
 export function useLabaRugi() {

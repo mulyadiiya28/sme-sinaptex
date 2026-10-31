@@ -48,6 +48,7 @@ export type CheckoutResult = {
 
 export type ShiftInfo = {
   id: string;
+  cashierUserId: string;
   kasir: string;
   mulai: string;
   saldoAwal: number;
@@ -70,6 +71,7 @@ export type ShiftMutasiInput = {
 };
 
 export type ShiftBukaInput = {
+  cashierUserId?: string;
   kasir: string;
   saldoAwal: number;
 };
@@ -227,7 +229,21 @@ export type JurnalParams = {
   to?: string;
 };
 
-export type AkunSaldo = { akun: string; debit: number; kredit: number; saldo: number };
+export type AkunSaldo = {
+  akun: string;
+  kode: string;
+  nama: string;
+  saldoAwal: number;
+  debit: number;
+  kredit: number;
+  saldo: number;
+  saldoAkhir: number;
+};
+
+export type NeracaParams = {
+  from?: string;
+  to?: string;
+};
 
 export type LabaRugi = {
   pendapatan: number;
@@ -266,10 +282,24 @@ export type ProfilToko = {
   nama: string;
   alamat: string;
   telepon: string;
+  email?: string;
+  website?: string;
+  npwp?: string;
+  logoUrl?: string;
   mataUang: string;
   zonaWaktu: string;
   footerStruk: string;
   pajakPersen?: number;
+};
+
+export type ProfilPerusahaan = {
+  nama: string;
+  alamat: string;
+  telepon: string;
+  email: string;
+  website: string;
+  npwp: string;
+  logoUrl: string;
 };
 
 export type Pelanggan = {

@@ -342,6 +342,7 @@ export const mockDb = {
     const sesi = d.getHours() < 15 ? "AM" : "PM";
     this.shiftAktif = {
       id: `SH-${tanggal}-${sesi}`,
+      cashierUserId: input.cashierUserId ?? "",
       kasir: input.kasir,
       mulai: d.toISOString(),
       saldoAwal: input.saldoAwal,
@@ -709,20 +710,48 @@ export const mockDb = {
     return structuredClone(biaya);
   },
 
-  akunSaldos(): Array<{ akun: string; debit: number; kredit: number; saldo: number }> {
-    const map = new Map<string, { debit: number; kredit: number }>();
-    for (const akun of DAFTAR_AKUN) map.set(akun, { debit: 0, kredit: 0 });
+  akunSaldos(params: { from?: string; to?: string } = {}): Array<{
+    akun: string;
+    kode: string;
+    nama: string;
+    saldoAwal: number;
+    debit: number;
+    kredit: number;
+    saldo: number;
+    saldoAkhir: number;
+  }> {
+    const map = new Map<string, { awal: number; debit: number; kredit: number }>();
+    for (const akun of DAFTAR_AKUN) map.set(akun, { awal: 0, debit: 0, kredit: 0 });
+    const from = params.from ? new Date(params.from).getTime() : Number.NEGATIVE_INFINITY;
+    // Tanggal akhir dipakai sampai akhir hari itu: jurnal pada jam 23:00 masih
+    // bagian dari hari yang dipilih, bukan hari berikutnya.
+    const to = params.to
+      ? new Date(params.to).getTime() + 24 * 60 * 60 * 1000 - 1
+      : Number.POSITIVE_INFINITY;
     for (const j of this.jurnal) {
+      const waktu = new Date(j.waktu).getTime();
       for (const b of j.baris) {
-        const cur = map.get(b.akun) ?? { debit: 0, kredit: 0 };
-        cur.debit += b.debit;
-        cur.kredit += b.kredit;
+        const cur = map.get(b.akun) ?? { awal: 0, debit: 0, kredit: 0 };
+        if (waktu < from) cur.awal += b.debit - b.kredit;
+        else if (waktu <= to) {
+          cur.debit += b.debit;
+          cur.kredit += b.kredit;
+        }
         map.set(b.akun, cur);
       }
     }
     return DAFTAR_AKUN.map((akun) => {
-      const { debit, kredit } = map.get(akun)!;
-      return { akun, debit, kredit, saldo: debit - kredit };
+      const { awal, debit, kredit } = map.get(akun)!;
+      return {
+        akun,
+        kode: "",
+        nama: akun,
+        saldoAwal: awal,
+        debit,
+        kredit,
+        saldo: debit - kredit,
+        saldoAkhir: awal + debit - kredit,
+      };
     });
   },
 

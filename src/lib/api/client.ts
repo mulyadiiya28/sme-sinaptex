@@ -1,4 +1,5 @@
 import type {
+  AkunSaldo,
   AuditEntry,
   Biaya,
   BiayaParams,
@@ -13,12 +14,14 @@ import type {
   JurnalParams,
   LabaRugi,
   LoginResult,
+  NeracaParams,
   PaymentMethod,
   Pelanggan,
   Pembelian,
   PembelianInput,
   PenyesuaianStokInput,
   Product,
+  ProfilPerusahaan,
   ReturInput,
   ReturPenjualan,
   ReturRiwayatParams,
@@ -30,6 +33,7 @@ import type {
   User,
 } from "@/lib/api/types";
 import { mockDb, produkBaruId } from "@/lib/api/mock/db";
+import { useToko } from "@/lib/store/toko";
 import {
   fileCsvPelangganDariBaris,
   fileCsvProdukDariBaris,
@@ -58,6 +62,7 @@ import {
   livePembelianBuat,
   livePembelianList,
   liveProducts,
+  liveProfilPerusahaan,
   liveRetur,
   liveReturRiwayat,
   liveShiftAktif,
@@ -65,6 +70,7 @@ import {
   liveShiftMutasi,
   liveShiftRiwayat,
   liveShiftTutup,
+  liveSimpanProfilPerusahaan,
   liveTransaksiRiwayat,
   liveUbahUser,
   liveUpdateProduct,
@@ -274,16 +280,49 @@ export const api = {
     },
   },
 
+  pengaturan: {
+    profil: async (): Promise<ProfilPerusahaan> => {
+      if (API_MODE === "live") return liveProfilPerusahaan();
+      await delay(120);
+      const profil = useToko.getState().profil;
+      return {
+        nama: profil.nama,
+        alamat: profil.alamat,
+        telepon: profil.telepon,
+        email: profil.email ?? "",
+        website: profil.website ?? "",
+        npwp: profil.npwp ?? "",
+        logoUrl: profil.logoUrl ?? "",
+      };
+    },
+    simpanProfil: async (input: ProfilPerusahaan): Promise<ProfilPerusahaan> => {
+      if (API_MODE === "live") return liveSimpanProfilPerusahaan(input);
+      await delay(150);
+      const store = useToko.getState();
+      store.simpan({
+        ...store.profil,
+        nama: input.nama,
+        alamat: input.alamat,
+        telepon: input.telepon,
+        email: input.email,
+        website: input.website,
+        npwp: input.npwp,
+        logoUrl: input.logoUrl,
+      });
+      return input;
+    },
+  },
+
   akuntansi: {
     jurnal: async (params?: JurnalParams): Promise<JurnalEntry[]> => {
       if (API_MODE === "live") return liveJurnal(params);
       await delay(120);
       return structuredClone(mockDb.jurnal);
     },
-    akun: async (): Promise<ReturnType<typeof mockDb.akunSaldos>> => {
-      if (API_MODE === "live") return liveAkun();
+    akun: async (params: NeracaParams = {}): Promise<AkunSaldo[]> => {
+      if (API_MODE === "live") return liveAkun(params);
       await delay(120);
-      return structuredClone(mockDb.akunSaldos());
+      return structuredClone(mockDb.akunSaldos(params));
     },
     labaRugi: async (): Promise<LabaRugi> => {
       if (API_MODE === "live") return liveLabaRugi();

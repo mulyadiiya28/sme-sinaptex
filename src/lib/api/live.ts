@@ -15,11 +15,13 @@ import type {
   JurnalParams,
   LabaRugi,
   LoginResult,
+  NeracaParams,
   PenyesuaianStokInput,
   Pelanggan,
   Pembelian,
   PembelianInput,
   Product,
+  ProfilPerusahaan,
   ReturInput,
   ReturPenjualan,
   ReturRiwayatParams,
@@ -274,6 +276,7 @@ type BtSatuan = { id: string; code: string; name: string; isActive: boolean };
 type BtStok = { warehouseId: string | null; items: { productId: string; quantity: number }[] };
 type BtShift = {
   id: string;
+  cashierUserId: string;
   kasir: string;
   mulai: string;
   saldoAwal: number;
@@ -294,12 +297,25 @@ type BtPelanggan = {
   isActive: boolean;
 };
 type BtItem = { productId: string; quantity: number; unitPrice: number; lineTotal: number };
+type BtDetailPenjualan = {
+  id: string;
+  items: {
+    id: string;
+    productId: string;
+    warehouseId: string;
+    quantity: number;
+    unitPrice: number;
+  }[];
+};
 type BtPenjualan = {
   id: string;
   businessTransactionId: string;
   customerId: string | null;
   saleNumber: string | null;
   saleDate: string;
+  description: string | null;
+  requestedBy: string;
+  requestedByName: string | null;
   status: string;
   totalAmount: number;
   taxAmount: number;
@@ -338,6 +354,8 @@ type BtAkun = {
   totalDebit: number;
   totalCredit: number;
   balance: number;
+  openingBalance: number;
+  closingBalance: number;
 };
 type BtNeraca = {
   fromDate: string;
@@ -347,6 +365,15 @@ type BtNeraca = {
   grandTotalCredit: number;
   grandTotalBalance: number;
   isBalanced: boolean;
+};
+type BtProfil = {
+  companyName: string;
+  address: string;
+  phone: string;
+  email: string;
+  website: string;
+  taxNumber: string;
+  logoUrl: string;
 };
 type BtAkunKas = {
   id: string;
@@ -622,11 +649,15 @@ export async function livePenyesuaianStok(input: PenyesuaianStokInput): Promise<
 export async function liveKonfirmasiDigital(nomor: string): Promise<TransaksiRiwayat> {
   const actor = useAuth.getState().user?.id ?? ENGINE_APPROVER;
 
-  const hasil = await minta<{
+  // Rute engine memakai ID penjualan, sedangkan POS menyimpan nomor dokumen
+  // (SALE-00001). Nomor diterjemahkan dulu supaya endpointnya tidak 404.
+  const sale = await cariPenjualanByNomor(nomor);
+
+  await minta<{
     paymentTransactionId: string;
     journalIds: string[];
     replayed: boolean;
-  }>(`/api/sales/${nomor}/confirm-payment`, {
+  }>(`/api/sales/${sale.id}/confirm-payment`, {
     method: "POST",
     idempotensiKunci: buatKunciIdempotensi(),
     body: {
@@ -634,21 +665,20 @@ export async function liveKonfirmasiDigital(nomor: string): Promise<TransaksiRiw
     },
   });
 
-  // Return minimal TransaksiRiwayat with updated status
-  return {
-    nomor: hasil.paymentTransactionId,
-    waktu: new Date().toISOString(),
-    kasir: "pemilik",
-    shiftId: "",
-    items: [],
-    diskonTransaksi: 0,
-    pajak: 0,
-    total: 0,
-    kembalian: 0,
-    piutang: 0,
-    status: "lunas",
-    pembayaran: [{ metode: "qris", nominal: 0 }],
-  };
+  // Setelah konfirmasi, transaksi dikembalikan apa adanya: total, item, dan
+  // kasir diambil dari dokumen, bukan dari objek kosong.
+  const [produk, pelanggan] = await Promise.all([
+    minta<BtProduk[]>("/api/products"),
+    minta<BtPelanggan[]>("/api/customers"),
+  ]);
+
+  return petakanPenjualan(
+    sale,
+    new Map(produk.map((p) => [p.id, p.name])),
+    new Map(pelanggan.map((c) => [c.id, c.name])),
+    0,
+    "lunas",
+  );
 }
 
 export async function livePelanggan(): Promise<Pelanggan[]> {
@@ -668,6 +698,7 @@ function petakanShift(s: BtShift): ShiftInfo {
   );
   return {
     id: s.id,
+    cashierUserId: s.cashierUserId ?? "",
     kasir: s.kasir,
     mulai: s.mulai,
     saldoAwal: s.saldoAwal,
@@ -675,6 +706,51 @@ function petakanShift(s: BtShift): ShiftInfo {
     kasKeluar: s.kasKeluar,
     penjualanTunai,
     kasTunaiSistem: s.kasTunaiSistem,
+  };
+}
+
+/**
+ * POS menulis deskripsi batch sebagai "Kasir <nama> · shift <id>". Dokumen
+ * penjualan tidak punya field shift, jadi id-nya dibaca dari sana — deskripsi
+ * itu ditulis oleh POS sendiri, bukan teks bebas pengguna.
+ */
+function shiftDariDeskripsi(deskripsi: string | null | undefined): string {
+  const cocok = /shift\s+([^\s·]+)/i.exec(deskripsi ?? "");
+  return cocok?.[1] ?? "";
+}
+
+/**
+ * Satu bentuk untuk satu dokumen penjualan.
+ *
+ * Riwayat, void, dan konfirmasi digital semuanya membaca dokumen yang sama,
+ * jadi pemetaannya ditulis sekali — kalau tidak, tiap jalur bisa menampilkan
+ * versi yang berbeda dari transaksi yang sama.
+ */
+function petakanPenjualan(
+  sale: BtPenjualan,
+  namaProduk: Map<string, string>,
+  namaPelanggan: Map<string, string>,
+  piutang: number,
+  status: TransaksiRiwayat["status"],
+): TransaksiRiwayat {
+  return {
+    nomor: sale.saleNumber ?? sale.id,
+    waktu: sale.saleDate,
+    kasir: sale.requestedByName ?? "-",
+    shiftId: shiftDariDeskripsi(sale.description),
+    pelanggan: sale.customerId ? namaPelanggan.get(sale.customerId) : undefined,
+    items: sale.items.map((item) => ({
+      nama: namaProduk.get(item.productId) ?? item.productId,
+      qty: item.quantity,
+      hargaJual: item.unitPrice,
+      diskon: 0,
+    })),
+    diskonTransaksi: 0,
+    pajak: sale.taxAmount,
+    total: sale.totalAmount,
+    kembalian: 0,
+    piutang,
+    status,
   };
 }
 
@@ -696,7 +772,11 @@ export async function liveShiftRiwayat(): Promise<ShiftRiwayat[]> {
 export async function liveShiftBuka(input: ShiftBukaInput): Promise<ShiftInfo> {
   const shift = await minta<BtShift>("/api/shifts", {
     method: "POST",
-    body: { kasir: input.kasir, saldoAwal: input.saldoAwal },
+    body: {
+      cashierUserId: input.cashierUserId ?? "",
+      kasir: input.kasir,
+      saldoAwal: input.saldoAwal,
+    },
   });
   return petakanShift(shift);
 }
@@ -728,15 +808,23 @@ export async function liveShiftTutup(
   };
 }
 
-export async function liveAkun(): Promise<AkunSaldo[]> {
+export async function liveAkun(params: NeracaParams = {}): Promise<AkunSaldo[]> {
+  const query = new URLSearchParams({
+    fromDate: params.from || "1900-01-01",
+    toDate: params.to || "2999-12-31",
+  });
   const neraca = await minta<BtNeraca>(
-    `/api/reports/trial-balance?fromDate=1900-01-01&toDate=2999-12-31`,
+    `/api/reports/trial-balance?${query.toString()}`,
   );
   return neraca.accounts.map((a) => ({
     akun: `${a.accountCode} ${a.accountName}`,
+    kode: a.accountCode,
+    nama: a.accountName,
+    saldoAwal: a.openingBalance,
     debit: a.totalDebit,
     kredit: a.totalCredit,
     saldo: a.balance,
+    saldoAkhir: a.closingBalance,
   }));
 }
 
@@ -1168,12 +1256,6 @@ export async function liveTransaksiRiwayat(): Promise<TransaksiRiwayat[]> {
 
   const hasil: TransaksiRiwayat[] = [];
   for (const sale of penjualan) {
-    let transaksi: BtTransaksi | undefined;
-    try {
-      transaksi = await minta<BtTransaksi>(`/api/transactions/${sale.businessTransactionId}`);
-    } catch {
-      transaksi = undefined;
-    }
     const nomor = sale.saleNumber ?? sale.id;
     const dibatalkan = sale.status === "VOIDED" || sale.status === "CANCELLED";
     const piutang = dibatalkan ? 0 : (sisaPiutang.get(nomor) ?? 0);
@@ -1187,25 +1269,15 @@ export async function liveTransaksiRiwayat(): Promise<TransaksiRiwayat[]> {
             ? "menunggu_pembayaran"
             : "dibayar_sebagian";
 
-    hasil.push({
-      nomor,
-      waktu: sale.saleDate,
-      kasir: transaksi?.requestedBy ?? "-",
-      shiftId: "",
-      pelanggan: sale.customerId ? namaPelanggan.get(sale.customerId) : undefined,
-      items: sale.items.map((item) => ({
-        nama: namaProduk.get(item.productId) ?? item.productId,
-        qty: item.quantity,
-        hargaJual: item.unitPrice,
-        diskon: 0,
-      })),
-      diskonTransaksi: 0,
-      pajak: sale.taxAmount,
-      total: sale.totalAmount,
-      kembalian: 0,
-      piutang,
-      status,
-    });
+    hasil.push(
+      petakanPenjualan(
+        sale,
+        namaProduk,
+        namaPelanggan,
+        piutang,
+        status,
+      ),
+    );
   }
   return hasil;
 }
@@ -1342,25 +1414,13 @@ export async function liveVoidTransaksi(nomor: string): Promise<TransaksiRiwayat
     });
   }
 
-  return {
-    nomor: sale.saleNumber ?? sale.id,
-    waktu: sale.saleDate,
-    kasir: "-",
-    shiftId: "",
-    pelanggan: sale.customerId ? namaPelanggan.get(sale.customerId) : undefined,
-    items: sale.items.map((item) => ({
-      nama: namaProduk.get(item.productId) ?? item.productId,
-      qty: item.quantity,
-      hargaJual: item.unitPrice,
-      diskon: 0,
-    })),
-    diskonTransaksi: 0,
-    pajak: sale.taxAmount,
-    total: sale.totalAmount,
-    kembalian: 0,
-    piutang: 0,
-    status: "dibatalkan",
-  };
+  return petakanPenjualan(
+    sale,
+    namaProduk,
+    namaPelanggan,
+    0,
+    "dibatalkan",
+  );
 }
 
 type BtRetur = {
@@ -1376,16 +1436,7 @@ export async function liveRetur(input: ReturInput): Promise<ReturPenjualan> {
   const sale = await cariPenjualanByNomor(input.referensi);
   const [produk, detail] = await Promise.all([
     minta<BtProduk[]>("/api/products"),
-    minta<{
-      id: string;
-      items: {
-        id: string;
-        productId: string;
-        warehouseId: string;
-        quantity: number;
-        unitPrice: number;
-      }[];
-    }>(`/api/sales/${sale.id}`),
+    minta<BtDetailPenjualan>(`/api/sales/${sale.id}`),
   ]);
   const namaProduk = new Map(produk.map((p) => [p.id, p.name]));
   const gudang = detail.items[0]?.warehouseId ?? (await gudangDefault());
@@ -1439,6 +1490,14 @@ export async function liveRetur(input: ReturInput): Promise<ReturPenjualan> {
   };
 }
 
+type BtDetailRetur = {
+  id: string;
+  saleReturnNumber: string | null;
+  description: string | null;
+  totalAmount: number;
+  items: { id: string; saleItemId: string; quantity: number }[];
+};
+
 export async function liveReturRiwayat(
   params: ReturRiwayatParams = {},
 ): Promise<ReturPenjualan[]> {
@@ -1452,18 +1511,63 @@ export async function liveReturRiwayat(
   const rows = await minta<SaleReturn[]>(
     `/api/sale-returns${qs ? `?${qs}` : ""}`,
   );
+  if (rows.length === 0) return [];
 
-  return rows.map((row) => ({
-    id: row.id,
-    nomor: row.documentNumber ?? row.id,
-    referensi: row.saleId,
-    waktu: row.createdAt,
-    items: [],
-    total: row.totalAmount,
-    alasan: "",
-    pelanggan: row.customerName ?? undefined,
-    status: row.status,
-  }));
+  // Daftar retur dari engine hanya memuat angka: nama item dan alasannya ada
+  // di dokumennya. Satu halaman dibatasi 20 baris, jadi detailnya diambil
+  // paralel — satu permintaan per retur, plus satu per penjualan asal.
+  const [produk, penjualan] = await Promise.all([
+    minta<BtProduk[]>("/api/products"),
+    minta<BtPenjualan[]>(`/api/sales?${rentangDaftar()}`),
+  ]);
+  const namaProduk = new Map(produk.map((p) => [p.id, p.name]));
+  const nomorPenjualan = new Map(
+    penjualan.map((s) => [s.id, s.saleNumber ?? s.id]),
+  );
+
+  const cacheDetail = new Map<string, Promise<BtDetailPenjualan | null>>();
+  const detailPenjualan = (id: string): Promise<BtDetailPenjualan | null> => {
+    let ada = cacheDetail.get(id);
+    if (!ada) {
+      ada = minta<BtDetailPenjualan>(`/api/sales/${id}`).catch(() => null);
+      cacheDetail.set(id, ada);
+    }
+    return ada;
+  };
+
+  const detailRetur = await Promise.all(
+    rows.map((row) =>
+      minta<BtDetailRetur>(`/api/sale-returns/${row.id}`).catch(() => null),
+    ),
+  );
+
+  const hasil: ReturPenjualan[] = [];
+  for (let i = 0; i < rows.length; i += 1) {
+    const row = rows[i];
+    const detail = detailRetur[i];
+    const asal = detail ? await detailPenjualan(row.saleId) : null;
+    const itemAsal = new Map((asal?.items ?? []).map((it) => [it.id, it]));
+
+    hasil.push({
+      id: row.id,
+      nomor: detail?.saleReturnNumber ?? row.documentNumber ?? row.id,
+      referensi: nomorPenjualan.get(row.saleId) ?? row.saleId,
+      waktu: row.createdAt,
+      items: (detail?.items ?? []).map((it) => {
+        const asalItem = itemAsal.get(it.saleItemId);
+        return {
+          nama: asalItem ? namaProduk.get(asalItem.productId) ?? asalItem.productId : "-",
+          qty: it.quantity,
+          hargaJual: asalItem?.unitPrice ?? 0,
+        };
+      }),
+      total: row.totalAmount,
+      alasan: detail?.description ?? "",
+      pelanggan: row.customerName ?? undefined,
+      status: row.status,
+    });
+  }
+  return hasil;
 }
 
 export async function liveBuatUser(input: {
@@ -1472,31 +1576,28 @@ export async function liveBuatUser(input: {
   password: string;
   role: User["role"];
 }): Promise<User> {
-  if (input.role === "pemilik") {
-    throw new LiveApiError(
-      "Engine C# belum bisa membuat peran pemilik lewat API — endpoint POST /api/users/direct hanya menerima kasir.",
-      501,
-    );
-  }
   const dibuat = await minta<{
     id: string;
     username: string;
     fullName: string;
     email: string | null;
     isActive: boolean;
+    authorityLevel: number;
   }>("/api/users/direct", {
     method: "POST",
     body: {
       username: input.username,
       email: `${input.username}@${BUSINESS_ID}.local`,
       password: input.password,
+      fullName: input.nama,
+      authorityLevel: input.role === "pemilik" ? 99 : 2,
     },
   });
   return {
     id: dibuat.id,
     nama: dibuat.fullName || input.nama,
     username: dibuat.username,
-    role: "kasir",
+    role: (dibuat.authorityLevel ?? 2) >= 90 ? "pemilik" : "kasir",
   };
 }
 
@@ -1507,12 +1608,13 @@ export async function liveUsers(): Promise<User[]> {
     fullName: string;
     email: string | null;
     isActive: boolean;
+    authorityLevel: number;
   }[]>("/api/users");
   return data.map((u) => ({
     id: u.id,
     nama: u.fullName,
     username: u.username,
-    role: u.isActive ? "kasir" : "kasir", // backend doesn't return role directly
+    role: (u.authorityLevel ?? 2) >= 90 ? "pemilik" : "kasir",
   }));
 }
 
@@ -1523,18 +1625,19 @@ export async function liveUbahUser(id: string, input: { password?: string; role?
     fullName: string;
     email: string | null;
     isActive: boolean;
+    authorityLevel: number;
   }>(`/api/users/${id}`, {
     method: "PUT",
     body: {
       password: input.password,
-      isActive: input.role === "pemilik" ? true : undefined, // simplified
+      authorityLevel: input.role === undefined ? undefined : input.role === "pemilik" ? 99 : 2,
     },
   });
   return {
     id: data.id,
     nama: data.fullName,
     username: data.username,
-    role: "kasir",
+    role: (data.authorityLevel ?? 2) >= 90 ? "pemilik" : "kasir",
   };
 }
 
@@ -1561,4 +1664,43 @@ export async function liveAuditLog(): Promise<AuditEntry[]> {
     aksi: a.action,
     detail: a.detailsJson ?? "",
   }));
+}
+
+export async function liveProfilPerusahaan(): Promise<ProfilPerusahaan> {
+  const p = await minta<BtProfil>("/api/settings/company-profile");
+  return {
+    nama: p.companyName ?? "",
+    alamat: p.address ?? "",
+    telepon: p.phone ?? "",
+    email: p.email ?? "",
+    website: p.website ?? "",
+    npwp: p.taxNumber ?? "",
+    logoUrl: p.logoUrl ?? "",
+  };
+}
+
+export async function liveSimpanProfilPerusahaan(
+  input: ProfilPerusahaan,
+): Promise<ProfilPerusahaan> {
+  const p = await minta<BtProfil>("/api/settings/company-profile", {
+    method: "PUT",
+    body: {
+      companyName: input.nama,
+      address: input.alamat,
+      phone: input.telepon,
+      email: input.email,
+      website: input.website,
+      taxNumber: input.npwp,
+      logoUrl: input.logoUrl,
+    },
+  });
+  return {
+    nama: p.companyName ?? "",
+    alamat: p.address ?? "",
+    telepon: p.phone ?? "",
+    email: p.email ?? "",
+    website: p.website ?? "",
+    npwp: p.taxNumber ?? "",
+    logoUrl: p.logoUrl ?? "",
+  };
 }
