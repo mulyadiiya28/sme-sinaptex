@@ -111,9 +111,12 @@ Perilaku live yang menyimpang dari mock:
   pembelian DP sebagian didukung dan sisanya jadi hutang.
 - `liveVoidTransaksi` memanggil void engine; bila engine menolak 409 (POSTED tidak boleh di-void),
   POS jatuh ke retur penuh (`liveRetur`).
-- `liveBuatUser` hanya menerima peran kasir; membuat pemilik ditolak di POS.
-- `liveTransaksiRiwayat` kehilangan `diskon` (0), `kembalian` (0), `shiftId` (""), dan status
-  pembayaran digital (dipetakan dari status penjualan). `piutang` diambil dari
+- `liveBuatUser`/`liveUbahUser` memakai `authorityLevel` engine (99 = pemilik, 2 = kasir); peran POS
+  dipetakan ke level itu, jadi pemilik bisa dibuat dan peran bisa diubah dari Pengaturan.
+- `liveTransaksiRiwayat` kehilangan `diskon` (0), `kembalian` (0), dan status
+  pembayaran digital (dipetakan dari status penjualan). `kasir` dibaca dari `requestedByName` yang
+  sudah di-resolve engine (nama, bukan GUID), `shiftId` dari deskripsi batch yang ditulis POS.
+  `piutang` diambil dari
   `GET /api/reports/ar-ap/aging?side=RECEIVABLE` (`outstandingAmount` per `invoiceNumber`), karena
   dokumen penjualan tidak menyimpannya.
 - `livePembelianList` juga memakai `?side=PAYABLE`: `terbayar = total − outstanding` dan
@@ -128,6 +131,19 @@ Perilaku live yang menyimpang dari mock:
   dokumen penjualan engine tidak punya field diskon.
 - `liveBiayaCatat` membebankan akun `NEXT_PUBLIC_ENGINE_BIAYA` (default `6900`); tunai memakai akun kas
   default, transfer memakai akun kas ber-kode `1111`. Akun non-EXPENSE/non-postable ditolak engine (400).
+- Shift menyimpan **user pembuka** (`cashierUserId`) selain namanya. POS memakai `shift.cashierUserId`
+  untuk menandai "shift dibuka oleh X" saat kasir yang login berbeda; operator yang melayani tetap
+  user yang sedang login (nama itu masuk ke `requestedBy` batch → `requestedByName` di engine).
+- Profil toko disinkronkan ke `GET/PUT /api/settings/company-profile` (`api.pengaturan`); store
+  `useToko` hanya cache untuk struk. Di mode mock, `api.pengaturan` membaca/tulis store lokal.
+- Neraca saldo memakai `GET /api/reports/trial-balance?fromDate=&toDate=` dan membaca
+  `openingBalance`/`closingBalance`: kolom **Saldo awal | Debit | Kredit | Saldo berjalan**.
+- Rute engine selalu memakai **id** dokumen, sedangkan POS menyimpan nomor dokumen
+  (`SALE-00001`). Jadi nomor harus diterjemahkan dulu (`cariPenjualanByNomor`) sebelum
+  memanggil `/api/sales/{id}/...` — konfirmasi digital dan pelunasan piutang pernah 404 karena
+  lupa menerjemahkan nomor.
+- `liveReturRiwayat` mengambil detail tiap retur (halaman dibatasi 20 baris) untuk mengisi item dan
+  alasan; daftar retur dari engine hanya memuat angka.
 
 ## Conventions
 
@@ -179,6 +195,9 @@ Perilaku live yang menyimpang dari mock:
   Shift **tidak** dibuka otomatis saat login: kasir/pemilik membuka shift sendiri di menu Shift, nama kasir
   mengikuti akun yang sedang masuk (bukan input bebas), dan kas awal diisi sesuai uang fisik di laci
   (nilai awal dari Pengaturan → Operasional, `useToko().kebijakan.saldoAwalShift`).
+- **Nama kasir di layar dan struk = user yang sedang login**, bukan nama pembuka shift. Shift hanya
+  mencatat siapa yang MEMBUKA-nya (`cashierUserId`); kalau berbeda, POS menampilkan peringatan
+  "Shift dibuka oleh X" dan tidak memblokir transaksi (satu shift dipakai bersama di satu tenant).
 - Checkout membawa `idempotensiKunci` (`crypto.randomUUID()` per sesi dialog). Mock menolak kunci yang
   sudah dipakai via `mockDb.kunciCheckout`; live mengirimnya sebagai `Idempotency-Key`.
 - Alokasi pembayaran (mock, diproses berurutan): **tunai** boleh melebihi sisa dan kelebihannya jadi
@@ -210,9 +229,12 @@ retur proporsional, dan penghapusan `src/lib/api/calc.ts`.
 
 Batasan yang masih ada:
 
-- Live: pembayaran campuran + overpayment (kembalian) ditolak engine; QRIS belum jadi konsep engine;
-  buat user hanya kasir.
+- Live: pembayaran campuran + overpayment (kembalian) ditolak engine; QRIS belum jadi konsep engine.
 - Live: diskon dilebur ke `unitPrice`, jadi riwayat/struk live tidak menampilkan diskon.
+- Live: pembelian belum memakai master supplier (`supplierId` dikirim `null`), jadi hutang belum
+  tertelusur per pemasok.
+- Live: satu shift aktif per tenant (bukan per kasir) — POS menandai "shift dibuka oleh X" kalau
+  kasir yang login berbeda dengan pembuka shift.
 - Mock: uang memakai `number` JS, bukan decimal — pembulatan bisa berbeda dari engine.
 
 ## Docs
