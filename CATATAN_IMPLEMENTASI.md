@@ -55,6 +55,11 @@ Ditemukan dan **sudah diperbaiki**:
     mengembalikan dokumen nyata (bukan objek kosong).
 11. Riwayat retur live menampilkan kolom Item dan Alasan kosong → detail retur + penjualan asal
     kini diambil, jadi nama item, jumlah, dan alasannya tampil.
+12. **`PUT /api/settings/company-profile` menolak email kosong** (`[EmailAddress]` memaafkan null,
+    tapi menolak `""` — padahal default DTO-nya `""`). Toko tanpa email tidak bisa menyimpan
+    profil, dan GET mengembalikan `""` yang justru ditolak PUT. Diperbaiki di engine: validasi
+    email pindah ke `Validate()` DTO; `""` berarti "tidak ada email", email yang ada harus berbentuk
+    alamat. Ditutup 2 tes regresi.
 
 Masih jadi gap (tercatat, belum dikerjakan):
 
@@ -62,27 +67,45 @@ Masih jadi gap (tercatat, belum dikerjakan):
 - Live: diskon dilebur ke `unitPrice` → riwayat/struk live tidak menampilkan diskon.
 - Live: pembelian mengirim `supplierId: null` → hutang belum tertelusur per pemasok.
 - Live: satu shift aktif per tenant (bukan per kasir).
+- Live: QRIS belum jadi konsep engine → konfirmasi digital hanya jalan bila engine punya
+  pembayaran tertunda untuk penjualan itu.
+- POS: upload logo toko belum ada (engine sudah punya `POST /api/settings/company-profile/logo`).
+- POS: dashboard belum membaca endpoint analytics/health engine (badge "Engine akuntansi" statis).
+- POS: multi-branch belum dipakai (`X-Branch-Id` tidak dikirim).
 - Mock: uang memakai `number` JS, pembulatan bisa berbeda dari engine.
-- Dashboard belum membaca endpoint analytics/health engine (badge "Engine akuntansi" masih statis).
 
 ## Verifikasi
 
-- Backend: `dotnet build AccountingEngine.slnx` (0 warning) + `dotnet test` → 485 unit + 703 integration lulus.
+- Backend: `dotnet build AccountingEngine.slnx` (0 warning) + `dotnet test` → **485 unit + 711 integration** lulus.
 - Frontend: `npx tsc --noEmit` bersih + `npm run build` sukses (15 halaman statis).
-- Uji manual live (sebelum perubahan ini): expense tunai Rp250.000 → 201 + jurnal, invalid account
-  → 400, transfer ke akun 1111 → 201, replay idempotensi → 200 `replayed=true`.
+- **Uji kontrak live (31 Okt 2026, engine nyata di `http://localhost:5121`)**: login pemilik →
+  `GET /api/users` (authorityLevel 99) → buat kasir (`fullName` + peran tersimpan) → ubah peran
+  jadi 99 lalu **dibaca ulang dari DB** (bukan cuma respons) → tutup shift lama & buka shift baru
+  dengan `cashierUserId` (dikembalikan engine) → `POST /api/sales` dengan `requestedBy` →
+  `requestedByName` = "Budi Santoso" → `GET /api/sales` memuat `description` utuh sehingga shiftId
+  terbaca dari deskripsi → **checkout `POST /api/cash-batches/sales` 201** (SALE-00005, total
+  Rp75.000, kas 1121 bergerak) → trial balance membuka `openingBalance`/`closingBalance` yang
+  konsisten (opening 27 Okt → periode 28 Okt → closing) dan grand total tetap periode-saja →
+  company profile GET/PUT/GET (termasuk email kosong) → daftar & detail retur.
+- Konfirmasi digital live: rute `/api/sales/{id}/confirm-payment` **sudah ketemu** (ragu-ragu
+  "404 No pending payment found" = aturan engine: penjualan uji tidak punya pembayaran QRIS
+  tertunda). QRIS sendiri belum jadi konsep engine.
 
 ## Catatan Penting
 
 1. **Engine adalah nested git repo** — perubahan di `backend/` tidak ikut commit repo POS.
 2. **Environment setup**:
    - Backend: `http://localhost:5121` (Accounting Engine).
-   - Frontend: `.env.local` dengan `NEXT_PUBLIC_API_MODE=live` dan
-     `NEXT_PUBLIC_API_BASE_URL=http://localhost:5121`.
+   - Frontend: `.env.local` (sudah dibuat, gitignored) dengan `NEXT_PUBLIC_API_MODE=live` dan
+     `NEXT_PUBLIC_API_BASE_URL=http://localhost:5121`. **Untuk server toko, ganti base URL ke
+     `http://<server-toko>:5121` lalu build ulang.**
    - Tanpa `.env.local`, POS berjalan di mode **mock** (nilai di-bake saat build).
 3. **Database**: `dotnet ef database update` → `tools/bootstrap-backend.py` → seed chart via
-   `POST /api/accounts/seed`. Migrasi baru: `AddShiftCashierUserId`.
+   `POST /api/accounts/seed`. Migrasi `AddShiftCashierUserId` **sudah diterapkan** ke DB dev.
 4. **Dokumentasi**: `AGENTS.md`, `backend/knowledge.md`, `backend/AGENTS.md` diperbarui.
+5. **Uji manual di browser masih belum dilakukan** — sesi ini tidak punya browser yang terhubung.
+   Yang sudah terverifikasi lewat HTTP: kontrak engine. Yang perlu dicek manusia: tampilan,
+   alur kasir di layar, dan struk.
 
 ## Next Steps
 
