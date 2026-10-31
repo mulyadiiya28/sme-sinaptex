@@ -1,10 +1,12 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { Bell, LogOut, Search, Store } from "lucide-react";
+import { LogOut, Store } from "lucide-react";
 import { api } from "@/lib/api/client";
 import { useAuth } from "@/lib/store/auth";
 import { useToko } from "@/lib/store/toko";
+import { GlobalSearch } from "@/components/global-search";
+import { NotifButton } from "@/components/notif-button";
 
 export function Topbar() {
   const user = useAuth((s) => s.user);
@@ -31,18 +33,8 @@ export function Topbar() {
         <Store className="size-4" aria-hidden />
         {namaToko}
       </div>
-      <div className="relative ml-auto w-full max-w-xs">
-        <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted/60" aria-hidden />
-        <input type="search" placeholder="Cari..." className="input pl-9" />
-      </div>
-      <button
-        type="button"
-        aria-label="Notifikasi"
-        className="relative flex size-9 items-center justify-center rounded-xl border border-line bg-white text-muted transition-colors hover:text-ink"
-      >
-        <Bell className="size-4" aria-hidden />
-        <span className="absolute right-1.5 top-1.5 size-2 rounded-full bg-accent" />
-      </button>
+      <GlobalSearch />
+      <NotifButton />
       <div className="flex items-center gap-2.5">
         <span className="flex size-9 items-center justify-center rounded-full bg-brand text-xs font-bold text-white">
           {inisial}

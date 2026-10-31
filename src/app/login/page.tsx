@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { LogIn, ShieldCheck } from "lucide-react";
 import type { Role } from "@/lib/api/types";
-import { api } from "@/lib/api/client";
+import { api, API_MODE } from "@/lib/api/client";
 import { useAuth } from "@/lib/store/auth";
 import { FormField } from "@/components/form-field";
 
@@ -80,31 +80,33 @@ export default function LoginPage() {
             </button>
           </form>
 
-          <div className="mt-6 rounded-xl bg-brand/5 p-4 text-xs text-muted">
-            <p className="font-bold text-brand">Akun demo</p>
-            <div className="mt-2 grid grid-cols-1 gap-1.5">
-              {(
-                [
-                  ["pemilik", "pemilik123", "Pemilik — akses penuh"],
-                  ["kasir", "kasir123", "Kasir — transaksi & shift"],
-                ] as Array<[string, string, Role | string]>
-              ).map(([u, p, ket]) => (
-                <button
-                  key={u}
-                  type="button"
-                  disabled={pending}
-                  onClick={() => masuk(u, p)}
-                  className="flex items-center justify-between rounded-lg border border-line bg-white px-3 py-2 text-left transition-colors hover:border-brand"
-                >
-                  <span>
-                    <span className="font-semibold text-ink">{u} / {p}</span>
-                    <span className="block text-[11px]">{ket}</span>
-                  </span>
-                  <span className="text-[11px] font-semibold text-brand">Isi &amp; masuk</span>
-                </button>
-              ))}
+          {API_MODE === "mock" && (
+            <div className="mt-6 rounded-xl bg-brand/5 p-4 text-xs text-muted">
+              <p className="font-bold text-brand">Akun demo</p>
+              <div className="mt-2 grid grid-cols-1 gap-1.5">
+                {(
+                  [
+                    ["pemilik", "pemilik123", "Pemilik — akses penuh"],
+                    ["kasir", "kasir123", "Kasir — transaksi & shift"],
+                  ] as Array<[string, string, Role | string]>
+                ).map(([u, p, ket]) => (
+                  <button
+                    key={u}
+                    type="button"
+                    disabled={pending}
+                    onClick={() => masuk(u, p)}
+                    className="flex items-center justify-between rounded-lg border border-line bg-white px-3 py-2 text-left transition-colors hover:border-brand"
+                  >
+                    <span>
+                      <span className="font-semibold text-ink">{u} / {p}</span>
+                      <span className="block text-[11px]">{ket}</span>
+                    </span>
+                    <span className="text-[11px] font-semibold text-brand">Isi &amp; masuk</span>
+                  </button>
+                ))}
+              </div>
             </div>
-          </div>
+          )}
         </div>
       </div>
     </div>

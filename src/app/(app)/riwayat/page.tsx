@@ -10,6 +10,7 @@ import { PageHeader } from "@/components/page-header";
 import { TableSkeleton } from "@/components/skeleton";
 import { StatusBadge } from "@/components/status-badge";
 import { useRiwayatRetur, useRiwayatTransaksi, useTransaksiMutations } from "@/hooks/queries";
+import { useCariAwal } from "@/hooks/use-cari-awal";
 import { useAuth } from "@/lib/store/auth";
 import { useToko } from "@/lib/store/toko";
 import { cetakStruk } from "@/lib/struk";
@@ -34,7 +35,7 @@ export default function RiwayatPage() {
   const riwayat = useRiwayatTransaksi();
   const { batal } = useTransaksiMutations();
   const user = useAuth((s) => s.user);
-  const [keyword, setKeyword] = useState("");
+  const [keyword, setKeyword] = useCariAwal();
   const [dari, setDari] = useState("");
   const [sampai, setSampai] = useState("");
   const [detail, setDetail] = useState<TransaksiRiwayat | null>(null);

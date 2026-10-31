@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Building2, CheckCircle2, FileDown, FileUp, ShieldCheck } from "lucide-react";
 import type { AuditEntry, HasilImpor, ImporPelangganBaris, ImporProdukBaris, ImporSaldoAwalBaris, User } from "@/lib/api/types";
 import { DataTable, type Column } from "@/components/data-table";
@@ -8,7 +8,7 @@ import { FormField } from "@/components/form-field";
 import { MoneyDisplay } from "@/components/money-display";
 import { PageHeader } from "@/components/page-header";
 import { StatusBadge } from "@/components/status-badge";
-import { useAkun, useAuditLog, useAuthUsers, useImporMutations, useUserMutations } from "@/hooks/queries";
+import { useAkun, useAuditLog, useAuthUsers, useImporMutations, usePengaturanMutations, useProfilPerusahaan, useUserMutations } from "@/hooks/queries";
 import { unduhCsv, parseCsv } from "@/lib/csv";
 import { useAuth } from "@/lib/store/auth";
 import { useToko } from "@/lib/store/toko";
@@ -299,8 +299,28 @@ function PanelMigrasi() {
 function PanelProfil() {
   const profil = useToko((s) => s.profil);
   const simpan = useToko((s) => s.simpan);
+  const perusahaan = useProfilPerusahaan();
+  const { simpanProfil } = usePengaturanMutations();
   const [draft, setDraft] = useState(profil);
   const [sukses, setSukses] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  // Identitas toko disimpan di engine (company profile) supaya struk POS dan
+  // faktur PDF memakai nama yang sama; store lokal hanya jadi cache Cetak.
+  useEffect(() => {
+    const p = perusahaan.data;
+    if (!p) return;
+    setDraft((d) => ({
+      ...d,
+      nama: p.nama || d.nama,
+      alamat: p.alamat || d.alamat,
+      telepon: p.telepon || d.telepon,
+      email: p.email || d.email || "",
+      website: p.website || d.website || "",
+      npwp: p.npwp || d.npwp || "",
+      logoUrl: p.logoUrl || d.logoUrl || "",
+    }));
+  }, [perusahaan.data]);
 
   const ubah = (k: keyof typeof draft) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     setSukses(false);
@@ -311,10 +331,25 @@ function PanelProfil() {
     <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">
       <form
         className="panel space-y-3.5 p-5 xl:col-span-2"
-        onSubmit={(e) => {
+        onSubmit={async (e) => {
           e.preventDefault();
-          simpan(draft);
-          setSukses(true);
+          setSukses(false);
+          setError(null);
+          try {
+            await simpanProfil.mutateAsync({
+              nama: draft.nama,
+              alamat: draft.alamat,
+              telepon: draft.telepon,
+              email: draft.email ?? "",
+              website: draft.website ?? "",
+              npwp: draft.npwp ?? "",
+              logoUrl: draft.logoUrl ?? "",
+            });
+            simpan(draft);
+            setSukses(true);
+          } catch (err) {
+            setError(String(err instanceof Error ? err.message : err));
+          }
         }}
       >
         <h2 className="flex items-center gap-2 text-sm font-bold text-brand">
@@ -335,6 +370,17 @@ function PanelProfil() {
             <input className="input" value={draft.mataUang} onChange={ubah("mataUang")} placeholder="IDR" />
           </FormField>
         </div>
+        <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-2">
+          <FormField label="Email">
+            <input className="input" type="email" value={draft.email ?? ""} onChange={ubah("email")} placeholder="cth. toko@contoh.id" />
+          </FormField>
+          <FormField label="Website">
+            <input className="input" value={draft.website ?? ""} onChange={ubah("website")} placeholder="cth. toko.co.id" />
+          </FormField>
+        </div>
+        <FormField label="NPWP">
+          <input className="input" value={draft.npwp ?? ""} onChange={ubah("npwp")} placeholder="cth. 01.234.567.8-901.000" />
+        </FormField>
         <FormField label="Zona waktu">
           <input className="input" value={draft.zonaWaktu} onChange={ubah("zonaWaktu")} placeholder="Asia/Jakarta" />
         </FormField>
@@ -352,13 +398,16 @@ function PanelProfil() {
         <FormField label="Catatan footer struk">
           <input className="input" value={draft.footerStruk} onChange={ubah("footerStruk")} />
         </FormField>
-        <div className="flex items-center gap-3">
-          <button type="submit" className="btn-primary">Simpan Profil</button>
+        <div className="flex flex-wrap items-center gap-3">
+          <button type="submit" className="btn-primary" disabled={simpanProfil.isPending}>
+            {simpanProfil.isPending ? "Menyimpan..." : "Simpan Profil"}
+          </button>
           {sukses && (
             <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-emerald-700">
               <CheckCircle2 className="size-4" aria-hidden /> Profil tersimpan
             </span>
           )}
+          {error && <span className="text-xs font-semibold text-rose-600">{error}</span>}
         </div>
       </form>
 
@@ -373,7 +422,8 @@ function PanelProfil() {
           </p>
         </div>
         <p className="mt-3 text-xs text-muted">
-          Logo toko, printer struk, dan konfigurasi lanjutan menyusul saat disambung ke engine C#.
+          Identitas toko disimpan di engine akuntansi, jadi struk POS dan faktur PDF memakai nama
+          yang sama. Logo toko, printer struk, dan konfigurasi lanjutan menyusul.
         </p>
       </div>
     </div>

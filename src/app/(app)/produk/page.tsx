@@ -10,6 +10,7 @@ import { PageHeader } from "@/components/page-header";
 import { StatusBadge } from "@/components/status-badge";
 import { ProductFormDialog } from "@/components/produk/product-form-dialog";
 import { useProductMutations, useProducts } from "@/hooks/queries";
+import { useCariAwal } from "@/hooks/use-cari-awal";
 import { useAuth } from "@/lib/store/auth";
 
 type Filter = "semua" | "menipis" | "nonaktif";
@@ -18,7 +19,7 @@ export default function ProdukPage() {
   const products = useProducts();
   const { remove } = useProductMutations();
   const user = useAuth((s) => s.user);
-  const [keyword, setKeyword] = useState("");
+  const [keyword, setKeyword] = useCariAwal();
   const [filter, setFilter] = useState<Filter>("semua");
   const [dialog, setDialog] = useState<{ open: boolean; editing: Product | null }>({
     open: false,

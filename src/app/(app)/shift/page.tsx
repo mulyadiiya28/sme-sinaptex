@@ -104,7 +104,7 @@ function PanelBukaShift({
           if (!user) return setError("Sesi berakhir — silakan masuk ulang.");
           setError(null);
           buka.mutate(
-            { kasir: user.nama, saldoAwal },
+            { cashierUserId: user.id, kasir: user.nama, saldoAwal },
             { onError: (err) => setError(String(err)) },
           );
         }}
@@ -168,6 +168,8 @@ function PanelShiftAktif({
 }) {
   const [formMutasi, setFormMutasi] = useState<ShiftMutasiInput>({ jenis: "masuk", nominal: 0 });
   const [errorMutasi, setErrorMutasi] = useState<string | null>(null);
+  const user = useAuth((s) => s.user);
+  const dibukaOlehLain = shift.cashierUserId !== "" && shift.cashierUserId !== user?.id;
 
   const cekBuka = tutup.isPending || mutasiKas.isPending;
 
@@ -192,6 +194,13 @@ function PanelShiftAktif({
           icon={<ShieldCheck className="size-4" aria-hidden />}
         />
       </div>
+
+      {dibukaOlehLain && (
+        <p className="mt-4 rounded-xl bg-amber-50 px-3 py-2 text-xs font-medium text-amber-700">
+          Shift ini dibuka oleh {shift.kasir}. Transaksi yang Anda catat tetap tercatat atas nama
+          Anda sendiri — tutup shift bila ingin menyerahkan laci ke kasir lain.
+        </p>
+      )}
 
       <div className="mt-6 grid grid-cols-1 gap-4 xl:grid-cols-2">
         <div className="panel p-5">

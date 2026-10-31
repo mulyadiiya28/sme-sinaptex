@@ -3,12 +3,14 @@
 import { useState } from "react";
 import { Sidebar } from "@/components/sidebar";
 import { Topbar } from "@/components/app-topbar";
+import { ProfilSync } from "@/components/profil-sync";
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const [collapsed, setCollapsed] = useState(false);
 
   return (
     <div className="min-h-screen">
+      <ProfilSync />
       <Sidebar collapsed={collapsed} onToggle={() => setCollapsed((v) => !v)} />
       <main
         style={{ marginLeft: collapsed ? 64 : 256 }}

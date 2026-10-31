@@ -2,8 +2,9 @@
 
 import { useState } from "react";
 import { BookOpen, CheckCircle2, XCircle } from "lucide-react";
-import type { JurnalEntry, LabaRugi } from "@/lib/api/types";
+import type { AkunSaldo, JurnalEntry, LabaRugi } from "@/lib/api/types";
 import { DataTable, type Column } from "@/components/data-table";
+import { FormField } from "@/components/form-field";
 import { KpiCard } from "@/components/kpi-card";
 import { MoneyDisplay } from "@/components/money-display";
 import { PageHeader } from "@/components/page-header";
@@ -55,23 +56,51 @@ export default function AkuntansiPage() {
 }
 
 function PanelAkun() {
-  const akun = useAkun();
+  const [dari, setDari] = useState("");
+  const [sampai, setSampai] = useState("");
+  const akun = useAkun({ from: dari || undefined, to: sampai || undefined });
   const rows = akun.data ?? [];
   const totalDebit = rows.reduce((s, r) => s + r.debit, 0);
   const totalKredit = rows.reduce((s, r) => s + r.kredit, 0);
+  const totalSaldoAwal = rows.reduce((s, r) => s + r.saldoAwal, 0);
+  const totalSaldoAkhir = rows.reduce((s, r) => s + r.saldoAkhir, 0);
   const seimbang = Math.abs(totalDebit - totalKredit) < 1 && Math.round(totalDebit) > 0;
 
-  const columns: Column<{ akun: string; debit: number; kredit: number; saldo: number }>[] = [
+  const columns: Column<AkunSaldo>[] = [
     { key: "akun", header: "Akun", render: (r) => <span className="font-medium">{r.akun}</span> },
+    {
+      key: "saldoAwal",
+      header: "Saldo awal",
+      align: "right",
+      render: (r) => (r.saldoAwal ? <MoneyDisplay value={r.saldoAwal} /> : "—"),
+    },
     { key: "debit", header: "Debit", align: "right", render: (r) => (r.debit ? <MoneyDisplay value={r.debit} /> : "—") },
     { key: "kredit", header: "Kredit", align: "right", render: (r) => (r.kredit ? <MoneyDisplay value={r.kredit} /> : "—") },
-    { key: "saldo", header: "Saldo", align: "right", render: (r) => <MoneyDisplay value={r.saldo} className="font-bold" /> },
+    {
+      key: "saldoAkhir",
+      header: "Saldo berjalan",
+      align: "right",
+      render: (r) => <MoneyDisplay value={r.saldoAkhir} className="font-bold" />,
+    },
   ];
 
   return (
     <div className="panel p-4">
-      <div className="mb-3 flex items-center justify-between px-1">
-        <h2 className="text-sm font-bold text-brand">Neraca saldo</h2>
+      <div className="mb-3 flex flex-wrap items-end justify-between gap-3 px-1">
+        <div>
+          <h2 className="text-sm font-bold text-brand">Neraca saldo</h2>
+          <p className="text-xs text-muted">
+            Kosongkan rentang untuk seluruh periode. Saldo awal = saldo sebelum tanggal awal.
+          </p>
+        </div>
+        <div className="flex items-end gap-2">
+          <FormField label="Dari tanggal" className="w-40">
+            <input type="date" className="input" value={dari} onChange={(e) => setDari(e.target.value)} />
+          </FormField>
+          <FormField label="Sampai tanggal" className="w-40">
+            <input type="date" className="input" value={sampai} onChange={(e) => setSampai(e.target.value)} />
+          </FormField>
+        </div>
         <BalanceBadge seimbang={seimbang} />
       </div>
       <DataTable
@@ -81,12 +110,18 @@ function PanelAkun() {
         loading={akun.isLoading}
         empty="Belum ada saldo akun."
       />
-      <div className="mt-3 flex justify-end gap-6 border-t border-line px-3 pt-3 text-sm font-bold">
+      <div className="mt-3 flex flex-wrap justify-end gap-6 border-t border-line px-3 pt-3 text-sm font-bold">
+        <span>
+          Saldo awal: <MoneyDisplay value={totalSaldoAwal} />
+        </span>
         <span>
           Total debit: <MoneyDisplay value={totalDebit} />
         </span>
         <span>
           Total kredit: <MoneyDisplay value={totalKredit} />
+        </span>
+        <span>
+          Saldo berjalan: <MoneyDisplay value={totalSaldoAkhir} />
         </span>
       </div>
     </div>

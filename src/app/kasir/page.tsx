@@ -11,6 +11,7 @@ import { Skeleton } from "@/components/skeleton";
 import { ProductCatalog } from "@/components/kasir/product-catalog";
 import { CartPanel } from "@/components/kasir/cart-panel";
 import { PaymentDialog } from "@/components/kasir/payment-dialog";
+import { ProfilSync } from "@/components/profil-sync";
 
 export default function KasirPage() {
   return (
@@ -72,6 +73,13 @@ function KasirScreen() {
     );
   }
 
+  // Yang melayani kasir adalah user yang sedang login, bukan nama yang
+  // tersimpan di shift: shift mencatat siapa yang MEMBUKA-nya, sedangkan log
+  // penjualan harus menyebut orang yang benar-benar melayani.
+  const operator = user?.nama ?? shift.data.kasir;
+  const shiftMilikLain =
+    shift.data.cashierUserId !== "" && shift.data.cashierUserId !== user?.id;
+
   const tutupDialog = (resetCart: boolean) => {
     if (resetCart) reset();
     setBayar(false);
@@ -79,6 +87,7 @@ function KasirScreen() {
 
   return (
     <div className="flex h-screen flex-col">
+      <ProfilSync />
       <header className="flex items-center justify-between border-b border-line/80 bg-white/80 px-6 py-3 backdrop-blur-xl">
         <div className="flex items-center gap-3">
           <Link href="/" className="btn-secondary px-3 py-2" aria-label="Kembali ke dashboard">
@@ -87,13 +96,22 @@ function KasirScreen() {
           <div>
             <h1 className="text-sm font-black text-brand">Kasir — Transaksi Baru</h1>
             <p className="text-[11px] text-muted">
-              Kasir {shift.data.kasir} · Shift {shift.data.id} · Pelanggan opsional
+              Kasir {operator} · Shift {shift.data.id} · Pelanggan opsional
             </p>
           </div>
         </div>
-        <span className="rounded-full bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-700">
-          Shift aktif
-        </span>
+        {shiftMilikLain ? (
+          <span
+            className="rounded-full bg-amber-50 px-3 py-1.5 text-xs font-semibold text-amber-700"
+            title="Shift ini dibuka oleh kasir lain. Transaksi tetap tercatat atas nama Anda."
+          >
+            Shift dibuka oleh {shift.data.kasir}
+          </span>
+        ) : (
+          <span className="rounded-full bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-700">
+            Shift aktif
+          </span>
+        )}
       </header>
 
       <div className="flex min-h-0 flex-1">
@@ -113,7 +131,7 @@ function KasirScreen() {
 
       {bayar && (
         <PaymentDialog
-          kasir={shift.data.kasir}
+          kasir={operator}
           shiftId={shift.data.id}
           onClose={tutupDialog}
         />
