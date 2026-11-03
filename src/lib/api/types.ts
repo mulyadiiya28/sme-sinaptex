@@ -522,3 +522,30 @@ export type Reconciliation = {
   difference: number;
   isReconciled: boolean;
 };
+
+/// <summary>Satu entri dalam Gerakan Harian: satu baris jurnal pada satu akun.</summary>
+export type DailyMovementEntry = {
+  journalId: string;
+  entryDate: string;
+  transactionType: string | null;
+  transactionDescription: string | null;
+  referenceType: string | null;
+  referenceId: string | null;
+  reversalOfJournalId: string | null;
+  lineDescription: string | null;
+  debit: number;
+  credit: number;
+  runningBalance: number;
+};
+
+/// <summary>Gerakan Harian untuk satu akun pada satu tanggal.</summary>
+export type DailyMovementReport = {
+  date: string;
+  accountCode: string;
+  accountName: string;
+  openingBalance: number;
+  entries: DailyMovementEntry[];
+  closingBalance: number;
+  totalDebit: number;
+  totalCredit: number;
+};

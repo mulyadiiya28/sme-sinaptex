@@ -126,7 +126,7 @@ khusus POS (`mataUang`, `zonaWaktu`, `footerStruk`, `pajakPersen`) tetap di loca
 ### P2 — endpoint engine yang belum dipakai POS
 | Endpoint engine | Kegunaan di POS |
 |---|---|
-| `GET /api/reports/daily-movement` (+ `/export`) | Laporan "Daily Movement" belum ada di halaman Laporan (hanya trial-balance & neraca saldo yang ada). |
+| `GET /api/reports/daily-movement` (+ `/export`) | **DIPERBAIKI** — tab "Gerakan Harian" di halaman Laporan menampilkan gerakan per akun per tanggal dengan saldo berjalan, total debet/kredit, dan ekspor CSV. |
 | `GET /api/reports/ar-ap/aging`, `/reconciliation` | **DIPERBAIKI** — halaman Keuangan tab Piutang & Hutang menampilkan umur piutang/hutang (Current, 1-30, 31-60, 61-90, >90 hari) + daftar faktur + peringatan selisih rekonsiliasi. |
 | `GET /api/reports/trial-balance/export` | **DIPERBAIKI** — tombol "Ekspor Neraca Saldo" di tab Neraca Saldo halaman Laporan. |
 | `GET /api/analytics/*` (12 laporan) | **DIPERBAIKI** — tab "Analisis" di halaman Laporan menampilkan RASIO keuangan lengkap (profitabilitas, likuiditas, solvabilitas, turnover, cash conversion cycle, health summary, product performance) dari semua 12 endpoint engine. |

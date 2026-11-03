@@ -162,6 +162,14 @@ export function useProductPerformanceRankings(startDate: string, endDate: string
   });
 }
 
+export function useDailyMovement(date: string, accountCode: string) {
+  return useQuery({
+    queryKey: ["laporan", "daily-movement", date, accountCode],
+    queryFn: () => api.akuntansi.dailyMovement(date, accountCode),
+    enabled: !!date && !!accountCode,
+  });
+}
+
 export function useArAging(asOfDate?: string) {
   return useQuery({
     queryKey: ["aging", "ar", asOfDate],

@@ -48,6 +48,7 @@ import type {
   WorkingCapitalTurnover,
   AgedInvoice,
   AgingReport,
+  DailyMovementReport,
   Reconciliation,
 } from "@/lib/api/types";
 
@@ -1719,6 +1720,12 @@ export async function liveProductPerformance(startDate: string, endDate: string)
 
 export async function liveProductPerformanceRankings(startDate: string, endDate: string, top = 10): Promise<ProductPerformanceRankings> {
   const data = await minta<ProductPerformanceRankings>(`/api/analytics/product-performance/rankings?startDate=${startDate}&endDate=${endDate}&top=${top}`);
+  return data;
+}
+
+export async function liveDailyMovement(date: string, accountCode: string): Promise<DailyMovementReport> {
+  const qs = new URLSearchParams({ date, accountCode });
+  const data = await minta<DailyMovementReport>(`/api/reports/daily-movement?${qs.toString()}`);
   return data;
 }
 

@@ -47,6 +47,7 @@ import type {
   AgedInvoice,
   AgingReport,
   Reconciliation,
+  DailyMovementReport,
 } from "@/lib/api/types";
 import { mockDb, produkBaruId } from "@/lib/api/mock/db";
 import { useToko } from "@/lib/store/toko";
@@ -73,6 +74,7 @@ import {
   liveImporPelanggan,
   liveImporProduk,
   liveImporSaldoAwal,
+  liveDailyMovement,
   liveInventoryTurnover,
   liveJurnal,
   liveKonfirmasiDigital,
@@ -328,6 +330,20 @@ export const api = {
       if (API_MODE === "live") return liveLabaRugi();
       await delay(120);
       return structuredClone(mockDb.labaRugi());
+    },
+    dailyMovement: async (date: string, accountCode: string): Promise<DailyMovementReport> => {
+      if (API_MODE === "live") return liveDailyMovement(date, accountCode);
+      await delay(120);
+      return {
+        date,
+        accountCode,
+        accountName: "-",
+        openingBalance: 0,
+        entries: [],
+        closingBalance: 0,
+        totalDebit: 0,
+        totalCredit: 0,
+      };
     },
   },
 

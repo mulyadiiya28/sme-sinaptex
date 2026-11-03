@@ -17,6 +17,8 @@ import type {
   ArApTurnover,
   Biaya,
   CashConversionCycle,
+  DailyMovementEntry,
+  DailyMovementReport,
   Dupont,
   HealthIndicator,
   HealthSummary,
@@ -49,6 +51,7 @@ import {
   useCashConversionCycle,
   useCashRatio,
   useCurrentRatio,
+  useDailyMovement,
   useHealthSummary,
   useInventoryTurnover,
   useJurnal,
@@ -63,7 +66,7 @@ import {
   useRiwayatTransaksi,
 } from "@/hooks/queries";
 
-type Tab = "penjualan" | "laba-rugi" | "neraca-saldo" | "jurnal" | "beban" | "analisis";
+type Tab = "penjualan" | "laba-rugi" | "neraca-saldo" | "jurnal" | "beban" | "analisis" | "gerakan-harian";
 
 const TABS: Array<{ id: Tab; label: string; icon: React.ReactNode }> = [
   { id: "penjualan", label: "Penjualan", icon: <TrendingUp className="size-4" aria-hidden /> },
@@ -72,6 +75,7 @@ const TABS: Array<{ id: Tab; label: string; icon: React.ReactNode }> = [
   { id: "jurnal", label: "Jurnal", icon: <Activity className="size-4" aria-hidden /> },
   { id: "beban", label: "Beban", icon: <CreditCard className="size-4" aria-hidden /> },
   { id: "analisis", label: "Analisis", icon: <BarChart3 className="size-4" aria-hidden /> },
+  { id: "gerakan-harian", label: "Gerakan Harian", icon: <Activity className="size-4" aria-hidden /> },
 ];
 
 type PenjualanHarian = { tanggal: string; jumlah: number; omzet: number };
@@ -103,6 +107,9 @@ export default function LaporanPage() {
   const healthSummary = useHealthSummary(tgl, dari, sampai);
   const productPerformance = useProductPerformance(dari, sampai);
   const productRankings = useProductPerformanceRankings(dari, sampai);
+  const [dmDate, setDmDate] = useState("");
+  const [dmAccount, setDmAccount] = useState("1121");
+  const dailyMovement = useDailyMovement(dmDate, dmAccount);
 
   const transaksi = useMemo(() => {
     const semua = riwayat.data ?? [];
@@ -651,6 +658,110 @@ export default function LaporanPage() {
                 />
               </div>
             </>
+          )}
+        </>
+      )}
+
+      {tab === "gerakan-harian" && (
+        <>
+          {dailyMovement.isPending ? (
+            <TableSkeleton kolom={6} baris={6} />
+          ) : (
+            <div className="panel p-4">
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+                <div className="col-span-1">
+                  <FormField label="Tanggal">
+                    <input
+                      type="date"
+                      value={dmDate}
+                      onChange={(e) => setDmDate(e.target.value)}
+                      className="input w-full"
+                    />
+                  </FormField>
+                </div>
+                <div className="col-span-1">
+                  <FormField label="Kode Akun">
+                    <input
+                      className="input w-full"
+                      value={dmAccount}
+                      onChange={(e) => setDmAccount(e.target.value)}
+                    />
+                  </FormField>
+                </div>
+              </div>
+
+              <div className="mt-3 grid grid-cols-1 gap-4 md:grid-cols-3">
+                <KpiCard
+                  label="Saldo Awal"
+                  value={<MoneyDisplay value={dailyMovement.data?.openingBalance ?? 0} />}
+                  tone="navy"
+                  icon={<Activity className="size-4" aria-hidden />}
+                />
+                <KpiCard
+                  label="Total Debet"
+                  value={<MoneyDisplay value={dailyMovement.data?.totalDebit ?? 0} />}
+                  tone="emerald"
+                  icon={<TrendingUp className="size-4" aria-hidden />}
+                />
+                <KpiCard
+                  label="Total Kredit"
+                  value={<MoneyDisplay value={dailyMovement.data?.totalCredit ?? 0} />}
+                  tone="rose"
+                  icon={<Store className="size-4" aria-hidden />}
+                />
+                <KpiCard
+                  label="Saldo Akhir"
+                  value={<MoneyDisplay value={dailyMovement.data?.closingBalance ?? 0} />}
+                  tone="navy"
+                  icon={<BookOpen className="size-4" aria-hidden />}
+                />
+              </div>
+
+              <div className="mt-4">
+                <h2 className="mb-3 px-1 text-sm font-bold text-brand">Gerakan Harian per Akun</h2>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm border-collapse">
+                    <thead>
+                      <tr className="border-b border-line">
+                        <th className="text-left py-2 text-muted text-xs">Tanggal</th>
+                        <th className="text-left py-2 text-muted text-xs">Keterangan</th>
+                        <th className="text-left py-2 text-muted text-xs">Ref</th>
+                        <th className="text-right py-2 text-muted text-xs">Debet</th>
+                        <th className="text-right py-2 text-muted text-xs">Kredit</th>
+                        <th className="text-right py-2 text-muted text-xs">Saldo</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {dailyMovement.data?.entries.map((entry) => (
+                        <tr key={entry.journalId} className="border-b border-line/60 last:border-0">
+                          <td className="py-2 text-muted text-xs">
+                            {new Date(entry.entryDate).toLocaleDateString("id-ID")}
+                          </td>
+                          <td className="py-2 font-medium">{entry.lineDescription || entry.transactionDescription || "-"}</td>
+                          <td className="py-2 text-xs text-muted">{entry.referenceId || "-"}</td>
+                          <td className="py-2 text-right tabular-nums">
+                            <MoneyDisplay value={entry.debit} />
+                          </td>
+                          <td className="py-2 text-right tabular-nums">
+                            <MoneyDisplay value={entry.credit} />
+                          </td>
+                          <td className="py-2 text-right font-bold tabular-nums text-brand">
+                            <MoneyDisplay value={entry.runningBalance} />
+                          </td>
+                        </tr>
+                      ))}
+                      {dailyMovement.data?.entries.length === 0 && (
+                        <tr>
+                          <td colSpan={6} className="py-4 text-center text-muted text-sm">
+                            Tidak ada gerakan pada tanggal ini.
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
           )}
         </>
       )}
