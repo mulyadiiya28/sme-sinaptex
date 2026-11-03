@@ -475,6 +475,27 @@ export async function liveCreateProduct(p: Omit<Product, "id">): Promise<Product
       category: p.kategori === "" ? null : p.kategori,
     },
   });
+
+  // Stok awal produk: catat sebagai penyesuaian masuk di gudang default
+  // agar stok yang terlihat di POS sama dengan yang diinput user.
+  if (p.stok > 0) {
+    const gudang = await gudangDefault();
+    await minta("/api/inventory/adjustments", {
+      method: "POST",
+      idempotensiKunci: buatKunciIdempotensi(),
+      body: {
+        productId: dibuat.id,
+        warehouseId: gudang,
+        direction: "IN",
+        quantity: p.stok,
+        movementType: "STOCK_ADJUSTMENT_IN",
+        costingMethod: "AVERAGE",
+        unitCost: p.hargaBeli,
+        reason: `Stok awal produk ${p.nama}`,
+      },
+    });
+  }
+
   const [satuan, stok] = await Promise.all([
     minta<BtSatuan[]>("/api/units"),
     minta<BtStok>("/api/inventory/stock"),

@@ -116,9 +116,10 @@ khusus POS (`mataUang`, `zonaWaktu`, `footerStruk`, `pajakPersen`) tetap di loca
 1. **Profil toko → engine: DIPERBAIKI.** `GET/PUT /api/settings/company-profile` dipakai
    (`api.toko.profil.get/put`, `liveCompanyProfileGet/Put`, `PanelProfil`). Field khusus POS
    (`mataUang`, `zonaWaktu`, `footerStruk`, `pajakPersen`) tetap di localStorage.
-2. **Stok awal produk diabaikan di live**: `liveCreateProduct` tidak mengirim `stok` (engine tidak menerima
-   stok di `POST /api/products`). Solusi: setelah create, panggil `POST /api/inventory/adjustments`
-   (`STOCK_ADJUSTMENT_IN`, `unitCost` = harga beli) bila `stok > 0`. Hint di form produk juga masih menyebut "mock".
+2. **Stok awal produk di live: DIPERBAIKI.** `liveCreateProduct` sekarang memanggil
+   `POST /api/inventory/adjustments` (`STOCK_ADJUSTMENT_IN`, `unitCost` = harga beli,
+   `costingMethod: AVERAGE`) bila `stok > 0`, menggunakan gudang default. Hint di form produk
+   diupdate menjadi "Stok awal dicatat sebagai penyesuaian masuk di gudang default (mode live)."
 3. **Kebijakan operasional** (`izinkanKredit`, `saldoAwalShift`) hanya localStorage — tidak ada padanan engine;
    keputusan kredit di live sepenuhnya ditentukan engine (kebijakan POS hanya mematikan checkbox).
 

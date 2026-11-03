@@ -130,7 +130,7 @@ export function ProductFormDialog({
           <FormField label="Stok minimal peringatan" error={errors.stokMinimum}>
             <input type="number" min={0} className="input text-right tabular-nums" value={values.stokMinimum || ""} onChange={(e) => set("stokMinimum", Number(e.target.value))} />
           </FormField>
-          <FormField label="Stok tersedia" error={errors.stok} hint="Nantinya hasil mutasi stok engine — di mock ini diedit manual.">
+          <FormField label="Stok tersedia" error={errors.stok} hint="Stok awal dicatat sebagai penyesuaian masuk di gudang default (mode live).">
             <input type="number" min={0} className="input text-right tabular-nums" value={values.stok || ""} onChange={(e) => set("stok", Number(e.target.value))} />
           </FormField>
           <FormField label="Status" error={errors.status}>
