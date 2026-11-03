@@ -9,6 +9,8 @@ import { MoneyDisplay } from "@/components/money-display";
 import { PageHeader } from "@/components/page-header";
 import { StatusBadge } from "@/components/status-badge";
 import { useAkun, useAuditLog, useAuthUsers, useImporMutations, usePengaturanMutations, useProfilPerusahaan, useUserMutations } from "@/hooks/queries";
+import { urlLogoAbsolut } from "@/lib/api/live";
+import { API_MODE } from "@/lib/api/client";
 import { unduhCsv, parseCsv } from "@/lib/csv";
 import { useAuth } from "@/lib/store/auth";
 import { useToko } from "@/lib/store/toko";
@@ -300,10 +302,12 @@ function PanelProfil() {
   const profil = useToko((s) => s.profil);
   const simpan = useToko((s) => s.simpan);
   const perusahaan = useProfilPerusahaan();
-  const { simpanProfil } = usePengaturanMutations();
+  const { simpanProfil, unggahLogo } = usePengaturanMutations();
   const [draft, setDraft] = useState(profil);
   const [sukses, setSukses] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [logoError, setLogoError] = useState<string | null>(null);
+  const [logoSukses, setLogoSukses] = useState(false);
 
   // Identitas toko disimpan di engine (company profile) supaya struk POS dan
   // faktur PDF memakai nama yang sama; store lokal hanya jadi cache Cetak.
@@ -326,6 +330,54 @@ function PanelProfil() {
     setSukses(false);
     setDraft({ ...draft, [k]: e.target.value });
   };
+
+  async function pilihLogo(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    setLogoError(null);
+    setLogoSukses(false);
+
+    if (file.type !== "image/png" && file.type !== "image/jpeg") {
+      setLogoError("Format logo harus PNG atau JPEG.");
+      return;
+    }
+    if (file.size > 2 * 1024 * 1024) {
+      setLogoError("Ukuran logo maksimal 2 MB.");
+      return;
+    }
+
+    try {
+      const p = await unggahLogo.mutateAsync(file);
+      setDraft((d) => ({ ...d, logoUrl: p.logoUrl }));
+      const store = useToko.getState();
+      simpan({ ...store.profil, logoUrl: p.logoUrl });
+      setLogoSukses(true);
+    } catch (err) {
+      setLogoError(String(err instanceof Error ? err.message : err));
+    }
+  }
+
+  async function hapusLogo() {
+    setLogoError(null);
+    setLogoSukses(false);
+    try {
+      await simpanProfil.mutateAsync({
+        nama: draft.nama,
+        alamat: draft.alamat,
+        telepon: draft.telepon,
+        email: draft.email ?? "",
+        website: draft.website ?? "",
+        npwp: draft.npwp ?? "",
+        logoUrl: "",
+      });
+      setDraft((d) => ({ ...d, logoUrl: "" }));
+      const store = useToko.getState();
+      simpan({ ...store.profil, logoUrl: "" });
+    } catch (err) {
+      setLogoError(String(err instanceof Error ? err.message : err));
+    }
+  }
 
   return (
     <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">
@@ -411,20 +463,77 @@ function PanelProfil() {
         </div>
       </form>
 
-      <div className="panel p-5 text-sm">
-        <p className="font-bold text-brand">Pratinjau identitas</p>
-        <div className="mt-3 rounded-xl border border-line p-4">
-          <p className="text-lg font-black text-brand">{draft.nama || "—"}</p>
-          <p className="mt-1 text-xs text-muted">{draft.alamat || "Alamat belum diisi"}</p>
-          {draft.telepon && <p className="text-xs text-muted">{draft.telepon}</p>}
-          <p className="mt-3 border-t border-line pt-3 text-xs text-muted">
-            {draft.footerStruk || "—"}
+      <div className="space-y-4">
+        <div className="panel p-5 text-sm">
+          <p className="font-bold text-brand">Pratinjau identitas</p>
+          <div className="mt-3 rounded-xl border border-line p-4">
+            {draft.logoUrl && (
+              <img
+                src={urlLogoAbsolut(draft.logoUrl)}
+                alt={`Logo ${draft.nama || "toko"}`}
+                className="mb-3 h-16 w-auto rounded-lg border border-line bg-white object-contain p-1"
+              />
+            )}
+            <p className="text-lg font-black text-brand">{draft.nama || "—"}</p>
+            <p className="mt-1 text-xs text-muted">{draft.alamat || "Alamat belum diisi"}</p>
+            {draft.telepon && <p className="text-xs text-muted">{draft.telepon}</p>}
+            <p className="mt-3 border-t border-line pt-3 text-xs text-muted">
+              {draft.footerStruk || "—"}
+            </p>
+          </div>
+          <p className="mt-3 text-xs text-muted">
+            Identitas toko disimpan di engine akuntansi, jadi struk POS dan faktur PDF memakai nama
+            yang sama.
           </p>
         </div>
-        <p className="mt-3 text-xs text-muted">
-          Identitas toko disimpan di engine akuntansi, jadi struk POS dan faktur PDF memakai nama
-          yang sama. Logo toko, printer struk, dan konfigurasi lanjutan menyusul.
-        </p>
+
+        <div className="panel p-5 text-sm">
+          <p className="font-bold text-brand">Logo toko</p>
+          {draft.logoUrl ? (
+            <img
+              src={urlLogoAbsolut(draft.logoUrl)}
+              alt="Logo toko"
+              className="mt-3 h-20 w-auto rounded-xl border border-line bg-white object-contain p-1.5"
+            />
+          ) : (
+            <p className="mt-2 text-xs text-muted">
+              Belum ada logo. Logo disimpan engine dan dipakai pada faktur PDF.
+            </p>
+          )}
+
+          <label className="mt-3 block text-xs font-semibold text-ink" htmlFor="logo-toko">
+            Pilih berkas (PNG/JPEG, maks 2 MB)
+          </label>
+          <input
+            id="logo-toko"
+            className="input mt-1.5 text-xs"
+            type="file"
+            accept="image/png,image/jpeg"
+            onChange={pilihLogo}
+            disabled={API_MODE !== "live" || unggahLogo.isPending}
+          />
+          {API_MODE !== "live" && (
+            <p className="mt-1.5 text-xs text-muted">
+              Unggah logo tersedia di mode live — engine yang menyimpan berkas logo.
+            </p>
+          )}
+          {draft.logoUrl && (
+            <button
+              type="button"
+              onClick={hapusLogo}
+              className="btn-secondary mt-3"
+              disabled={simpanProfil.isPending}
+            >
+              Hapus logo
+            </button>
+          )}
+          {logoSukses && (
+            <p className="mt-2 inline-flex items-center gap-1.5 text-xs font-semibold text-emerald-700">
+              <CheckCircle2 className="size-4" aria-hidden /> Logo tersimpan
+            </p>
+          )}
+          {logoError && <p className="mt-2 text-xs font-semibold text-rose-600">{logoError}</p>}
+        </div>
       </div>
     </div>
   );

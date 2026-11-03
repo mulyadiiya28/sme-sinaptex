@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { LogOut, Store } from "lucide-react";
 import { api } from "@/lib/api/client";
+import { urlLogoAbsolut } from "@/lib/api/live";
 import { useAuth } from "@/lib/store/auth";
 import { useToko } from "@/lib/store/toko";
 import { GlobalSearch } from "@/components/global-search";
@@ -11,6 +12,7 @@ import { NotifButton } from "@/components/notif-button";
 export function Topbar() {
   const user = useAuth((s) => s.user);
   const namaToko = useToko((s) => s.profil.nama);
+  const logoUrl = useToko((s) => s.profil.logoUrl ?? "");
   const clearSession = useAuth((s) => s.clearSession);
   const router = useRouter();
 
@@ -30,7 +32,15 @@ export function Topbar() {
   return (
     <header className="sticky top-0 z-10 flex items-center gap-4 border-b border-line/80 bg-white/80 px-6 py-3.5 backdrop-blur-xl">
       <div className="flex items-center gap-2 text-sm font-semibold text-brand">
-        <Store className="size-4" aria-hidden />
+        {logoUrl ? (
+          <img
+            src={urlLogoAbsolut(logoUrl)}
+            alt=""
+            className="size-7 rounded-lg border border-line bg-white object-contain"
+          />
+        ) : (
+          <Store className="size-4" aria-hidden />
+        )}
         {namaToko}
       </div>
       <GlobalSearch />

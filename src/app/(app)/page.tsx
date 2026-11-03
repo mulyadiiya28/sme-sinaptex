@@ -5,6 +5,7 @@ import { AlertTriangle, Calculator, Store, TrendingUp, Wallet } from "lucide-rea
 import { PageHeader } from "@/components/page-header";
 import { KpiCard } from "@/components/kpi-card";
 import { MoneyDisplay } from "@/components/money-display";
+import { PanelKesehatan } from "@/components/panel-kesehatan";
 import { KpiSkeleton, Skeleton } from "@/components/skeleton";
 import { StatusBadge } from "@/components/status-badge";
 import { useActiveShift, useProducts, useRiwayatTransaksi } from "@/hooks/queries";
@@ -70,6 +71,8 @@ export default function DashboardPage() {
           icon={<TrendingUp className="size-4" aria-hidden />}
         />
       </div>
+
+      <PanelKesehatan className="mt-6" />
 
       <div className="mt-6 grid grid-cols-1 gap-4 xl:grid-cols-3">
         <div className="panel col-span-2 p-5">
