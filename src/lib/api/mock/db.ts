@@ -606,6 +606,7 @@ export const mockDb = {
       id: `PB-${String(pembelianCounter).padStart(4, "0")}`,
       nomor: `POB-${String(pembelianCounter).padStart(6, "0")}`,
       pemasok: input.pemasok,
+      supplierId: input.supplierId,
       waktu: waktuSekarang(),
       items: input.items,
       total,

@@ -154,6 +154,7 @@ export type Pembelian = {
   id: string;
   nomor: string;
   pemasok: string;
+  supplierId: string | null;
   waktu: string;
   items: PembelianItem[];
   total: number;
@@ -163,6 +164,7 @@ export type Pembelian = {
 
 export type PembelianInput = {
   pemasok: string;
+  supplierId: string | null;
   items: PembelianItem[];
   metode: PembelianMetode;
 };

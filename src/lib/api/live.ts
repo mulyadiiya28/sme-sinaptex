@@ -1017,6 +1017,7 @@ export async function liveBayarHutang(input: {
     nomor,
     waktu: dokumen?.purchaseDate ?? new Date().toISOString(),
     pemasok: dokumen?.supplierId ?? "",
+    supplierId: dokumen?.supplierId ?? null,
     items: [],
     total,
     metode: sisaHutang > 0 ? "hutang" : "tunai",
@@ -1275,6 +1276,7 @@ export async function livePembelianList(): Promise<Pembelian[]> {
       id: p.id,
       nomor,
       pemasok: p.supplierId ? namaPemasok.get(p.supplierId) ?? p.supplierId : "-",
+      supplierId: p.supplierId,
       waktu: p.purchaseDate,
       items: p.items.map((item) => ({
         productId: item.productId,
@@ -1311,7 +1313,7 @@ export async function livePembelianBuat(input: PembelianInput): Promise<Pembelia
     body: {
       requestedBy: actor,
       approvedBy: actor === ENGINE_APPROVER ? `${ENGINE_APPROVER}-otorisasi` : ENGINE_APPROVER,
-      supplierId: null,
+      supplierId: input.supplierId,
       cashAccountId,
       paymentAmount: hutang ? 0 : total,
       costingMethod: "AVERAGE",
@@ -1332,6 +1334,7 @@ export async function livePembelianBuat(input: PembelianInput): Promise<Pembelia
     id: hasil.documentId,
     nomor: hasil.documentNumber ?? hasil.documentId,
     pemasok: input.pemasok,
+    supplierId: input.supplierId,
     waktu: new Date().toISOString(),
     items: input.items,
     total: hasil.documentTotal,
