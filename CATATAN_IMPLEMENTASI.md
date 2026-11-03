@@ -60,6 +60,28 @@ Ditemukan dan **sudah diperbaiki**:
     profil, dan GET mengembalikan `""` yang justru ditolak PUT. Diperbaiki di engine: validasi
     email pindah ke `Validate()` DTO; `""` berarti "tidak ada email", email yang ada harus berbentuk
     alamat. Ditutup 2 tes regresi.
+13. **Logo toko terunggah tapi URL-nya 404** — folder `wwwroot` belum ada saat startup, jadi
+    provider static-files kosong; berkas ada di disk, tapi tidak pernah disajikan. Diperbaiki di
+    engine: folder penyimpanan dibuat sebelum middleware meminta provider, dan folder storage
+    dipetakan ke `FileStorage:UrlBase` (bukan webroot) supaya URL tetap benar walau folder
+    penyimpanan diarahkan ke tempat lain (tes, disk bersama). Ditutup tes "URL yang diberikan harus
+    benar-benar terbuka".
+14. **`GET /api/analytics/health-summary` tanpa `date` → 500** (`DateTime.MinValue.AddMonths(-12)`
+    meledak), dan 4 endpoint neraca lain membaca buku "tahun satu" lalu menjawab nol. Diperbaiki:
+    `date` jadi opsional, default ke hari ini (`ResolveReadDate`).
+
+## Fitur Baru (3 Nov 2026)
+
+1. **Unggah logo toko** (Pengaturan → Profil Toko): berkas PNG/JPEG ≤2 MB diunggah ke engine
+   (`POST /api/settings/company-profile/logo`), logo tampil di pratinjau, topbar, dan tercetak di
+   struk. URL logo engine relatif → `urlLogoAbsolut()` menempelkan host engine. Hapus logo =
+   `PUT company-profile` dengan `logoUrl: ""`. Mode mock menolak dengan pesan jelas (tidak ada
+   penyimpanan berkas di browser).
+2. **Panel "Kesehatan usaha" di dashboard**: Rasio Lancar, Rasio Kas, Modal Kerja + verdict dan
+   penjelasan per indikator. Di live angkanya dari `GET /api/analytics/health-summary` (10
+   indikator, dihitung engine dari jurnal yang sama dengan neraca saldo); di mode mock POS
+   menghitung sendiri 3 indikator yang memang bisa dihitung dari akun mock. Panel punya state
+   loading (skeleton) dan error (engine offline → tombol "Coba lagi").
 
 Masih jadi gap (tercatat, belum dikerjakan):
 
@@ -69,14 +91,15 @@ Masih jadi gap (tercatat, belum dikerjakan):
 - Live: satu shift aktif per tenant (bukan per kasir).
 - Live: QRIS belum jadi konsep engine → konfirmasi digital hanya jalan bila engine punya
   pembayaran tertunda untuk penjualan itu.
-- POS: upload logo toko belum ada (engine sudah punya `POST /api/settings/company-profile/logo`).
-- POS: dashboard belum membaca endpoint analytics/health engine (badge "Engine akuntansi" statis).
 - POS: multi-branch belum dipakai (`X-Branch-Id` tidak dikirim).
+- POS: 7 indikator kesehatan lain (perputaran modal kerja, margin bersih, ROE, rasio utang,
+  perputaran persediaan, penagihan piutang, siklus kas) hanya ada di live — mode mock sengaja
+  tidak mengarangnya.
 - Mock: uang memakai `number` JS, pembulatan bisa berbeda dari engine.
 
 ## Verifikasi
 
-- Backend: `dotnet build AccountingEngine.slnx` (0 warning) + `dotnet test` → **485 unit + 711 integration** lulus.
+- Backend: `dotnet build AccountingEngine.slnx` (0 warning) + `dotnet test` → **485 unit + 714 integration** lulus.
 - Frontend: `npx tsc --noEmit` bersih + `npm run build` sukses (15 halaman statis).
 - **Uji kontrak live (31 Okt 2026, engine nyata di `http://localhost:5121`)**: login pemilik →
   `GET /api/users` (authorityLevel 99) → buat kasir (`fullName` + peran tersimpan) → ubah peran
@@ -90,6 +113,13 @@ Masih jadi gap (tercatat, belum dikerjakan):
 - Konfirmasi digital live: rute `/api/sales/{id}/confirm-payment` **sudah ketemu** (ragu-ragu
   "404 No pending payment found" = aturan engine: penjualan uji tidak punya pembayaran QRIS
   tertunda). QRIS sendiri belum jadi konsep engine.
+- **Uji live 3 Nov 2026 (ringkasan kesehatan + logo)**: `GET /api/analytics/health-summary` tanpa
+  `date` → 200 (dulu 500) → dengan `date` → 10 indikator lengkap dengan rating/penjelasan/patokan
+  → `POST /api/settings/company-profile/logo` → 200 dengan `logoUrl` → **URL logo diunduh 200 dan
+  isinya PNG asli** (dulu 404) → `PUT company-profile` tanpa logo → `logoUrl` kosong lagi.
+- Mock: `ringkasanKesehatan()` diuji langsung (node + type-stripping): Rasio Lancar & Rasio Kas
+  "TIDAK BERLAKU" (tidak ada liabilitas lancar untuk dibandingkan), Modal Kerja Rp8.378.500
+  (BAIK), verdict "CUKUP SEHAT" — bukan "SEHAT" yang flattering.
 
 ## Catatan Penting
 

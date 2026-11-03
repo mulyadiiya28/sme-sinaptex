@@ -136,6 +136,14 @@ Perilaku live yang menyimpang dari mock:
   user yang sedang login (nama itu masuk ke `requestedBy` batch → `requestedByName` di engine).
 - Profil toko disinkronkan ke `GET/PUT /api/settings/company-profile` (`api.pengaturan`); store
   `useToko` hanya cache untuk struk. Di mode mock, `api.pengaturan` membaca/tulis store lokal.
+- Logo toko diunggah ke engine (`POST /api/settings/company-profile/logo`, multipart) — berkasnya
+  disimpan server yang mencetak faktur PDF, bukan di browser POS. URL logo dari engine relatif
+  (`/uploads/logos/...`) → `urlLogoAbsolut()` di `live.ts` yang menempelkan host engine. Mode mock
+  menolak unggah logo dengan pesan jelas (tidak ada penyimpanan berkas di browser).
+- Dashboard menampilkan "Kesehatan usaha" dari `GET /api/analytics/health-summary?date=`
+  (`api.analitik.ringkasanKesehatan`, query key `["kesehatan-usaha"]`). Angka Rasio Lancar, Rasio
+  Kas, dan Modal Kerja di live datang dari engine (jurnal yang sama dengan neraca saldo); mode mock
+  menghitungnya sendiri dari akun mock (hanya 3 indikator yang bisa dihitung jujur).
 - Neraca saldo memakai `GET /api/reports/trial-balance?fromDate=&toDate=` dan membaca
   `openingBalance`/`closingBalance`: kolom **Saldo awal | Debit | Kredit | Saldo berjalan**.
 - Rute engine selalu memakai **id** dokumen, sedangkan POS menyimpan nomor dokumen
@@ -173,7 +181,8 @@ Perilaku live yang menyimpang dari mock:
   `totalTransaksi`); `api/client.ts` menghitung ulang total di sisi "server" (`hitungTotal`).
 - React Query: query key berupa array string pendek (`["products"]`, `["pelanggan"]`, `["shift"]`,
   `["shift-riwayat"]`, `["transaksi"]`, `["retur"]`, `["pembelian"]`, `["biaya"]`, `["jurnal"]`,
-  `["akun"]`, `["laba-rugi"]`, `["users"]`, `["audit"]`). Default provider: `staleTime: 30_000`, `retry: 1`.
+  `["akun"]`, `["laba-rugi"]`, `["kesehatan-usaha"]`, `["users"]`, `["audit"]`). Default provider:
+  `staleTime: 30_000`, `retry: 1`.
   Mutation dikelompokkan dalam hook yang mengembalikan objek mutation, contoh:
   `useTransaksiMutations() → { batal, retur, konfirmasiDigital }`, `useShiftMutations()`,
   `useProductMutations()`, `useUserMutations()`, `useImporMutations()`, `usePembayaranMutations()`,
