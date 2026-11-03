@@ -46,6 +46,8 @@ import type {
   WorkingCapitalTurnover,
   AgedInvoice,
   AgingReport,
+  ApprovalRule,
+  CreateApprovalRuleRequest,
   CreateFiscalPeriodRequest,
   CreateSupplierRequest,
   DailyMovementReport,
@@ -83,6 +85,9 @@ import {
   liveSupplierCreate,
   liveSupplierDeactivate,
   liveSupplierList,
+  liveApprovalRuleCreate,
+  liveApprovalRuleDeactivate,
+  liveApprovalRuleList,
   liveDeleteProduct,
   liveHapusUser,
   liveHealthSummary,
@@ -622,6 +627,48 @@ export const api = {
         email: null,
         taxNumber: null,
         isActive: false,
+      };
+    },
+  },
+
+  approvalRules: {
+    list: async (): Promise<ApprovalRule[]> => {
+      if (API_MODE === "live") return liveApprovalRuleList();
+      await delay(120);
+      return [];
+    },
+    create: async (input: CreateApprovalRuleRequest): Promise<ApprovalRule> => {
+      if (API_MODE === "live") return liveApprovalRuleCreate(input);
+      await delay(350);
+      return {
+        id: crypto.randomUUID(),
+        businessId: BUSINESS_ID,
+        name: input.name ?? "",
+        transactionType: input.transactionType,
+        minimumAmount: input.minimumAmount,
+        requiredLevel: input.requiredLevel,
+        resolutionMode: input.resolutionMode ?? "HIGHEST_LEVEL",
+        isActive: true,
+        version: 1,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+    },
+    deactivate: async (id: string): Promise<ApprovalRule> => {
+      if (API_MODE === "live") return liveApprovalRuleDeactivate(id);
+      await delay(350);
+      return {
+        id,
+        businessId: BUSINESS_ID,
+        name: "",
+        transactionType: "",
+        minimumAmount: 0,
+        requiredLevel: 0,
+        resolutionMode: "",
+        isActive: false,
+        version: 1,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
       };
     },
   },

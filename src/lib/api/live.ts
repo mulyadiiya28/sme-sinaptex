@@ -48,6 +48,8 @@ import type {
   WorkingCapitalTurnover,
   AgedInvoice,
   AgingReport,
+  ApprovalRule,
+  CreateApprovalRuleRequest,
   CreateFiscalPeriodRequest,
   CreateSupplierRequest,
   DailyMovementReport,
@@ -1800,6 +1802,35 @@ export async function liveFiscalPeriodReverseClosing(id: string, actorId: string
 
 export async function liveFiscalPeriodGetPendingClose(): Promise<FiscalPeriod[]> {
   const data = await minta<FiscalPeriod[]>("/api/fiscal-periods/pending-close");
+  return data;
+}
+
+export async function liveApprovalRuleList(): Promise<ApprovalRule[]> {
+  const data = await minta<ApprovalRule[]>("/api/approval-rules");
+  return data;
+}
+
+export async function liveApprovalRuleCreate(input: CreateApprovalRuleRequest): Promise<ApprovalRule> {
+  const data = await minta<ApprovalRule>("/api/approval-rules", {
+    method: "POST",
+    idempotensiKunci: buatKunciIdempotensi(),
+    body: {
+      name: input.name,
+      transactionType: input.transactionType,
+      minimumAmount: input.minimumAmount,
+      requiredLevel: input.requiredLevel,
+      resolutionMode: input.resolutionMode,
+    },
+  });
+  return data;
+}
+
+export async function liveApprovalRuleDeactivate(id: string): Promise<ApprovalRule> {
+  const data = await minta<ApprovalRule>(`/api/approval-rules/${id}/deactivate`, {
+    method: "POST",
+    idempotensiKunci: buatKunciIdempotensi(),
+    body: {},
+  });
   return data;
 }
 

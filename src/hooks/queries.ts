@@ -1,7 +1,9 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api/client";
 import type {
+  ApprovalRule,
   CheckoutPayload,
+  CreateApprovalRuleRequest,
   CreateSupplierRequest,
   ImporPelangganBaris,
   ImporProdukBaris,
@@ -58,6 +60,45 @@ export function useAkun() {
 
 export function useLabaRugi() {
   return useQuery({ queryKey: ["laba-rugi"], queryFn: api.akuntansi.labaRugi });
+}
+
+export function useDailyMovement(date: string, accountCode: string) {
+  return useQuery({
+    queryKey: ["laporan", "daily-movement", date, accountCode],
+    queryFn: () => api.akuntansi.dailyMovement(date, accountCode),
+    enabled: !!date && !!accountCode,
+  });
+}
+
+export function useArAging(asOfDate?: string) {
+  return useQuery({
+    queryKey: ["aging", "ar", asOfDate],
+    queryFn: () => api.aging.ar(asOfDate),
+    enabled: true,
+  });
+}
+
+export function useApAging(asOfDate?: string) {
+  return useQuery({
+    queryKey: ["aging", "ap", asOfDate],
+    queryFn: () => api.aging.ap(asOfDate),
+    enabled: true,
+  });
+}
+
+export function useReconciliation(side: "RECEIVABLE" | "PAYABLE", accountCode: string, asOfDate?: string) {
+  return useQuery({
+    queryKey: ["aging", "reconciliation", side, accountCode, asOfDate],
+    queryFn: () => api.aging.reconciliation(side, accountCode, asOfDate),
+    enabled: !!side && !!accountCode,
+  });
+}
+
+export function useFiscalPeriodList() {
+  return useQuery({
+    queryKey: ["akuntansi", "fiscal-periods"],
+    queryFn: () => api.akuntansi.fiscalPeriods.list(),
+  });
 }
 
 export function useProfitability(startDate: string, endDate: string) {
@@ -164,45 +205,6 @@ export function useProductPerformanceRankings(startDate: string, endDate: string
   });
 }
 
-export function useDailyMovement(date: string, accountCode: string) {
-  return useQuery({
-    queryKey: ["laporan", "daily-movement", date, accountCode],
-    queryFn: () => api.akuntansi.dailyMovement(date, accountCode),
-    enabled: !!date && !!accountCode,
-  });
-}
-
-export function useArAging(asOfDate?: string) {
-  return useQuery({
-    queryKey: ["aging", "ar", asOfDate],
-    queryFn: () => api.aging.ar(asOfDate),
-    enabled: true,
-  });
-}
-
-export function useApAging(asOfDate?: string) {
-  return useQuery({
-    queryKey: ["aging", "ap", asOfDate],
-    queryFn: () => api.aging.ap(asOfDate),
-    enabled: true,
-  });
-}
-
-export function useReconciliation(side: "RECEIVABLE" | "PAYABLE", accountCode: string, asOfDate?: string) {
-  return useQuery({
-    queryKey: ["aging", "reconciliation", side, accountCode, asOfDate],
-    queryFn: () => api.aging.reconciliation(side, accountCode, asOfDate),
-    enabled: !!side && !!accountCode,
-  });
-}
-
-export function useFiscalPeriodList() {
-  return useQuery({
-    queryKey: ["akuntansi", "fiscal-periods"],
-    queryFn: () => api.akuntansi.fiscalPeriods.list(),
-  });
-}
-
 export function useSupplierList() {
   return useQuery({
     queryKey: ["master", "suppliers"],
@@ -222,10 +224,37 @@ export function useSupplierCreate() {
 
 export function useSupplierDeactivate() {
   const qc = useQueryClient();
-  return useMutation({
+  return useMutation<Supplier, Error, string>({
     mutationFn: (id: string) => api.supplier.deactivate(id),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["master", "suppliers"] });
+    },
+  });
+}
+
+export function useApprovalRuleList() {
+  return useQuery({
+    queryKey: ["master", "approval-rules"],
+    queryFn: () => api.approvalRules.list(),
+  });
+}
+
+export function useApprovalRuleCreate() {
+  const qc = useQueryClient();
+  return useMutation<ApprovalRule, Error, CreateApprovalRuleRequest>({
+    mutationFn: (input: CreateApprovalRuleRequest) => api.approvalRules.create(input),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["master", "approval-rules"] });
+    },
+  });
+}
+
+export function useApprovalRuleDeactivate() {
+  const qc = useQueryClient();
+  return useMutation<ApprovalRule, Error, string>({
+    mutationFn: (id: string) => api.approvalRules.deactivate(id),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["master", "approval-rules"] });
     },
   });
 }
@@ -256,7 +285,8 @@ export function useUserMutations() {
     onSuccess: invalidate,
   });
   const hapus = useMutation({
-    mutationFn: (args: { id: string; actor: User }) => api.auth.hapusUser(args.id, args.actor),
+    mutationFn: (args: { id: string; actor: User }) =>
+      api.auth.hapusUser(args.id, args.actor),
     onSuccess: invalidate,
   });
 

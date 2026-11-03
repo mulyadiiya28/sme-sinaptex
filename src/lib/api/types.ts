@@ -569,6 +569,30 @@ export type DailyMovementReport = {
   totalCredit: number;
 };
 
+/// <summary>Aturan approval transaksi (engine: GET/POST /api/approval-rules).</summary>
+export type ApprovalRule = {
+  id: string;
+  businessId: string;
+  name: string | null;
+  transactionType: string;
+  minimumAmount: number;
+  requiredLevel: number;
+  resolutionMode: string;
+  isActive: boolean;
+  version: number;
+  createdAt: string;
+  updatedAt: string;
+};
+
+/// <summary>Request membuat aturan approval baru (POST /api/approval-rules).</summary>
+export type CreateApprovalRuleRequest = {
+  name?: string;
+  transactionType: string;
+  minimumAmount: number;
+  requiredLevel: number;
+  resolutionMode?: string;
+};
+
 /// <summary>Supplier master data (engine: GET/POST /api/suppliers).</summary>
 export type Supplier = {
   id: string;
