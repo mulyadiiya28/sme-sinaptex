@@ -126,9 +126,9 @@ khusus POS (`mataUang`, `zonaWaktu`, `footerStruk`, `pajakPersen`) tetap di loca
 ### P2 — endpoint engine yang belum dipakai POS
 | Endpoint engine | Kegunaan di POS |
 |---|---|
-| `GET /api/reports/daily-movement` (+ `/export`) | Laporan "Daily Movement" belum ada di halaman Laporan (sekarang hanya agregasi dari riwayat). |
-| `GET /api/reports/ar-ap/aging`, `/reconciliation` | Umur piutang/hutang di Keuangan. |
-| `GET /api/reports/trial-balance/export` | Ekspor neraca saldo resmi (xlsx/CSV) — sekarang ekspor hanya CSV transaksi buatan sendiri. |
+| `GET /api/reports/daily-movement` (+ `/export`) | Laporan "Daily Movement" belum ada di halaman Laporan (hanya trial-balance & neraca saldo yang ada). |
+| `GET /api/reports/ar-ap/aging`, `/reconciliation` | Umur piutang/hutang di Keuangan (hanya AR dipakai di riwayat penjualan). |
+| `GET /api/reports/trial-balance/export` | **DIPERBAIKI** — tombol "Ekspor Neraca Saldo" di tab Neraca Saldo halaman Laporan. |
 | `GET /api/analytics/*` (12 laporan) | Rasio & health summary belum tampil di mana pun. |
 | `GET /api/fiscal-periods`, `POST .../close`, `.../close-year` | Tab Pengaturan → Akuntansi masih berlabel "Menyusul (P2)". |
 | `GET/POST /api/approval-rules`, `/api/approvals` | Belum ada UI approval; POS hanya memakai `approvedBy = NEXT_PUBLIC_ENGINE_APPROVER`. |
@@ -161,9 +161,7 @@ Semua di bawah ini **terverifikasi lewat E2E**, bukan dugaan:
 3. **`GET /api/purchases` → `payableAmount` adalah hutang bruto, bukan sisa.** Terukur: total 20000,
    DP 1000, bayar 5000 → `payableAmount` tetap 20000. Nama field menyesatkan; sebaiknya diganti
    `payableTotal` atau diisi sisa sebenarnya.
-4. **`POST /api/inventory/adjustments` tidak memvalidasi keberadaan `productId`/`warehouseId`**: dikirim
-   id asal-asalan, engine menjawab **201** dan menulis `InventoryMovement` + `CostLayer` (dengan
-   `ProductId = "tidak-ada"`), tanpa jurnal. Melanggar semangat "Unknown ≠ Zero".
+4. ~~`POST /api/inventory/adjustments` tidak memvalidasi keberadaan `productId`/`warehouseId`~~ → **DIPERBAIKI** di engine. `AdjustStockAsync` kini memvalidasi bahwa `productId` dan `warehouseId` ada di business sebelum menulis movement/cost layer (melalui `EnsureProductExistsAsync` dan `EnsureWarehouseServesBranchAsync`). Melindungi prinsip "Unknown ≠ Zero".
 5. **Alur kredit langsung butuh dua akun.** `POST /api/transactions/{id}/approve` menolak
    `403 "Maker cannot approve own transaction"`; DB dev hanya punya satu user (`pemilik`). Selama belum
    ada user penyetuju kedua (atau aturan approval yang mengizinkan auto-approve kredit), jalur dokumen
