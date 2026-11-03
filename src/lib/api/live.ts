@@ -48,7 +48,9 @@ import type {
   WorkingCapitalTurnover,
   AgedInvoice,
   AgingReport,
+  CreateFiscalPeriodRequest,
   DailyMovementReport,
+  FiscalPeriod,
   Reconciliation,
 } from "@/lib/api/types";
 
@@ -82,6 +84,7 @@ type OpsiLive = {
   method?: "GET" | "POST" | "PUT" | "DELETE";
   body?: unknown;
   idempotensiKunci?: string;
+  headers?: Record<string, string>;
 };
 
 type SesiEngine = {
@@ -156,7 +159,7 @@ function headerLive(opsi: { json?: boolean; idempotensiKunci?: string } = {}): R
 
 async function minta<T>(path: string, opsi: OpsiLive = {}, bolehUlang = true): Promise<T> {
   const state = useAuth.getState();
-  const headers = headerLive({ json: true, idempotensiKunci: opsi.idempotensiKunci });
+  const headers = { ...headerLive({ json: true, idempotensiKunci: opsi.idempotensiKunci }), ...opsi.headers };
 
   const response = await fetch(`${API_BASE_URL}${path}`, {
     method: opsi.method ?? "GET",
@@ -1720,6 +1723,81 @@ export async function liveProductPerformance(startDate: string, endDate: string)
 
 export async function liveProductPerformanceRankings(startDate: string, endDate: string, top = 10): Promise<ProductPerformanceRankings> {
   const data = await minta<ProductPerformanceRankings>(`/api/analytics/product-performance/rankings?startDate=${startDate}&endDate=${endDate}&top=${top}`);
+  return data;
+}
+
+export async function liveFiscalPeriodList(): Promise<FiscalPeriod[]> {
+  const data = await minta<FiscalPeriod[]>("/api/fiscal-periods");
+  return data;
+}
+
+export async function liveFiscalPeriodCreate(input: CreateFiscalPeriodRequest): Promise<FiscalPeriod> {
+  const data = await minta<FiscalPeriod>("/api/fiscal-periods", {
+    method: "POST",
+    idempotensiKunci: buatKunciIdempotensi(),
+    body: {
+      name: input.name,
+      startDate: input.startDate,
+      endDate: input.endDate,
+      status: input.status,
+    },
+  });
+  return data;
+}
+
+export async function liveFiscalPeriodClose(id: string, actorId: string, idempotensiKunci: string): Promise<FiscalPeriod> {
+  const data = await minta<FiscalPeriod>(`/api/fiscal-periods/${id}/close`, {
+    method: "POST",
+    idempotensiKunci,
+    body: {},
+  });
+  return data;
+}
+
+export async function liveFiscalPeriodLock(id: string, actorId: string, actorLevel: string, reason: string, idempotensiKunci: string): Promise<FiscalPeriod> {
+  const data = await minta<FiscalPeriod>(`/api/fiscal-periods/${id}/lock`, {
+    method: "POST",
+    idempotensiKunci,
+    headers: {
+      "X-Actor-Id": actorId,
+      "X-Actor-Level": actorLevel,
+      "X-Reason": reason,
+    },
+    body: {},
+  });
+  return data;
+}
+
+export async function liveFiscalPeriodReopen(id: string, actorId: string, actorLevel: string, reason: string, idempotensiKunci: string): Promise<FiscalPeriod> {
+  const data = await minta<FiscalPeriod>(`/api/fiscal-periods/${id}/reopen`, {
+    method: "POST",
+    idempotensiKunci,
+    headers: {
+      "X-Actor-Id": actorId,
+      "X-Actor-Level": actorLevel,
+      "X-Reason": reason,
+    },
+    body: {},
+  });
+  return data;
+}
+
+export async function liveFiscalPeriodReverseClosing(id: string, actorId: string, actorLevel: string, reason: string, idempotensiKunci: string): Promise<FiscalPeriod> {
+  const data = await minta<FiscalPeriod>(`/api/fiscal-periods/${id}/reverse-closing`, {
+    method: "POST",
+    idempotensiKunci,
+    headers: {
+      "X-Actor-Id": actorId,
+      "X-Actor-Level": actorLevel,
+      "X-Reason": reason,
+    },
+    body: {},
+  });
+  return data;
+}
+
+export async function liveFiscalPeriodGetPendingClose(): Promise<FiscalPeriod[]> {
+  const data = await minta<FiscalPeriod[]>("/api/fiscal-periods/pending-close");
   return data;
 }
 

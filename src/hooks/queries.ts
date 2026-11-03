@@ -194,6 +194,13 @@ export function useReconciliation(side: "RECEIVABLE" | "PAYABLE", accountCode: s
   });
 }
 
+export function useFiscalPeriodList() {
+  return useQuery({
+    queryKey: ["akuntansi", "fiscal-periods"],
+    queryFn: () => api.akuntansi.fiscalPeriods.list(),
+  });
+}
+
 export function useAuthUsers() {
   return useQuery({ queryKey: ["users"], queryFn: api.auth.users });
 }

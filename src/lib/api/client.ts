@@ -46,12 +46,15 @@ import type {
   WorkingCapitalTurnover,
   AgedInvoice,
   AgingReport,
-  Reconciliation,
+  CreateFiscalPeriodRequest,
   DailyMovementReport,
+  FiscalPeriod,
+  Reconciliation,
 } from "@/lib/api/types";
 import { mockDb, produkBaruId } from "@/lib/api/mock/db";
 import { useToko } from "@/lib/store/toko";
 import {
+  BUSINESS_ID,
   fileCsvPelangganDariBaris,
   fileCsvProdukDariBaris,
   fileCsvSaldoAwalDariBaris,
@@ -66,6 +69,13 @@ import {
   liveCompanyProfileGet,
   liveCompanyProfilePut,
   liveCreateProduct,
+  liveFiscalPeriodClose,
+  liveFiscalPeriodCreate,
+  liveFiscalPeriodGetPendingClose,
+  liveFiscalPeriodList,
+  liveFiscalPeriodLock,
+  liveFiscalPeriodReopen,
+  liveFiscalPeriodReverseClosing,
   liveKebijakanGet,
   liveKebijakanPut,
   liveDeleteProduct,
@@ -330,6 +340,83 @@ export const api = {
       if (API_MODE === "live") return liveLabaRugi();
       await delay(120);
       return structuredClone(mockDb.labaRugi());
+    },
+    fiscalPeriods: {
+      list: async (): Promise<FiscalPeriod[]> => {
+        if (API_MODE === "live") return liveFiscalPeriodList();
+        await delay(120);
+        return [];
+      },
+      create: async (input: CreateFiscalPeriodRequest): Promise<FiscalPeriod> => {
+        if (API_MODE === "live") return liveFiscalPeriodCreate(input);
+        await delay(350);
+        return {
+          id: crypto.randomUUID(),
+          businessId: BUSINESS_ID,
+          name: input.name,
+          startDate: input.startDate,
+          endDate: input.endDate,
+          status: input.status ?? "OPEN",
+          version: 1,
+        };
+      },
+      close: async (id: string, actorId: string, idempotensiKunci: string): Promise<FiscalPeriod> => {
+        if (API_MODE === "live") return liveFiscalPeriodClose(id, actorId, idempotensiKunci);
+        await delay(350);
+        return {
+          id,
+          businessId: BUSINESS_ID,
+          name: "",
+          startDate: "",
+          endDate: "",
+          status: "CLOSED",
+          version: 1,
+        };
+      },
+      lock: async (id: string, actorId: string, actorLevel: string, reason: string, idempotensiKunci: string): Promise<FiscalPeriod> => {
+        if (API_MODE === "live") return liveFiscalPeriodLock(id, actorId, actorLevel, reason, idempotensiKunci);
+        await delay(350);
+        return {
+          id,
+          businessId: BUSINESS_ID,
+          name: "",
+          startDate: "",
+          endDate: "",
+          status: "LOCKED",
+          version: 1,
+        };
+      },
+      reopen: async (id: string, actorId: string, actorLevel: string, reason: string, idempotensiKunci: string): Promise<FiscalPeriod> => {
+        if (API_MODE === "live") return liveFiscalPeriodReopen(id, actorId, actorLevel, reason, idempotensiKunci);
+        await delay(350);
+        return {
+          id,
+          businessId: BUSINESS_ID,
+          name: "",
+          startDate: "",
+          endDate: "",
+          status: "OPEN",
+          version: 1,
+        };
+      },
+      reverseClosing: async (id: string, actorId: string, actorLevel: string, reason: string, idempotensiKunci: string): Promise<FiscalPeriod> => {
+        if (API_MODE === "live") return liveFiscalPeriodReverseClosing(id, actorId, actorLevel, reason, idempotensiKunci);
+        await delay(350);
+        return {
+          id,
+          businessId: BUSINESS_ID,
+          name: "",
+          startDate: "",
+          endDate: "",
+          status: "OPEN",
+          version: 1,
+        };
+      },
+      getPendingClose: async (): Promise<FiscalPeriod[]> => {
+        if (API_MODE === "live") return liveFiscalPeriodGetPendingClose();
+        await delay(120);
+        return [];
+      },
     },
     dailyMovement: async (date: string, accountCode: string): Promise<DailyMovementReport> => {
       if (API_MODE === "live") return liveDailyMovement(date, accountCode);

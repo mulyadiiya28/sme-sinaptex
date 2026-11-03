@@ -523,6 +523,25 @@ export type Reconciliation = {
   isReconciled: boolean;
 };
 
+/// <summary>Periode fiskal dari engine (GET/POST /api/fiscal-periods).</summary>
+export type FiscalPeriod = {
+  id: string;
+  businessId: string;
+  name: string;
+  startDate: string;
+  endDate: string;
+  status: "OPEN" | "CLOSED" | "LOCKED";
+  version: number;
+};
+
+/// <summary>Request membuat periode fiskal baru (POST /api/fiscal-periods).</summary>
+export type CreateFiscalPeriodRequest = {
+  name: string;
+  startDate: string;
+  endDate: string;
+  status?: "OPEN" | "CLOSED" | "LOCKED";
+};
+
 /// <summary>Satu entri dalam Gerakan Harian: satu baris jurnal pada satu akun.</summary>
 export type DailyMovementEntry = {
   journalId: string;

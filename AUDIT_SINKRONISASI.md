@@ -130,7 +130,7 @@ khusus POS (`mataUang`, `zonaWaktu`, `footerStruk`, `pajakPersen`) tetap di loca
 | `GET /api/reports/ar-ap/aging`, `/reconciliation` | **DIPERBAIKI** — halaman Keuangan tab Piutang & Hutang menampilkan umur piutang/hutang (Current, 1-30, 31-60, 61-90, >90 hari) + daftar faktur + peringatan selisih rekonsiliasi. |
 | `GET /api/reports/trial-balance/export` | **DIPERBAIKI** — tombol "Ekspor Neraca Saldo" di tab Neraca Saldo halaman Laporan. |
 | `GET /api/analytics/*` (12 laporan) | **DIPERBAIKI** — tab "Analisis" di halaman Laporan menampilkan RASIO keuangan lengkap (profitabilitas, likuiditas, solvabilitas, turnover, cash conversion cycle, health summary, product performance) dari semua 12 endpoint engine. |
-| `GET /api/fiscal-periods`, `POST .../close`, `.../close-year` | Tab Pengaturan → Akuntansi masih berlabel "Menyusul (P2)". |
+| `GET /api/fiscal-periods`, `POST .../close`, `.../close-year` | **DIPERBAIKI** — tab "Periode Fiskal" di Pengaturan → Akuntansi menampilkan daftar periode dengan tombol buka/tutup/kunci/buka kembali/balikkan penutupan. |
 | `GET/POST /api/approval-rules`, `/api/approvals` | Belum ada UI approval; POS hanya memakai `approvedBy = NEXT_PUBLIC_ENGINE_APPROVER`. |
 | `GET/POST /api/suppliers` | Pembelian masih menyimpan `pemasok` sebagai teks bebas. |
 | `GET/POST /api/branches`, `/api/warehouses/branch/{id}` | Multi-cabang & gudang belum ada UI. |

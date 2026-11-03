@@ -1,9 +1,14 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";import { Building2, CheckCircle2, FileDown, FileUp, ShieldCheck } from "lucide-react";
+"use client";
+
+import { useEffect, useRef, useState } from "react";
+import { Building2, CheckCircle2, Calendar, Plus, Lock, RotateCcw, FileDown, FileUp, ShieldCheck, Menu, X } from "lucide-react";
 import type {
   AuditEntry,
   CompanyProfile,
+  CreateFiscalPeriodRequest,
+  FiscalPeriod,
   HasilImpor,
   ImporPelangganBaris,
   ImporProdukBaris,
@@ -15,8 +20,8 @@ import { DataTable, type Column } from "@/components/data-table";
 import { FormField } from "@/components/form-field";
 import { MoneyDisplay } from "@/components/money-display";
 import { PageHeader } from "@/components/page-header";
-import { StatusBadge } from "@/components/status-badge";
-import { useAkun, useAuditLog, useAuthUsers, useImporMutations, useUserMutations } from "@/hooks/queries";
+import { StatusBadge, StatusTone } from "@/components/status-badge";
+import { useAkun, useAuditLog, useAuthUsers, useFiscalPeriodList, useImporMutations, useUserMutations } from "@/hooks/queries";
 import { unduhCsv, parseCsv } from "@/lib/csv";
 import { api } from "@/lib/api/client";
 import { useAuth } from "@/lib/store/auth";
@@ -500,7 +505,12 @@ function PanelInfo({ grup }: { grup: string }) {
         ))}
       </ul>
       {grup === "Operasional" && <PanelKebijakanOperasional />}
-      {grup === "Akuntansi" && <DaftarAkunInfo />}
+      {grup === "Akuntansi" && (
+        <>
+          <DaftarAkunInfo />
+          <PanelFiscalPeriods />
+        </>
+      )}
     </div>
   );
 }
@@ -611,6 +621,176 @@ function DaftarAkunInfo() {
           </li>
         ))}
       </ul>
+    </div>
+  );
+}
+
+function PanelFiscalPeriods() {
+  const periods = useFiscalPeriodList();
+  const [openCreate, setOpenCreate] = useState(false);
+  const [createForm, setCreateForm] = useState<CreateFiscalPeriodRequest>({
+    name: "",
+    startDate: "",
+    endDate: "",
+    status: "OPEN",
+  });
+  const [createPending, setCreatePending] = useState(false);
+  const [closePending, setClosePending] = useState(false);
+
+  const statusWarna: Record<string, StatusTone> = {
+    OPEN: "success",
+    CLOSED: "danger",
+    LOCKED: "neutral",
+  };
+
+  const statusLabel: Record<string, string> = {
+    OPEN: "Buka",
+    CLOSED: "Tutup",
+    LOCKED: "Kunci",
+  };
+
+  const handleCreate = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setCreatePending(true);
+    try {
+      await api.akuntansi.fiscalPeriods.create(createForm);
+      setCreateForm({ name: "", startDate: "", endDate: "", status: "OPEN" });
+      setOpenCreate(false);
+    } catch (err) {
+      alert(String(err));
+    } finally {
+      setCreatePending(false);
+    }
+  };
+
+  const handleClose = async (id: string) => {
+    const user = useAuth.getState().user;
+    if (!user) return;
+    setClosePending(true);
+    try {
+      await api.akuntansi.fiscalPeriods.close(id, user.id, crypto.randomUUID());
+    } catch (err) {
+      alert(String(err));
+    } finally {
+      setClosePending(false);
+    }
+  };
+
+  const handleLock = async (id: string) => {
+    const user = useAuth.getState().user;
+    if (!user) return;
+    const reason = window.prompt("Alasan mengunci periode:");
+    if (!reason) return;
+    try {
+      await api.akuntansi.fiscalPeriods.lock(id, user.id, "99", reason, crypto.randomUUID());
+    } catch (err) {
+      alert(String(err));
+    }
+  };
+
+  const handleReopen = async (id: string) => {
+    const user = useAuth.getState().user;
+    if (!user) return;
+    const reason = window.prompt("Alasan membuka kembali periode:");
+    if (!reason) return;
+    try {
+      await api.akuntansi.fiscalPeriods.reopen(id, user.id, "99", reason, crypto.randomUUID());
+    } catch (err) {
+      alert(String(err));
+    }
+  };
+
+  const handleReverseClosing = async (id: string) => {
+    const user = useAuth.getState().user;
+    if (!user) return;
+    const reason = window.prompt("Alasan membalikkan penutupan tahun:");
+    if (!reason) return;
+    try {
+      await api.akuntansi.fiscalPeriods.reverseClosing(id, user.id, "99", reason, crypto.randomUUID());
+    } catch (err) {
+      alert(String(err));
+    }
+  };
+
+  return (
+    <div className="mt-5 border-t border-line pt-4">
+      <div className="flex items-center justify-between mb-4">
+        <h2 className="text-sm font-bold text-brand">Periode Fiskal</h2>
+        <button
+          type="button"
+          onClick={() => setOpenCreate(true)}
+          className="btn-primary px-3 py-1.5 text-xs"
+        >
+          <Plus className="size-3.5" aria-hidden /> Tambah Periode
+        </button>
+      </div>
+
+      <DataTable
+        columns={[
+          { key: "name", header: "Nama Periode", render: (r) => <span className="font-medium">{r.name}</span> },
+          { key: "startDate", header: "Mulai", render: (r) => <span className="text-muted text-xs">{new Date(r.startDate).toLocaleDateString("id-ID")}</span> },
+          { key: "endDate", header: "Selesai", render: (r) => <span className="text-muted text-xs">{new Date(r.endDate).toLocaleDateString("id-ID")}</span> },
+          { key: "status", header: "Status", align: "center", render: (r) => <StatusBadge label={statusLabel[r.status]} tone={statusWarna[r.status]} /> },
+          { key: "aksi", header: "", align: "center", render: (r) => (
+            <div className="flex justify-end gap-1.5">
+              {r.status === "OPEN" && (
+                <>
+                  <button type="button" onClick={() => handleClose(r.id)} className="btn-secondary rounded-lg px-2.5 py-1.5 text-xs">Tutup</button>
+                  <button type="button" onClick={() => handleLock(r.id)} className="btn-secondary rounded-lg px-2.5 py-1.5 text-xs">Kunci</button>
+                </>
+              )}
+              {r.status === "CLOSED" && (
+                <>
+                  <button type="button" onClick={() => handleReopen(r.id)} className="btn-secondary rounded-lg px-2.5 py-1.5 text-xs">Buka Kembali</button>
+                  <button type="button" onClick={() => handleReverseClosing(r.id)} className="btn-secondary rounded-lg px-2.5 py-1.5 text-xs text-rose-600">Balikan Penutupan</button>
+                </>
+              )}
+            </div>
+          )},
+        ]}
+        rows={periods.data ?? []}
+        rowKey={(r) => r.id}
+        loading={periods.isLoading}
+        empty="Belum ada periode fiskal."
+      />
+
+      <div className="mt-4 border-t border-line pt-4">
+        <h3 className="text-sm font-bold text-brand">Pending Close</h3>
+        <p className="text-xs text-muted">Periode yang telah ditutup tetapi belum ditutup tahun (close-year):</p>
+        <p className="text-xs text-muted mt-1">Fitur close-year tersedia lewat API engine.</p>
+      </div>
+
+      {openCreate && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink/50 p-4 backdrop-blur-sm" onClick={() => setOpenCreate(false)}>
+          <div className="panel w-full max-w-md p-7" onClick={(e) => e.stopPropagation()}>
+            <h2 className="font-black text-brand">Tambah Periode Fiskal</h2>
+            <form className="mt-4 space-y-3" onSubmit={handleCreate}>
+              <FormField label="Nama Periode">
+                <input className="input" value={createForm.name} onChange={(e) => setCreateForm({ ...createForm, name: e.target.value })} />
+              </FormField>
+              <FormField label="Tanggal Mulai">
+                <input type="date" className="input" value={createForm.startDate} onChange={(e) => setCreateForm({ ...createForm, startDate: e.target.value })} />
+              </FormField>
+              <FormField label="Tanggal Selesai">
+                <input type="date" className="input" value={createForm.endDate} onChange={(e) => setCreateForm({ ...createForm, endDate: e.target.value })} />
+              </FormField>
+              <FormField label="Status">
+                <select className="input" value={createForm.status} onChange={(e) => setCreateForm({ ...createForm, status: e.target.value as "OPEN" | "CLOSED" | "LOCKED" })}>
+                  <option value="OPEN">Buka</option>
+                  <option value="CLOSED">Tutup</option>
+                  <option value="LOCKED">Kunci</option>
+                </select>
+              </FormField>
+              <div className="flex gap-2">
+                <button type="submit" disabled={createPending} className="btn-primary flex-1 disabled:opacity-40">
+                  {createPending ? "Menyimpan..." : "Simpan"}
+                </button>
+                <button type="button" onClick={() => setOpenCreate(false)} className="btn-secondary">Batal</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
