@@ -272,6 +272,17 @@ export type ProfilToko = {
   pajakPersen?: number;
 };
 
+/// <summary>Profil toko sesuai kontrak engine (`GET/PUT /api/settings/company-profile`).</summary>
+export type CompanyProfile = {
+  nama: string;      // CompanyName
+  alamat: string;    // Address
+  telepon: string;   // Phone
+  email: string;     // Email
+  website: string;   // Website
+  npwp: string;      // TaxNumber
+  logoUrl: string;   // LogoUrl
+};
+
 export type Pelanggan = {
   id: string;
   nama: string;

@@ -104,11 +104,11 @@ checkout/pelunasan/biaya belum ada, POS membuatnya lewat `POST /api/cash-account
 
 Perilaku live yang menyimpang dari mock:
 
-- `liveCheckout` menolak pembayaran campuran (tunai + non-tunai), overpayment, dan **pembayaran 0**
-  (penjualan kredit tanpa uang muka) — batch penjualan engine menolak `paymentAmount: 0` dengan 409.
-  `kembalian` selalu 0.
-- `livePembelianBuat` menolak `metode: "hutang"` (pembelian 100% hutang) dengan alasan yang sama;
-  pembelian DP sebagian didukung dan sisanya jadi hutang.
+- `liveCheckout` menolak pembayaran campuran (tunai + non-tunai) dan overpayment; `kembalian` selalu 0.
+  Pembayaran 0 (kredit penuh tanpa uang muka) **diizinkan** sejak engine commit `c6160ce`: dokumen
+  ditulis tanpa cash movement/settlement/allocation, piutang tetap terbuka.
+- `livePembelianBuat` mendukung `metode: "hutang"` (pembelian 100% hutang) sejak engine commit
+  `c6160ce`: dokumen ditulis tanpa cash account, hutang tetap terbuka. Pembelian DP sebagian juga didukung.
 - `liveVoidTransaksi` memanggil void engine; bila engine menolak 409 (POSTED tidak boleh di-void),
   POS jatuh ke retur penuh (`liveRetur`).
 - `liveBuatUser` hanya menerima peran kasir; membuat pemilik ditolak di POS.
@@ -122,6 +122,9 @@ Perilaku live yang menyimpang dari mock:
 - `liveBayarPiutang` menerjemahkan nomor dokumen (`SALE-00001`) menjadi id penjualan dulu
   (`cariPenjualanByNomor`); rute engine hanya menerima id. `outstandingAfter` dari respons engine
   **mengabaikan DP batch**, jadi sisa piutang/hutang dihitung ulang dari laporan aging.
+- `liveCompanyProfileGet` / `liveCompanyProfilePut` sinkronkan profil toko ke
+  `GET/PUT /api/settings/company-profile`. Field khusus POS (`mataUang`, `zonaWaktu`,
+  `footerStruk`, `pajakPersen`) tetap di localStorage (`useToko`).
 - Impor produk live bersifat all-or-nothing (satu baris ditolak = tidak ada yang ditulis), hanya
   menerima `satuan` yang sudah ada di master unit engine, dan tidak mengimpor stok awal.
 - Diskon POS + diskon per baris dilebur ke `unitPrice` (sisa pembulatan ke baris terakhir), karena

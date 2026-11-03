@@ -4,6 +4,7 @@ import type {
   BiayaParams,
   CheckoutPayload,
   CheckoutResult,
+  CompanyProfile,
   HasilImpor,
   ImportResult,
   ImporPelangganBaris,
@@ -19,6 +20,7 @@ import type {
   PembelianInput,
   PenyesuaianStokInput,
   Product,
+  ProfilToko,
   ReturInput,
   ReturPenjualan,
   ReturRiwayatParams,
@@ -30,6 +32,7 @@ import type {
   User,
 } from "@/lib/api/types";
 import { mockDb, produkBaruId } from "@/lib/api/mock/db";
+import { useToko } from "@/lib/store/toko";
 import {
   fileCsvPelangganDariBaris,
   fileCsvProdukDariBaris,
@@ -42,6 +45,8 @@ import {
   liveBiayaList,
   liveBuatUser,
   liveCheckout,
+  liveCompanyProfileGet,
+  liveCompanyProfilePut,
   liveCreateProduct,
   liveDeleteProduct,
   liveHapusUser,
@@ -289,6 +294,41 @@ export const api = {
       if (API_MODE === "live") return liveLabaRugi();
       await delay(120);
       return structuredClone(mockDb.labaRugi());
+    },
+  },
+
+  toko: {
+    profil: {
+      get: async (): Promise<CompanyProfile> => {
+        if (API_MODE === "live") return liveCompanyProfileGet();
+        await delay(120);
+        const p = useToko.getState().profil;
+        return {
+          nama: p.nama,
+          alamat: p.alamat,
+          telepon: p.telepon,
+          email: "",
+          website: "",
+          npwp: "",
+          logoUrl: "",
+        };
+      },
+      put: async (input: CompanyProfile): Promise<CompanyProfile> => {
+        if (API_MODE === "live") return liveCompanyProfilePut(input);
+        await delay(250);
+        const p = useToko.getState().profil;
+        const gabungan: ProfilToko = {
+          nama: input.nama,
+          alamat: input.alamat,
+          telepon: input.telepon,
+          mataUang: p.mataUang,
+          zonaWaktu: p.zonaWaktu,
+          footerStruk: p.footerStruk,
+          pajakPersen: p.pajakPersen,
+        };
+        useToko.getState().simpan(gabungan);
+        return input;
+      },
     },
   },
 

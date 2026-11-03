@@ -57,10 +57,11 @@ Cakupan: `src/lib/api/*`, seluruh halaman `src/app/**`, kontrak controller di `b
 
 ---
 
-## 3a. Hasil uji E2E live (29 Oktober 2026)
+## 3a. Hasil uji E2E live (29 Oktober - 3 November 2026)
 
 Skrip uji meniru persis body yang dikirim `src/lib/api/live.ts` ke engine (`toko-utama`, engine lokal
-`localhost:5121`). **23 cek, 23 lulus**, trial-balance seimbang, stok akhir sesuai hitungan.
+`localhost:5121`). **54 cek, 54 lulus** (25 regresi cash/DP + 29 kredit penuh), trial-balance seimbang,
+stok akhir sesuai hitungan.
 
 Yang terverifikasi berjalan:
 
@@ -78,6 +79,12 @@ Yang terverifikasi berjalan:
 | Retur penjualan | `POST /api/sale-returns` 201, 3000 |
 | Void transaksi POSTED | 409 → POS jatuh ke retur (sesuai rancangan) |
 | Laporan | `trial-balance` debit = kredit |
+| **Kredit penuh (bayar 0)** | `POST /cash-batches/sales` 201, tanpa cash account, outstanding = total |
+| **Hutang penuh (bayar 0)** | `POST /cash-batches/purchases` 201, tanpa cash account, outstanding = total |
+| **Replay idempotensi** | key yang sama → 200 dengan documentTotal/outstandingAmount sama |
+| **Negatif / overpayment** | ditolak 409 |
+| **Bayar > 0 tanpa cash account** | ditolak 404 |
+| **Profil toko → engine** | `GET/PUT /api/settings/company-profile` 200, sinkron ke localStorage |
 
 **Tiga bug kontrak baru ditemukan & diperbaiki di sesi ini** (`src/lib/api/live.ts`):
 
@@ -90,19 +97,25 @@ Yang terverifikasi berjalan:
 Perbaikan: nomor→id lewat `cariPenjualanByNomor`; `piutang` dan `terbayar` dihitung dari
 `GET /api/reports/ar-ap/aging?side=RECEIVABLE|PAYABLE` (`outstandingAmount` per `invoiceNumber`).
 
-**Dua jalur kredit kini ditolak lebih awal dengan pesan Indonesia** (bukan 409 berbahasa Inggris):
-`liveCheckout` saat total bayar 0, dan `livePembelianBuat` saat `metode: "hutang"`. Alasannya bukan
-sekadar `paymentAmount: 0` — alur dokumen kredit butuh maker-checker (pembuat ≠ penyetuju), dan POS
-belum punya UI approval maupun akun penyetuju kedua.
+**Dua jalur kredit kini diizinkan engine** (setelah perubahan backend `c6160ce`):
+`paymentAmount: 0` tidak lagi ditolak; dokumen kredit ditulis tanpa cash movement, tanpa jurnal
+settlement, tanpa alokasi. Piutang/hutang tetap terbuka dan bisa dilunasi nanti lewat
+`POST /api/sales/{id}/payments` / `/api/purchases/{id}/payments`.
+
+**Profil toko disinkronkan ke engine** (`GET/PUT /api/settings/company-profile`):
+`api.toko.profil.get()` / `put()` di `client.ts`, `liveCompanyProfileGet` / `liveCompanyProfilePut`
+di `live.ts`, `PanelProfil` ambil dari engine saat mount dan tulis ke engine saat simpan. Field
+khusus POS (`mataUang`, `zonaWaktu`, `footerStruk`, `pajakPersen`) tetap di localStorage.
 
 ---
 
 ## 4. Gap yang masih terbuka (prioritas berikutnya)
 
 ### P1 — data yang diinput user tidak sampai ke engine
-1. **Profil toko hanya di localStorage** (`useToko`), sementara engine punya
-   `GET/PUT /api/settings/company-profile` + `POST .../logo`. Akibatnya: nama/alamat/NPWP di
-   Faktur PDF engine kosong, dan profil tidak sama antar perangkat.
+
+1. **Profil toko → engine: DIPERBAIKI.** `GET/PUT /api/settings/company-profile` dipakai
+   (`api.toko.profil.get/put`, `liveCompanyProfileGet/Put`, `PanelProfil`). Field khusus POS
+   (`mataUang`, `zonaWaktu`, `footerStruk`, `pajakPersen`) tetap di localStorage.
 2. **Stok awal produk diabaikan di live**: `liveCreateProduct` tidak mengirim `stok` (engine tidak menerima
    stok di `POST /api/products`). Solusi: setelah create, panggil `POST /api/inventory/adjustments`
    (`STOCK_ADJUSTMENT_IN`, `unitCost` = harga beli) bila `stok > 0`. Hint di form produk juga masih menyebut "mock".
@@ -139,10 +152,7 @@ belum punya UI approval maupun akun penyetuju kedua.
 
 Semua di bawah ini **terverifikasi lewat E2E**, bukan dugaan:
 
-1. **`POST /api/cash-batches/sales` dan `/purchases` menolak `paymentAmount: 0`** →
-   `409 "A payment must be greater than zero; 0.00 is not a payable amount."` Jadi penjualan/pembelian
-   kredit **tanpa DP** tidak bisa lewat jalur kasir. POS saat ini menolaknya lebih awal dengan pesan
-   Indonesia; butuh keputusan produk + perubahan engine.
+1. ~~`POST /api/cash-batches/sales` dan `/purchases` menolak `paymentAmount: 0`~~ → **DIPERBAIKI** di engine commit `c6160ce`. Sekarang `paymentAmount: 0` diizinkan (dokumen kredit tanpa cash movement/settlement/allocation). Piutang/hutang tetap terbuka.
 2. **`outstandingAfter` pada `POST /api/sales/{id}/payments` dan `/purchases/{id}/payments` mengabaikan
    DP dari batch.** Contoh terukur: total 6000, DP 1000, bayar 2000 → respons `outstandingAfter` 4000,
    padahal AR ageing benar 3000. POS tidak memakai angka ini (dihitung ulang dari ageing), tetapi

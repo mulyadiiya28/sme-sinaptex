@@ -1,8 +1,16 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Building2, CheckCircle2, FileDown, FileUp, ShieldCheck } from "lucide-react";
-import type { AuditEntry, HasilImpor, ImporPelangganBaris, ImporProdukBaris, ImporSaldoAwalBaris, User } from "@/lib/api/types";
+import type {
+  AuditEntry,
+  CompanyProfile,
+  HasilImpor,
+  ImporPelangganBaris,
+  ImporProdukBaris,
+  ImporSaldoAwalBaris,
+  User,
+} from "@/lib/api/types";
 import { DataTable, type Column } from "@/components/data-table";
 import { FormField } from "@/components/form-field";
 import { MoneyDisplay } from "@/components/money-display";
@@ -10,6 +18,7 @@ import { PageHeader } from "@/components/page-header";
 import { StatusBadge } from "@/components/status-badge";
 import { useAkun, useAuditLog, useAuthUsers, useImporMutations, useUserMutations } from "@/hooks/queries";
 import { unduhCsv, parseCsv } from "@/lib/csv";
+import { api } from "@/lib/api/client";
 import { useAuth } from "@/lib/store/auth";
 import { useToko } from "@/lib/store/toko";
 import { cn } from "@/lib/utils";
@@ -296,33 +305,114 @@ function PanelMigrasi() {
   );
 }
 
+type DraftProfil = CompanyProfile & {
+  mataUang: string;
+  zonaWaktu: string;
+  footerStruk: string;
+  pajakPersen?: number;
+};
+
 function PanelProfil() {
   const profil = useToko((s) => s.profil);
-  const simpan = useToko((s) => s.simpan);
-  const [draft, setDraft] = useState(profil);
+  const simpanLokal = useToko((s) => s.simpan);
+  const [draft, setDraft] = useState<DraftProfil>({
+    nama: profil.nama,
+    alamat: profil.alamat,
+    telepon: profil.telepon,
+    email: "",
+    website: "",
+    npwp: "",
+    logoUrl: "",
+    mataUang: profil.mataUang,
+    zonaWaktu: profil.zonaWaktu,
+    footerStruk: profil.footerStruk,
+    pajakPersen: profil.pajakPersen,
+  });
   const [sukses, setSukses] = useState(false);
+  const [mudah, setMudah] = useState(false);
+  const dimuat = useRef(false);
 
-  const ubah = (k: keyof typeof draft) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+  const ubah = (k: keyof DraftProfil) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     setSukses(false);
     setDraft({ ...draft, [k]: e.target.value });
+  };
+
+  // Saat mode live, ambil profil dari engine saat halaman pertama kali dibuka
+  // agar nama/alamat/NPWP yang sudah ada di engine tampil di form.
+  useEffect(() => {
+    if (dimuat.current) return;
+    dimuat.current = true;
+    api.toko.profil
+      .get()
+      .then((p) => {
+        setDraft({
+          ...draft,
+          nama: p.nama,
+          alamat: p.alamat,
+          telepon: p.telepon,
+          email: p.email,
+          website: p.website,
+          npwp: p.npwp,
+          logoUrl: p.logoUrl,
+        });
+      })
+      .catch((err) => console.error("Gagal muat profil toko:", err));
+  }, []);
+
+  const simpanSemua = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    setMudah(true);
+    try {
+      const tersimpan = await api.toko.profil.put({
+        nama: draft.nama,
+        alamat: draft.alamat,
+        telepon: draft.telepon,
+        email: draft.email,
+        website: draft.website,
+        npwp: draft.npwp,
+        logoUrl: draft.logoUrl,
+      });
+      setDraft((d) => ({
+        ...d,
+        nama: tersimpan.nama,
+        alamat: tersimpan.alamat,
+        telepon: tersimpan.telepon,
+        email: tersimpan.email,
+        website: tersimpan.website,
+        npwp: tersimpan.npwp,
+        logoUrl: tersimpan.logoUrl,
+      }));
+      // Simpan field khusus POS ke localStorage.
+      simpanLokal({
+        nama: tersimpan.nama,
+        alamat: tersimpan.alamat,
+        telepon: tersimpan.telepon,
+        mataUang: draft.mataUang,
+        zonaWaktu: draft.zonaWaktu,
+        footerStruk: draft.footerStruk,
+        pajakPersen: draft.pajakPersen,
+      });
+      setSukses(true);
+    } catch (err) {
+      setSukses(false);
+      throw err;
+    } finally {
+      setMudah(false);
+    }
   };
 
   return (
     <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">
       <form
         className="panel space-y-3.5 p-5 xl:col-span-2"
-        onSubmit={(e) => {
-          e.preventDefault();
-          simpan(draft);
-          setSukses(true);
-        }}
+        onSubmit={simpanSemua}
       >
         <h2 className="flex items-center gap-2 text-sm font-bold text-brand">
           <Building2 className="size-4" aria-hidden />
           Identitas toko
         </h2>
         <FormField label="Nama toko">
-          <input className="input" value={draft.nama} onChange={ubah("nama")} required />
+          <input className="input" value={draft.nama} onChange={ubah("nama") } required />
         </FormField>
         <FormField label="Alamat">
           <input className="input" value={draft.alamat} onChange={ubah("alamat")} />
@@ -331,10 +421,21 @@ function PanelProfil() {
           <FormField label="Telepon">
             <input className="input" value={draft.telepon} onChange={ubah("telepon")} placeholder="cth. 0812xxxxxxx" />
           </FormField>
-          <FormField label="Mata uang">
-            <input className="input" value={draft.mataUang} onChange={ubah("mataUang")} placeholder="IDR" />
+          <FormField label="Email">
+            <input className="input" type="email" value={draft.email} onChange={ubah("email")} placeholder="cth. toko@contoh.com" />
           </FormField>
         </div>
+        <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-2">
+          <FormField label="Website">
+            <input className="input" value={draft.website} onChange={ubah("website")} placeholder="cth. https://toko.contoh.id" />
+          </FormField>
+          <FormField label="NPWP">
+            <input className="input" value={draft.npwp} onChange={ubah("npwp")} placeholder="cth. 01.234.567.8-910.000" />
+          </FormField>
+        </div>
+        <FormField label="Mata uang">
+          <input className="input" value={draft.mataUang} onChange={ubah("mataUang")} placeholder="IDR" />
+        </FormField>
         <FormField label="Zona waktu">
           <input className="input" value={draft.zonaWaktu} onChange={ubah("zonaWaktu")} placeholder="Asia/Jakarta" />
         </FormField>
@@ -353,7 +454,9 @@ function PanelProfil() {
           <input className="input" value={draft.footerStruk} onChange={ubah("footerStruk")} />
         </FormField>
         <div className="flex items-center gap-3">
-          <button type="submit" className="btn-primary">Simpan Profil</button>
+          <button type="submit" className={cn("btn-primary", mudah && "opacity-70")} disabled={mudah}>
+            {mudah ? "Menyimpan..." : "Simpan Profil"}
+          </button>
           {sukses && (
             <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-emerald-700">
               <CheckCircle2 className="size-4" aria-hidden /> Profil tersimpan

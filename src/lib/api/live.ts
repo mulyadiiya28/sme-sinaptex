@@ -6,6 +6,7 @@ import type {
   BiayaParams,
   CheckoutPayload,
   CheckoutResult,
+  CompanyProfile,
   Expense,
   ImportResult,
   ImporPelangganBaris,
@@ -20,6 +21,7 @@ import type {
   Pembelian,
   PembelianInput,
   Product,
+  ProfilToko,
   ReturInput,
   ReturPenjualan,
   ReturRiwayatParams,
@@ -1551,4 +1553,42 @@ export async function liveAuditLog(): Promise<AuditEntry[]> {
     aksi: a.action,
     detail: a.detailsJson ?? "",
   }));
+}
+
+export async function liveCompanyProfileGet(): Promise<CompanyProfile> {
+  const data = await minta<CompanyProfile>("/api/settings/company-profile");
+  return {
+    nama: data.nama,
+    alamat: data.alamat,
+    telepon: data.telepon,
+    email: data.email,
+    website: data.website,
+    npwp: data.npwp,
+    logoUrl: data.logoUrl,
+  };
+}
+
+export async function liveCompanyProfilePut(input: CompanyProfile): Promise<CompanyProfile> {
+  const data = await minta<CompanyProfile>("/api/settings/company-profile", {
+    method: "PUT",
+    idempotensiKunci: buatKunciIdempotensi(),
+    body: {
+      companyName: input.nama,
+      address: input.alamat,
+      phone: input.telepon,
+      email: input.email,
+      website: input.website,
+      taxNumber: input.npwp,
+      logoUrl: input.logoUrl,
+    },
+  });
+  return {
+    nama: data.nama,
+    alamat: data.alamat,
+    telepon: data.telepon,
+    email: data.email,
+    website: data.website,
+    npwp: data.npwp,
+    logoUrl: data.logoUrl,
+  };
 }
