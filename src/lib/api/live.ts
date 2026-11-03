@@ -2,27 +2,37 @@ import { useAuth } from "@/lib/store/auth";
 import type {
   AkunSaldo,
   AuditEntry,
+  ArApTurnover,
   Biaya,
   BiayaParams,
+  CashConversionCycle,
   CheckoutPayload,
   CheckoutResult,
   CompanyProfile,
-  KebijakanOperasional,
+  Dupont,
   Expense,
+  HealthIndicator,
+  HealthSummary,
   ImportResult,
   ImporPelangganBaris,
   ImporProdukBaris,
   ImporSaldoAwalBaris,
+  InventoryTurnover,
   JurnalEntry,
   JurnalParams,
+  KebijakanOperasional,
   LabaRugi,
+  LiquidityRatio,
   LoginResult,
   PenyesuaianStokInput,
   Pelanggan,
   Pembelian,
   PembelianInput,
   Product,
+  ProductPerformance,
+  ProductPerformanceRankings,
   ProfilToko,
+  ProfitabilityRatio,
   ReturInput,
   ReturPenjualan,
   ReturRiwayatParams,
@@ -31,8 +41,11 @@ import type {
   ShiftInfo,
   ShiftMutasiInput,
   ShiftRiwayat,
+  Solvency,
   TransaksiRiwayat,
   User,
+  WorkingCapital,
+  WorkingCapitalTurnover,
 } from "@/lib/api/types";
 
 export const API_BASE_URL = (process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:5121").replace(/\/+$/, "");
@@ -1636,4 +1649,72 @@ export async function liveKebijakanPut(input: KebijakanOperasional): Promise<Keb
     izinkanKredit: data.izinkanKredit,
     saldoAwalShift: data.saldoAwalShift,
   };
+}
+
+export async function liveProfitability(startDate: string, endDate: string): Promise<ProfitabilityRatio> {
+  const data = await minta<ProfitabilityRatio>(`/api/analytics/profitability?startDate=${startDate}&endDate=${endDate}`);
+  return data;
+}
+
+export async function liveInventoryTurnover(startDate: string, endDate: string): Promise<InventoryTurnover> {
+  const data = await minta<InventoryTurnover>(`/api/analytics/inventory-turnover?startDate=${startDate}&endDate=${endDate}`);
+  return data;
+}
+
+export async function liveArTurnover(startDate: string, endDate: string): Promise<ArApTurnover> {
+  const data = await minta<ArApTurnover>(`/api/analytics/ar-turnover?startDate=${startDate}&endDate=${endDate}`);
+  return data;
+}
+
+export async function liveApTurnover(startDate: string, endDate: string): Promise<ArApTurnover> {
+  const data = await minta<ArApTurnover>(`/api/analytics/ap-turnover?startDate=${startDate}&endDate=${endDate}`);
+  return data;
+}
+
+export async function liveWorkingCapital(date: string): Promise<WorkingCapital> {
+  const data = await minta<WorkingCapital>(`/api/analytics/working-capital?date=${date}`);
+  return data;
+}
+
+export async function liveWorkingCapitalTurnover(startDate: string, endDate: string): Promise<WorkingCapitalTurnover> {
+  const data = await minta<WorkingCapitalTurnover>(`/api/analytics/working-capital-turnover?startDate=${startDate}&endDate=${endDate}`);
+  return data;
+}
+
+export async function liveCurrentRatio(date: string): Promise<LiquidityRatio> {
+  const data = await minta<LiquidityRatio>(`/api/analytics/current-ratio?date=${date}`);
+  return data;
+}
+
+export async function liveCashRatio(date: string): Promise<LiquidityRatio> {
+  const data = await minta<LiquidityRatio>(`/api/analytics/cash-ratio?date=${date}`);
+  return data;
+}
+
+export async function liveSolvency(date: string): Promise<Solvency> {
+  const data = await minta<Solvency>(`/api/analytics/solvency?date=${date}`);
+  return data;
+}
+
+export async function liveCashConversionCycle(startDate: string, endDate: string): Promise<CashConversionCycle> {
+  const data = await minta<CashConversionCycle>(`/api/analytics/cash-conversion-cycle?startDate=${startDate}&endDate=${endDate}`);
+  return data;
+}
+
+export async function liveHealthSummary(date: string, startDate?: string, endDate?: string): Promise<HealthSummary> {
+  const qs = new URLSearchParams({ date });
+  if (startDate) qs.set("startDate", startDate);
+  if (endDate) qs.set("endDate", endDate);
+  const data = await minta<HealthSummary>(`/api/analytics/health-summary?${qs.toString()}`);
+  return data;
+}
+
+export async function liveProductPerformance(startDate: string, endDate: string): Promise<ProductPerformance[]> {
+  const data = await minta<ProductPerformance[]>(`/api/analytics/product-performance?startDate=${startDate}&endDate=${endDate}`);
+  return data;
+}
+
+export async function liveProductPerformanceRankings(startDate: string, endDate: string, top = 10): Promise<ProductPerformanceRankings> {
+  const data = await minta<ProductPerformanceRankings>(`/api/analytics/product-performance/rankings?startDate=${startDate}&endDate=${endDate}&top=${top}`);
+  return data;
 }

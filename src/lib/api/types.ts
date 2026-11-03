@@ -328,3 +328,157 @@ export type ImportResult = {
   failedCount: number;
   errors: ImportRowError[];
 };
+
+/// <summary>The verdict on one figure: how healthy it is, why, and what it was measured against.</summary>
+export type Assessment = {
+  rating: string;
+  explanation: string;
+  benchmark: string;
+};
+
+/// <summary>The profitability ratios of a period.</summary>
+export type ProfitabilityRatio = {
+  roe: number;
+  roa: number;
+  netProfitMargin: number;
+  totalNetIncome: number;
+  totalEquity: number;
+  totalAssets: number;
+  totalRevenue: number;
+  roeAssessment: Assessment;
+  roaAssessment: Assessment;
+  netProfitMarginAssessment: Assessment;
+  description: string;
+};
+
+/// <summary>How fast the stock turns over.</summary>
+export type InventoryTurnover = {
+  turnoverRatio: number;
+  daysInInventory: number;
+  costOfGoodsSold: number;
+  averageInventory: number;
+  assessment: Assessment;
+  description: string;
+};
+
+/// <summary>How fast receivables or payables turn over.</summary>
+export type ArApTurnover = {
+  turnoverRatio: number;
+  daysOutstanding: number;
+  totalBase: number;
+  averageBalance: number;
+  assessment: Assessment;
+  description: string;
+};
+
+/// <summary>One liquidity ratio.</summary>
+export type LiquidityRatio = {
+  ratio: number;
+  numerator: number;
+  denominator: number;
+  description: string;
+  assessment: Assessment;
+};
+
+/// <summary>Working capital on one date.</summary>
+export type WorkingCapital = {
+  currentAssets: number;
+  currentLiabilities: number;
+  workingCapital: number;
+  workingCapitalRatio: number;
+  description: string;
+  assessment: Assessment;
+};
+
+/// <summary>How fast working capital turns over in a period.</summary>
+export type WorkingCapitalTurnover = {
+  turnoverRatio: number;
+  daysTurnover: number;
+  totalRevenue: number;
+  averageWorkingCapital: number;
+  openingWorkingCapital: number;
+  closingWorkingCapital: number;
+  assessment: Assessment;
+  description: string;
+};
+
+/// <summary>How one product performed.</summary>
+export type ProductPerformance = {
+  productId: string;
+  productName: string;
+  totalQuantitySold: number;
+  totalRevenue: number;
+  totalCost: number;
+  grossProfit: number;
+  marginPercentage: number;
+  revenueContributionPercentage: number;
+  profitContributionPercentage: number;
+  assessment: Assessment;
+  description: string;
+};
+
+/// <summary>Five product rankings of a period.</summary>
+export type ProductPerformanceRankings = {
+  fastMoving: ProductPerformance[];
+  slowMoving: ProductPerformance[];
+  highMargin: ProductPerformance[];
+  topRevenue: ProductPerformance[];
+  topProfit: ProductPerformance[];
+};
+
+/// <summary>How the business is financed.</summary>
+export type Solvency = {
+  debtToAssets: number;
+  debtToEquity: number;
+  equityRatio: number;
+  totalLiabilities: number;
+  totalAssets: number;
+  totalEquity: number;
+  assessment: Assessment;
+  description: string;
+};
+
+/// <summary>How long money is tied up between paying and being paid.</summary>
+export type CashConversionCycle = {
+  cashConversionCycleDays: number;
+  daysInventoryOutstanding: number;
+  daysSalesOutstanding: number;
+  daysPayableOutstanding: number;
+  assessment: Assessment;
+  description: string;
+};
+
+/// <summary>Where ROE comes from.</summary>
+export type Dupont = {
+  returnOnEquity: number;
+  netProfitMargin: number;
+  assetTurnover: number;
+  equityMultiplier: number;
+  dominantDriver: string;
+};
+
+/// <summary>One indicator in the health summary.</summary>
+export type HealthIndicator = {
+  name: string;
+  unit: string;
+  value: number;
+  displayValue: string;
+  previousValue: number | null;
+  trend: string;
+  rating: string;
+  explanation: string;
+  benchmark: string;
+};
+
+/// <summary>The health of the business on one date.</summary>
+export type HealthSummary = {
+  date: string;
+  startDate: string;
+  endDate: string;
+  comparisonStartDate: string;
+  comparisonEndDate: string;
+  overallVerdict: string;
+  overallExplanation: string;
+  indicators: HealthIndicator[];
+  dupont: Dupont;
+};

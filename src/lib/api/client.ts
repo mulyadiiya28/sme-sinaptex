@@ -1,19 +1,26 @@
 import type {
+  ArApTurnover,
   AuditEntry,
   Biaya,
   BiayaParams,
+  CashConversionCycle,
   CheckoutPayload,
   CheckoutResult,
   CompanyProfile,
+  Dupont,
   HasilImpor,
+  HealthIndicator,
+  HealthSummary,
   ImportResult,
   ImporPelangganBaris,
   ImporProdukBaris,
   ImporSaldoAwalBaris,
+  InventoryTurnover,
   JurnalEntry,
   JurnalParams,
   KebijakanOperasional,
   LabaRugi,
+  LiquidityRatio,
   LoginResult,
   PaymentMethod,
   Pelanggan,
@@ -21,7 +28,10 @@ import type {
   PembelianInput,
   PenyesuaianStokInput,
   Product,
+  ProductPerformance,
+  ProductPerformanceRankings,
   ProfilToko,
+  ProfitabilityRatio,
   ReturInput,
   ReturPenjualan,
   ReturRiwayatParams,
@@ -29,8 +39,11 @@ import type {
   ShiftInfo,
   ShiftMutasiInput,
   ShiftRiwayat,
+  Solvency,
   TransaksiRiwayat,
   User,
+  WorkingCapital,
+  WorkingCapitalTurnover,
 } from "@/lib/api/types";
 import { mockDb, produkBaruId } from "@/lib/api/mock/db";
 import { useToko } from "@/lib/store/toko";
@@ -53,9 +66,11 @@ import {
   liveKebijakanPut,
   liveDeleteProduct,
   liveHapusUser,
+  liveHealthSummary,
   liveImporPelanggan,
   liveImporProduk,
   liveImporSaldoAwal,
+  liveInventoryTurnover,
   liveJurnal,
   liveKonfirmasiDigital,
   liveLabaRugi,
@@ -65,7 +80,10 @@ import {
   livePenyesuaianStok,
   livePembelianBuat,
   livePembelianList,
+  liveProductPerformance,
+  liveProductPerformanceRankings,
   liveProducts,
+  liveProfitability,
   liveRetur,
   liveReturRiwayat,
   liveShiftAktif,
@@ -73,11 +91,19 @@ import {
   liveShiftMutasi,
   liveShiftRiwayat,
   liveShiftTutup,
+  liveSolvency,
   liveTransaksiRiwayat,
   liveUbahUser,
   liveUpdateProduct,
   liveUsers,
   liveVoidTransaksi,
+  liveWorkingCapital,
+  liveWorkingCapitalTurnover,
+  liveCashConversionCycle,
+  liveCashRatio,
+  liveCurrentRatio,
+  liveArTurnover,
+  liveApTurnover,
 } from "@/lib/api/live";
 
 export const API_MODE = process.env.NEXT_PUBLIC_API_MODE ?? "mock";
@@ -297,6 +323,124 @@ export const api = {
       if (API_MODE === "live") return liveLabaRugi();
       await delay(120);
       return structuredClone(mockDb.labaRugi());
+    },
+  },
+
+  analytics: {
+    profitability: async (startDate: string, endDate: string): Promise<ProfitabilityRatio> => {
+      if (API_MODE === "live") return liveProfitability(startDate, endDate);
+      await delay(120);
+      return {
+        roe: 0, roa: 0, netProfitMargin: 0, totalNetIncome: 0,
+        totalEquity: 0, totalAssets: 0, totalRevenue: 0,
+        roeAssessment: { rating: "TIDAK BERLAKU", explanation: "Tidak ada data.", benchmark: "-" },
+        roaAssessment: { rating: "TIDAK BERLAKU", explanation: "Tidak ada data.", benchmark: "-" },
+        netProfitMarginAssessment: { rating: "TIDAK BERLAKU", explanation: "Tidak ada data.", benchmark: "-" },
+        description: "Tidak ada data.",
+      };
+    },
+    inventoryTurnover: async (startDate: string, endDate: string): Promise<InventoryTurnover> => {
+      if (API_MODE === "live") return liveInventoryTurnover(startDate, endDate);
+      await delay(120);
+      return {
+        turnoverRatio: 0, daysInInventory: 0, costOfGoodsSold: 0, averageInventory: 0,
+        assessment: { rating: "TIDAK BERLAKU", explanation: "Tidak ada data.", benchmark: "-" },
+        description: "Tidak ada data.",
+      };
+    },
+    arTurnover: async (startDate: string, endDate: string): Promise<ArApTurnover> => {
+      if (API_MODE === "live") return liveArTurnover(startDate, endDate);
+      await delay(120);
+      return {
+        turnoverRatio: 0, daysOutstanding: 0, totalBase: 0, averageBalance: 0,
+        assessment: { rating: "TIDAK BERLAKU", explanation: "Tidak ada data.", benchmark: "-" },
+        description: "Tidak ada data.",
+      };
+    },
+    apTurnover: async (startDate: string, endDate: string): Promise<ArApTurnover> => {
+      if (API_MODE === "live") return liveApTurnover(startDate, endDate);
+      await delay(120);
+      return {
+        turnoverRatio: 0, daysOutstanding: 0, totalBase: 0, averageBalance: 0,
+        assessment: { rating: "TIDAK BERLAKU", explanation: "Tidak ada data.", benchmark: "-" },
+        description: "Tidak ada data.",
+      };
+    },
+    workingCapital: async (date: string): Promise<WorkingCapital> => {
+      if (API_MODE === "live") return liveWorkingCapital(date);
+      await delay(120);
+      return {
+        currentAssets: 0, currentLiabilities: 0, workingCapital: 0, workingCapitalRatio: 0,
+        description: "Tidak ada data.", assessment: { rating: "TIDAK BERLAKU", explanation: "Tidak ada data.", benchmark: "-" },
+      };
+    },
+    workingCapitalTurnover: async (startDate: string, endDate: string): Promise<WorkingCapitalTurnover> => {
+      if (API_MODE === "live") return liveWorkingCapitalTurnover(startDate, endDate);
+      await delay(120);
+      return {
+        turnoverRatio: 0, daysTurnover: 0, totalRevenue: 0,
+        averageWorkingCapital: 0, openingWorkingCapital: 0, closingWorkingCapital: 0,
+        assessment: { rating: "TIDAK BERLAKU", explanation: "Tidak ada data.", benchmark: "-" },
+        description: "Tidak ada data.",
+      };
+    },
+    currentRatio: async (date: string): Promise<LiquidityRatio> => {
+      if (API_MODE === "live") return liveCurrentRatio(date);
+      await delay(120);
+      return {
+        ratio: 0, numerator: 0, denominator: 0, description: "Tidak ada data.",
+        assessment: { rating: "TIDAK BERLAKU", explanation: "Tidak ada data.", benchmark: "-" },
+      };
+    },
+    cashRatio: async (date: string): Promise<LiquidityRatio> => {
+      if (API_MODE === "live") return liveCashRatio(date);
+      await delay(120);
+      return {
+        ratio: 0, numerator: 0, denominator: 0, description: "Tidak ada data.",
+        assessment: { rating: "TIDAK BERLAKU", explanation: "Tidak ada data.", benchmark: "-" },
+      };
+    },
+    solvency: async (date: string): Promise<Solvency> => {
+      if (API_MODE === "live") return liveSolvency(date);
+      await delay(120);
+      return {
+        debtToAssets: 0, debtToEquity: 0, equityRatio: 0,
+        totalLiabilities: 0, totalAssets: 0, totalEquity: 0,
+        description: "Tidak ada data.", assessment: { rating: "TIDAK BERLAKU", explanation: "Tidak ada data.", benchmark: "-" },
+      };
+    },
+    cashConversionCycle: async (startDate: string, endDate: string): Promise<CashConversionCycle> => {
+      if (API_MODE === "live") return liveCashConversionCycle(startDate, endDate);
+      await delay(120);
+      return {
+        cashConversionCycleDays: 0, daysInventoryOutstanding: 0,
+        daysSalesOutstanding: 0, daysPayableOutstanding: 0,
+        assessment: { rating: "TIDAK BERLAKU", explanation: "Tidak ada data.", benchmark: "-" },
+        description: "Tidak ada data.",
+      };
+    },
+    healthSummary: async (date: string, startDate?: string, endDate?: string): Promise<HealthSummary> => {
+      if (API_MODE === "live") return liveHealthSummary(date, startDate, endDate);
+      await delay(120);
+      return {
+        date, startDate: date, endDate: date,
+        comparisonStartDate: date, comparisonEndDate: date,
+        overallVerdict: "TIDAK BERLAKU", overallExplanation: "Tidak ada data.",
+        indicators: [],
+        dupont: { returnOnEquity: 0, netProfitMargin: 0, assetTurnover: 0, equityMultiplier: 0, dominantDriver: "-" },
+      };
+    },
+    productPerformance: async (startDate: string, endDate: string): Promise<ProductPerformance[]> => {
+      if (API_MODE === "live") return liveProductPerformance(startDate, endDate);
+      await delay(120);
+      return [];
+    },
+    productPerformanceRankings: async (startDate: string, endDate: string, top = 10): Promise<ProductPerformanceRankings> => {
+      if (API_MODE === "live") return liveProductPerformanceRankings(startDate, endDate, top);
+      await delay(120);
+      return {
+        fastMoving: [], slowMoving: [], highMargin: [], topRevenue: [], topProfit: [],
+      };
     },
   },
 

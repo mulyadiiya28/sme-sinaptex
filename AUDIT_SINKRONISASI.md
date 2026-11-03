@@ -129,7 +129,7 @@ khusus POS (`mataUang`, `zonaWaktu`, `footerStruk`, `pajakPersen`) tetap di loca
 | `GET /api/reports/daily-movement` (+ `/export`) | Laporan "Daily Movement" belum ada di halaman Laporan (hanya trial-balance & neraca saldo yang ada). |
 | `GET /api/reports/ar-ap/aging`, `/reconciliation` | Umur piutang/hutang di Keuangan (hanya AR dipakai di riwayat penjualan). |
 | `GET /api/reports/trial-balance/export` | **DIPERBAIKI** — tombol "Ekspor Neraca Saldo" di tab Neraca Saldo halaman Laporan. |
-| `GET /api/analytics/*` (12 laporan) | Rasio & health summary belum tampil di mana pun. |
+| `GET /api/analytics/*` (12 laporan) | **DIPERBAIKI** — tab "Analisis" di halaman Laporan menampilkan RASIO keuangan lengkap (profitabilitas, likuiditas, solvabilitas, turnover, cash conversion cycle, health summary, product performance) dari semua 12 endpoint engine. |
 | `GET /api/fiscal-periods`, `POST .../close`, `.../close-year` | Tab Pengaturan → Akuntansi masih berlabel "Menyusul (P2)". |
 | `GET/POST /api/approval-rules`, `/api/approvals` | Belum ada UI approval; POS hanya memakai `approvedBy = NEXT_PUBLIC_ENGINE_APPROVER`. |
 | `GET/POST /api/suppliers` | Pembelian masih menyimpan `pemasok` sebagai teks bebas. |
