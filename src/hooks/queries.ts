@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api/client";
 import type {
   CheckoutPayload,
+  CreateSupplierRequest,
   ImporPelangganBaris,
   ImporProdukBaris,
   ImporSaldoAwalBaris,
@@ -11,6 +12,7 @@ import type {
   ReturInput,
   ShiftBukaInput,
   ShiftMutasiInput,
+  Supplier,
   User,
 } from "@/lib/api/types";
 
@@ -198,6 +200,33 @@ export function useFiscalPeriodList() {
   return useQuery({
     queryKey: ["akuntansi", "fiscal-periods"],
     queryFn: () => api.akuntansi.fiscalPeriods.list(),
+  });
+}
+
+export function useSupplierList() {
+  return useQuery({
+    queryKey: ["master", "suppliers"],
+    queryFn: () => api.supplier.list(),
+  });
+}
+
+export function useSupplierCreate() {
+  const qc = useQueryClient();
+  return useMutation<Supplier, Error, CreateSupplierRequest>({
+    mutationFn: (input: CreateSupplierRequest) => api.supplier.create(input),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["master", "suppliers"] });
+    },
+  });
+}
+
+export function useSupplierDeactivate() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.supplier.deactivate(id),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["master", "suppliers"] });
+    },
   });
 }
 

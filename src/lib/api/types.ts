@@ -568,3 +568,26 @@ export type DailyMovementReport = {
   totalDebit: number;
   totalCredit: number;
 };
+
+/// <summary>Supplier master data (engine: GET/POST /api/suppliers).</summary>
+export type Supplier = {
+  id: string;
+  businessId: string;
+  code: string;
+  name: string;
+  address: string | null;
+  phone: string | null;
+  email: string | null;
+  taxNumber: string | null;
+  isActive: boolean;
+};
+
+/// <summary>Request membuat supplier baru (POST /api/suppliers).</summary>
+export type CreateSupplierRequest = {
+  code: string;
+  name: string;
+  address?: string;
+  phone?: string;
+  email?: string;
+  taxNumber?: string;
+};

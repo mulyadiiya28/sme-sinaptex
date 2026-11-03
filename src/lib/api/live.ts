@@ -49,9 +49,11 @@ import type {
   AgedInvoice,
   AgingReport,
   CreateFiscalPeriodRequest,
+  CreateSupplierRequest,
   DailyMovementReport,
   FiscalPeriod,
   Reconciliation,
+  Supplier,
 } from "@/lib/api/types";
 
 export const API_BASE_URL = (process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:5121").replace(/\/+$/, "");
@@ -1818,5 +1820,35 @@ export async function liveReconciliation(side: "RECEIVABLE" | "PAYABLE", account
   const qs = new URLSearchParams({ side, accountCode });
   if (asOfDate) qs.set("asOfDate", asOfDate);
   const data = await minta<Reconciliation>(`/api/reports/ar-ap/reconciliation?${qs.toString()}`);
+  return data;
+}
+
+export async function liveSupplierList(): Promise<Supplier[]> {
+  const data = await minta<Supplier[]>("/api/suppliers");
+  return data;
+}
+
+export async function liveSupplierCreate(input: CreateSupplierRequest): Promise<Supplier> {
+  const data = await minta<Supplier>("/api/suppliers", {
+    method: "POST",
+    idempotensiKunci: buatKunciIdempotensi(),
+    body: {
+      code: input.code,
+      name: input.name,
+      address: input.address,
+      phone: input.phone,
+      email: input.email,
+      taxNumber: input.taxNumber,
+    },
+  });
+  return data;
+}
+
+export async function liveSupplierDeactivate(id: string): Promise<Supplier> {
+  const data = await minta<Supplier>(`/api/suppliers/${id}/deactivate`, {
+    method: "POST",
+    idempotensiKunci: buatKunciIdempotensi(),
+    body: {},
+  });
   return data;
 }

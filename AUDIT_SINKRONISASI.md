@@ -132,7 +132,7 @@ khusus POS (`mataUang`, `zonaWaktu`, `footerStruk`, `pajakPersen`) tetap di loca
 | `GET /api/analytics/*` (12 laporan) | **DIPERBAIKI** — tab "Analisis" di halaman Laporan menampilkan RASIO keuangan lengkap (profitabilitas, likuiditas, solvabilitas, turnover, cash conversion cycle, health summary, product performance) dari semua 12 endpoint engine. |
 | `GET /api/fiscal-periods`, `POST .../close`, `.../close-year` | **DIPERBAIKI** — tab "Periode Fiskal" di Pengaturan → Akuntansi menampilkan daftar periode dengan tombol buka/tutup/kunci/buka kembali/balikkan penutupan. |
 | `GET/POST /api/approval-rules`, `/api/approvals` | Belum ada UI approval; POS hanya memakai `approvedBy = NEXT_PUBLIC_ENGINE_APPROVER`. |
-| `GET/POST /api/suppliers` | Pembelian masih menyimpan `pemasok` sebagai teks bebas. |
+| `GET/POST /api/suppliers` | **DIPERBAIKI** — halaman Master Data: Pemasok (`/supplier`) menampilkan daftar pemasok dengan form tambah dan tombol nonaktifkan. Pembelian masih menyimpan `pemasok` sebagai teks bebas (fitur dropdown pemasok di pembelian belum diimplementasi). |
 | `GET/POST /api/branches`, `/api/warehouses/branch/{id}` | Multi-cabang & gudang belum ada UI. |
 | `POST /api/cash-transfers`, `GET/POST /api/loans`, `GET/POST /api/backups` | Belum ada UI. |
 | `GET /api/sales/{id}/pdf`, `/qrcode` | Struk POS dicetak sendiri (`src/lib/struk.ts`), bukan Faktur resmi engine. |

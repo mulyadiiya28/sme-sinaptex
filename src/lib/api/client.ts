@@ -47,9 +47,11 @@ import type {
   AgedInvoice,
   AgingReport,
   CreateFiscalPeriodRequest,
+  CreateSupplierRequest,
   DailyMovementReport,
   FiscalPeriod,
   Reconciliation,
+  Supplier,
 } from "@/lib/api/types";
 import { mockDb, produkBaruId } from "@/lib/api/mock/db";
 import { useToko } from "@/lib/store/toko";
@@ -78,6 +80,9 @@ import {
   liveFiscalPeriodReverseClosing,
   liveKebijakanGet,
   liveKebijakanPut,
+  liveSupplierCreate,
+  liveSupplierDeactivate,
+  liveSupplierList,
   liveDeleteProduct,
   liveHapusUser,
   liveHealthSummary,
@@ -579,6 +584,44 @@ export const api = {
         invoiceCount: 0, invoicedTotal: 0, allocatedTotal: 0,
         outstandingTotal: 0, ledgerBalance: 0, difference: 0,
         isReconciled: true,
+      };
+    },
+  },
+
+  supplier: {
+    list: async (): Promise<Supplier[]> => {
+      if (API_MODE === "live") return liveSupplierList();
+      await delay(120);
+      return [];
+    },
+    create: async (input: CreateSupplierRequest): Promise<Supplier> => {
+      if (API_MODE === "live") return liveSupplierCreate(input);
+      await delay(350);
+      return {
+        id: crypto.randomUUID(),
+        businessId: BUSINESS_ID,
+        code: input.code,
+        name: input.name,
+        address: input.address ?? null,
+        phone: input.phone ?? null,
+        email: input.email ?? null,
+        taxNumber: input.taxNumber ?? null,
+        isActive: true,
+      };
+    },
+    deactivate: async (id: string): Promise<Supplier> => {
+      if (API_MODE === "live") return liveSupplierDeactivate(id);
+      await delay(350);
+      return {
+        id,
+        businessId: BUSINESS_ID,
+        code: "",
+        name: "",
+        address: null,
+        phone: null,
+        email: null,
+        taxNumber: null,
+        isActive: false,
       };
     },
   },
