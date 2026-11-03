@@ -1080,20 +1080,13 @@ export async function liveCheckout(payload: CheckoutPayload): Promise<CheckoutRe
       400,
     );
   }
-  // Batch penjualan engine menolak pembayaran 0 (409 "A payment must be
-  // greater than zero"), jadi penjualan kredit tanpa uang muka tidak bisa
-  // lewat jalur kasir. Alur dokumen kredit butuh maker-checker (pembuat dan
-  // penyetuju harus dua akun berbeda) yang belum ada di POS.
-  if (dibayar <= 0) {
-    throw new LiveApiError(
-      "Penjualan kredit tanpa uang muka belum didukung mode live (engine menolak pembayaran 0). Isi nominal bayar minimal sebagian — sisanya otomatis tercatat sebagai piutang.",
-      400,
-    );
-  }
-
-  const cashAccountId = await akunKasDefault(
-    ringkasan.tunai > 0 ? KODE.kas : KODE.bank,
-  );
+  // Penjualan tanpa uang muka (dibayar 0) adalah penjualan kredit: engine
+  // menulis dokumennya saja — tanpa kas movement, tanpa jurnal settlement dan
+  // tanpa alokasi — sehingga piutang tetap terbuka.
+  const cashAccountId =
+    dibayar > 0
+      ? await akunKasDefault(ringkasan.tunai > 0 ? KODE.kas : KODE.bank)
+      : null;
   const pelangganId = payload.pelanggan
     ? await cariPelangganId(payload.pelanggan)
     : null;
@@ -1252,16 +1245,13 @@ export async function livePembelianBuat(input: PembelianInput): Promise<Pembelia
   const gudang = await gudangDefault();
   const actor = useAuth.getState().user?.id ?? ENGINE_APPROVER;
   const total = input.items.reduce((sum, i) => sum + i.hargaBeli * i.qty, 0);
+  const hutang = input.metode === "hutang";
 
-  // Sama seperti penjualan: batch pembelian engine menolak pembayaran 0, dan
-  // alur dokumen kredit butuh penyetuju kedua. Jadi pembelian 100% hutang
-  // ditolak di sini dengan pesan yang jelas, bukan 409 berbahasa Inggris.
-  if (input.metode === "hutang") {
-    throw new LiveApiError(
-      "Pembelian 100% hutang belum didukung mode live (engine menolak pembayaran 0). Bayar minimal sebagian sebagai uang muka — sisanya tercatat sebagai hutang.",
-      400,
-    );
-  }
+  // Pembelian hutang pays nothing now: engine writes the document alone, so
+  // the payable stays open and no till is touched.
+  const cashAccountId = hutang
+    ? null
+    : await akunKasDefault(input.metode === "bank" ? KODE.bank : KODE.kas);
 
   const hasil = await minta<{
     documentId: string;
@@ -1274,8 +1264,8 @@ export async function livePembelianBuat(input: PembelianInput): Promise<Pembelia
       requestedBy: actor,
       approvedBy: actor === ENGINE_APPROVER ? `${ENGINE_APPROVER}-otorisasi` : ENGINE_APPROVER,
       supplierId: null,
-      cashAccountId: await akunKasDefault(input.metode === "bank" ? KODE.bank : KODE.kas),
-      paymentAmount: total,
+      cashAccountId,
+      paymentAmount: hutang ? 0 : total,
       costingMethod: "AVERAGE",
       payableAccountCode: KODE.hutang,
       inventoryAccountCode: KODE.persediaan,
@@ -1297,8 +1287,8 @@ export async function livePembelianBuat(input: PembelianInput): Promise<Pembelia
     waktu: new Date().toISOString(),
     items: input.items,
     total: hasil.documentTotal,
-    metode: input.metode === "bank" ? "bank" : "tunai",
-    terbayar: hasil.documentTotal,
+    metode: input.metode === "bank" ? "bank" : hutang ? "hutang" : "tunai",
+    terbayar: hutang ? 0 : hasil.documentTotal,
   };
 }
 

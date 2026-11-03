@@ -64,11 +64,16 @@ export function PaymentDialog({
 
   const mutation = useCheckout((result) => setSukses(result));
 
+  // Penjualan kredit penuh (tidak ada satu rupiah pun yang dibayar) sah: sisa
+  // seluruhnya menjadi piutang. Yang tidak sah hanya baris pembayaran yang
+  // melebihi sisa (khusus digital) dan penjualan sisa yang tidak ditandai
+  // sebagai piutang.
   const canConfirm =
     cart.lines.length > 0 &&
-    cart.allocations.length > 0 &&
-    !hitungan.baris.some((b) => b.over || b.nominal <= 0) &&
-    (hitungan.sisa === 0 || cart.gunakanPiutang);
+    !hitungan.baris.some((b) => b.over) &&
+    (hitungan.sisa === 0
+      ? cart.allocations.length > 0 && !hitungan.baris.some((b) => b.nominal <= 0)
+      : cart.gunakanPiutang);
 
   function confirm() {
     mutation.mutate({
