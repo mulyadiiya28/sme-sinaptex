@@ -63,6 +63,13 @@ export function useProfilPerusahaan() {
   return useQuery({ queryKey: ["profil-perusahaan"], queryFn: api.pengaturan.profil });
 }
 
+export function useRingkasanKesehatan() {
+  return useQuery({
+    queryKey: ["kesehatan-usaha"],
+    queryFn: api.analitik.ringkasanKesehatan,
+  });
+}
+
 export function usePengaturanMutations() {
   const qc = useQueryClient();
   const simpanProfil = useMutation({
@@ -72,7 +79,14 @@ export function usePengaturanMutations() {
     },
   });
 
-  return { simpanProfil };
+  const unggahLogo = useMutation({
+    mutationFn: (file: File) => api.pengaturan.unggahLogo(file),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["profil-perusahaan"] });
+    },
+  });
+
+  return { simpanProfil, unggahLogo };
 }
 
 export function useLabaRugi() {

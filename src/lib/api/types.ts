@@ -302,6 +302,25 @@ export type ProfilPerusahaan = {
   logoUrl: string;
 };
 
+export type RatingKesehatan = "BAIK" | "CUKUP" | "KURANG SEHAT" | "TIDAK BERLAKU";
+
+export type IndikatorKesehatan = {
+  nama: string;
+  nilai: number;
+  satuan: string;
+  display: string;
+  rating: RatingKesehatan;
+  penjelasan: string;
+  patokan: string;
+};
+
+export type RingkasanKesehatan = {
+  tanggal: string;
+  verdict: string;
+  penjelasan: string;
+  indikator: IndikatorKesehatan[];
+};
+
 export type Pelanggan = {
   id: string;
   nama: string;

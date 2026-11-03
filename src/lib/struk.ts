@@ -1,5 +1,6 @@
 import type { ProfilToko } from "@/lib/api/types";
 import { formatIDR } from "@/lib/format";
+import { urlLogoAbsolut } from "@/lib/api/live";
 
 export type DataStruk = {
   nomor: string;
@@ -20,6 +21,10 @@ function esc(s: string): string {
   return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
+function escAtribut(s: string): string {
+  return esc(s).replace(/"/g, "%22");
+}
+
 export function buildStrukHtml(toko: ProfilToko, d: DataStruk): string {
   const barisItem = d.items
     .map(
@@ -37,6 +42,10 @@ export function buildStrukHtml(toko: ProfilToko, d: DataStruk): string {
     )
     .join("");
 
+  const logoMarkup = toko.logoUrl
+    ? `<img src="${escAtribut(urlLogoAbsolut(toko.logoUrl))}" alt="" style="max-width:140px;max-height:56px;display:block;margin:0 auto 6px;"/>`
+    : "";
+
   return `<!doctype html><html><head><meta charset="utf-8"/><title>Struk ${esc(d.nomor)}</title>
   <style>
     body { font-family: "Courier New", monospace; font-size: 12px; margin: 0; padding: 12px; width: 300px; color: #000; }
@@ -51,6 +60,7 @@ export function buildStrukHtml(toko: ProfilToko, d: DataStruk): string {
     .b { font-weight: bold; font-size: 14px; }
     @media print { body { padding: 0; } }
   </style></head><body>
+  ${logoMarkup}
   <h2>${esc(toko.nama)}</h2>
   <div class="sub">${esc(toko.alamat)}${toko.telepon ? `<br/>${esc(toko.telepon)}` : ""}</div>
   <hr/>

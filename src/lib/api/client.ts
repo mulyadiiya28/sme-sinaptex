@@ -22,6 +22,7 @@ import type {
   PenyesuaianStokInput,
   Product,
   ProfilPerusahaan,
+  RingkasanKesehatan,
   ReturInput,
   ReturPenjualan,
   ReturRiwayatParams,
@@ -65,6 +66,7 @@ import {
   liveProfilPerusahaan,
   liveRetur,
   liveReturRiwayat,
+  liveRingkasanKesehatan,
   liveShiftAktif,
   liveShiftBuka,
   liveShiftMutasi,
@@ -73,6 +75,7 @@ import {
   liveSimpanProfilPerusahaan,
   liveTransaksiRiwayat,
   liveUbahUser,
+  liveUnggahLogo,
   liveUpdateProduct,
   liveUsers,
   liveVoidTransaksi,
@@ -310,6 +313,26 @@ export const api = {
         logoUrl: input.logoUrl,
       });
       return input;
+    },
+    /**
+     * Logo disimpan engine (file-nya dipakai server faktur PDF), bukan di
+     * browser POS. Mock tidak punya tempat penyimpanan berkas, jadi mode
+     * mock menolak dengan pesan jelas — bukan diam-diam berpura-pura.
+     */
+    unggahLogo: async (file: File): Promise<ProfilPerusahaan> => {
+      if (API_MODE === "live") return liveUnggahLogo(file);
+      await delay(150);
+      throw new Error(
+        "Unggah logo hanya tersedia di mode live — engine yang menyimpan berkas logo untuk faktur PDF.",
+      );
+    },
+  },
+
+  analitik: {
+    ringkasanKesehatan: async (): Promise<RingkasanKesehatan> => {
+      if (API_MODE === "live") return liveRingkasanKesehatan();
+      await delay(150);
+      return structuredClone(mockDb.ringkasanKesehatan());
     },
   },
 

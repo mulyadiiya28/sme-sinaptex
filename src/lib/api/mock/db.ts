@@ -4,6 +4,7 @@ import type {
   ImporPelangganBaris,
   ImporProdukBaris,
   ImporSaldoAwalBaris,
+  IndikatorKesehatan,
   JurnalBaris,
   JurnalEntry,
   LoginResult,
@@ -11,6 +12,8 @@ import type {
   Pembelian,
   PembelianInput,
   Product,
+  RatingKesehatan,
+  RingkasanKesehatan,
   ReturInput,
   ReturPenjualan,
   Role,
@@ -21,6 +24,7 @@ import type {
   TransaksiRiwayat,
   User,
 } from "@/lib/api/types";
+import { formatNilaiIndikator } from "@/lib/format";
 
 const produkSeed: Product[] = [
   { id: "p1", sku: "BRS-5KG", barcode: "8991000010015", nama: "Beras 5 kg", satuan: "sak", kategori: "Sembako", hargaBeli: 60000, hargaJual: 75000, stok: 12, stokMinimum: 5, status: "aktif" },
@@ -763,6 +767,116 @@ export const mockDb = {
     const biaya = s.get("Biaya operasional")?.saldo ?? 0;
     const pajak = -(s.get("Pajak keluaran")?.saldo ?? 0);
     return { pendapatan, retur, hpp, biaya, pajak, laba: pendapatan - retur - hpp - biaya - pajak };
+  },
+
+  /**
+   * Ringkasan kesehatan usaha versi mock.
+   *
+   * Hanya tiga indikator yang bisa dihitung jujur dari akun mock: aset
+   * lancar, liabilitas lancar, dan kas. Indikator profitabilitas dan
+   * perputaran butuh periode 12 bulan seperti engine — di mode mock
+   * lebih baik jujur soal batasnya daripada mengarang angka.
+   */
+  ringkasanKesehatan(): RingkasanKesehatan {
+    const s = new Map(this.akunSaldos().map((a) => [a.akun, a.saldoAkhir]));
+    const kas = s.get("Kas") ?? 0;
+    const bank = s.get("Bank") ?? 0;
+    const gateway = s.get("Penampung gateway") ?? 0;
+    const piutang = s.get("Piutang usaha") ?? 0;
+    const persediaan = s.get("Persediaan") ?? 0;
+    const hutang = s.get("Hutang usaha") ?? 0;
+
+    const asetLancar = kas + bank + gateway + piutang + persediaan;
+    const liabilitasLancar = hutang;
+    const kasBisa = kas + bank;
+
+    const indikator: IndikatorKesehatan[] = [];
+
+    if (liabilitasLancar > 0) {
+      const rasioLancar = asetLancar / liabilitasLancar;
+      indikator.push({
+        nama: "Rasio Lancar",
+        nilai: rasioLancar,
+        satuan: "×",
+        display: formatNilaiIndikator(rasioLancar, "×"),
+        rating: rasioLancar >= 1.5 ? "BAIK" : rasioLancar >= 1 ? "CUKUP" : "KURANG SEHAT",
+        penjelasan:
+          rasioLancar >= 1.5
+            ? "Aset lancar menutup liabilitas lancar lebih dari 1,5 kali — ada ruang untuk menghadapi penurunan penjualan atau penundaan tagihan."
+            : rasioLancar >= 1
+              ? "Aset lancar masih menutup liabilitas lancar, tapi ruang amannya tipis."
+              : "Liabilitas lancar lebih besar dari aset lancar — kewajiban jangka pendek bisa menekan kas.",
+        patokan: "Patokan praktis: 1,0× — titik impas; 1,5× — ruang aman untuk fluktuasi penjualan.",
+      });
+
+      const rasioKas = kasBisa / liabilitasLancar;
+      indikator.push({
+        nama: "Rasio Kas",
+        nilai: rasioKas,
+        satuan: "×",
+        display: formatNilaiIndikator(rasioKas, "×"),
+        rating: rasioKas >= 0.2 ? "BAIK" : rasioKas >= 0.1 ? "CUKUP" : "KURANG SEHAT",
+        penjelasan:
+          rasioKas >= 0.2
+            ? "Kas menutup sedikitnya 20% liabilitas lancar — kewajiban jangka pendek bisa dibayar tanpa menyentuh aset lain."
+            : rasioKas >= 0.1
+              ? "Kas menutup sebagian liabilitas lancar, tapi belum ada ruang aman yang nyaman."
+              : "Kas hampir tidak menutup liabilitas lancar — rupiah yang masuk sebaiknya ditahan untuk kewajiban jangka pendek.",
+        patokan: "Patokan praktis: 0,2× — kas menutup seperlima liabilitas lancar.",
+      });
+    } else {
+      indikator.push({
+        nama: "Rasio Lancar",
+        nilai: 0,
+        satuan: "×",
+        display: "—",
+        rating: "TIDAK BERLAKU",
+        penjelasan: "Tidak ada liabilitas lancar — rasio tidak punya arti karena tidak ada yang harus ditutup.",
+        patokan: "Patokan praktis: 1,0× — titik impas; 1,5× — ruang aman untuk fluktuasi penjualan.",
+      });
+      indikator.push({
+        nama: "Rasio Kas",
+        nilai: 0,
+        satuan: "×",
+        display: "—",
+        rating: "TIDAK BERLAKU",
+        penjelasan: "Tidak ada liabilitas lancar — rasio tidak punya arti karena tidak ada yang harus ditutup.",
+        patokan: "Patokan praktis: 0,2× — kas menutup seperlima liabilitas lancar.",
+      });
+    }
+
+    const modalKerja = asetLancar - liabilitasLancar;
+    indikator.push({
+      nama: "Modal Kerja",
+      nilai: modalKerja,
+      satuan: "Rp",
+      display: formatNilaiIndikator(modalKerja, "Rp"),
+      rating: modalKerja > 0 ? "BAIK" : "KURANG SEHAT",
+      penjelasan:
+        modalKerja > 0
+          ? "Modal kerja positif — ada dana sendiri yang menutup kegiatan harian tanpa bergantung pada pinjaman."
+          : "Modal kerja negatif — kegiatan harian dibiayai dari utang.",
+      patokan: "Patokan praktis: modal kerja di atas nol berarti aman untuk kegiatan harian.",
+    });
+
+    const adaYangKurangSehat = indikator.some((i) => i.rating === "KURANG SEHAT");
+    const adaYangTidakTerukur = indikator.some((i) => i.rating === "TIDAK BERLAKU");
+    const verdict = adaYangKurangSehat
+      ? "PERLU TINDAKAN"
+      : adaYangTidakTerukur
+        ? "CUKUP SEHAT"
+        : "SEHAT";
+
+    return {
+      tanggal: new Date().toISOString(),
+      verdict,
+      penjelasan: adaYangKurangSehat
+        ? "Ada indikator yang berada di zona kurang sehat — bagian ini yang paling mendesak untuk dibenahi."
+        : adaYangTidakTerukur
+          ? "Tidak ada indikator yang bermasalah, tapi sebagian rasio tidak bisa diukur karena tidak ada liabilitas lancar untuk dibandingkan."
+          : "Semua indikator yang dihitung berada di zona aman.",
+      indikator,
+    };
   },
 };
 

@@ -11,6 +11,7 @@ import type {
   ImporPelangganBaris,
   ImporProdukBaris,
   ImporSaldoAwalBaris,
+  IndikatorKesehatan,
   JurnalEntry,
   JurnalParams,
   LabaRugi,
@@ -22,6 +23,8 @@ import type {
   PembelianInput,
   Product,
   ProfilPerusahaan,
+  RatingKesehatan,
+  RingkasanKesehatan,
   ReturInput,
   ReturPenjualan,
   ReturRiwayatParams,
@@ -374,6 +377,21 @@ type BtProfil = {
   website: string;
   taxNumber: string;
   logoUrl: string;
+};
+type BtIndikatorKesehatan = {
+  name: string;
+  unit: string;
+  value: number;
+  displayValue: string;
+  rating: string;
+  explanation: string;
+  benchmark: string;
+};
+type BtKesehatan = {
+  date: string;
+  overallVerdict: string;
+  overallExplanation: string;
+  indicators: BtIndikatorKesehatan[];
 };
 type BtAkunKas = {
   id: string;
@@ -1668,15 +1686,7 @@ export async function liveAuditLog(): Promise<AuditEntry[]> {
 
 export async function liveProfilPerusahaan(): Promise<ProfilPerusahaan> {
   const p = await minta<BtProfil>("/api/settings/company-profile");
-  return {
-    nama: p.companyName ?? "",
-    alamat: p.address ?? "",
-    telepon: p.phone ?? "",
-    email: p.email ?? "",
-    website: p.website ?? "",
-    npwp: p.taxNumber ?? "",
-    logoUrl: p.logoUrl ?? "",
-  };
+  return petakanProfil(p);
 }
 
 export async function liveSimpanProfilPerusahaan(
@@ -1694,6 +1704,35 @@ export async function liveSimpanProfilPerusahaan(
       logoUrl: input.logoUrl,
     },
   });
+  return petakanProfil(p);
+}
+
+/**
+ * Logo diunggah ke engine, bukan ke POS: filenya disimpan di server yang
+ * mencetak faktur PDF, jadi struk dan faktur memakai logo yang sama.
+ */
+export async function liveUnggahLogo(file: File): Promise<ProfilPerusahaan> {
+  const form = new FormData();
+  form.append("file", file);
+
+  const response = await kirimForm("/api/settings/company-profile/logo", form);
+  if (!response.ok) throw await jadiError(response);
+
+  const p = (await response.json()) as BtProfil;
+  return petakanProfil(p);
+}
+
+/**
+ * URL logo dari engine bersifat relatif (`/uploads/logos/...`) — browser
+ * harus tahu host engine supaya gambarnya benar-benar termuat.
+ */
+export function urlLogoAbsolut(url: string): string {
+  if (!url) return "";
+  if (/^https?:\/\//i.test(url)) return url;
+  return `${API_BASE_URL}${url.startsWith("/") ? url : `/${url}`}`;
+}
+
+function petakanProfil(p: BtProfil): ProfilPerusahaan {
   return {
     nama: p.companyName ?? "",
     alamat: p.address ?? "",
@@ -1702,5 +1741,38 @@ export async function liveSimpanProfilPerusahaan(
     website: p.website ?? "",
     npwp: p.taxNumber ?? "",
     logoUrl: p.logoUrl ?? "",
+  };
+}
+
+function keRating(nilai: string): RatingKesehatan {
+  const teks = nilai.trim().toUpperCase();
+  if (teks === "BAIK" || teks === "CUKUP" || teks === "KURANG SEHAT") return teks;
+  return "TIDAK BERLAKU";
+}
+
+/**
+ * Ringkasan kesehatan usaha dihitung engine dari jurnal yang sama dengan
+ * neraca saldo — jadi angka dashboard dan angka akuntansi tidak bisa
+ * berbeda karena dihitung dua kali di tempat berbeda.
+ */
+export async function liveRingkasanKesehatan(): Promise<RingkasanKesehatan> {
+  const hari = new Date().toISOString().slice(0, 10);
+  const data = await minta<BtKesehatan>(`/api/analytics/health-summary?date=${hari}`);
+
+  const indikator: IndikatorKesehatan[] = data.indicators.map((i) => ({
+    nama: i.name,
+    nilai: i.value,
+    satuan: i.unit,
+    display: i.displayValue,
+    rating: keRating(i.rating),
+    penjelasan: i.explanation,
+    patokan: i.benchmark,
+  }));
+
+  return {
+    tanggal: data.date,
+    verdict: data.overallVerdict,
+    penjelasan: data.overallExplanation,
+    indikator,
   };
 }
