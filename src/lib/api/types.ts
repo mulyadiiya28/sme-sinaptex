@@ -482,3 +482,43 @@ export type HealthSummary = {
   indicators: HealthIndicator[];
   dupont: Dupont;
 };
+
+/// <summary>Umur piutang atau hutang per faktur.</summary>
+export type AgedInvoice = {
+  invoiceId: string;
+  invoiceNumber: string | null;
+  counterpartyId: string | null;
+  invoiceDate: string;
+  dueDate: string | null;
+  invoiceTotal: number;
+  allocatedTotal: number;
+  outstandingAmount: number;
+  daysOverdue: number;
+  bucket: "CURRENT" | "DAYS_30" | "DAYS_60" | "DAYS_90" | "OVER_90";
+};
+
+/// <summary>Laporan umur piutang/hutang dari engine.</summary>
+export type AgingReport = {
+  side: "RECEIVABLE" | "PAYABLE";
+  asOfDate: string;
+  outstandingTotal: number;
+  current: number;
+  days30: number;
+  days60: number;
+  days90: number;
+  over90: number;
+  invoices: AgedInvoice[];
+};
+
+/// <summary>Hasil rekonsiliasi piutang/hutang terhadap saldo akun buku besar.</summary>
+export type Reconciliation = {
+  side: string;
+  accountCode: string;
+  invoiceCount: number;
+  invoicedTotal: number;
+  allocatedTotal: number;
+  outstandingTotal: number;
+  ledgerBalance: number;
+  difference: number;
+  isReconciled: boolean;
+};

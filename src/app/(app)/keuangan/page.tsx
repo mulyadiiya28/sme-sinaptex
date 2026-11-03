@@ -2,21 +2,25 @@
 
 import { useState } from "react";
 import { ReceiptText, Wallet } from "lucide-react";
-import type { Biaya, Pembelian, TransaksiRiwayat } from "@/lib/api/types";
+import type { AgedInvoice, AgingReport, Biaya, Pembelian, Reconciliation, TransaksiRiwayat } from "@/lib/api/types";
 import { DataTable, type Column } from "@/components/data-table";
 import { FormField } from "@/components/form-field";
 import { KpiCard } from "@/components/kpi-card";
 import { MoneyDisplay } from "@/components/money-display";
 import { PageHeader } from "@/components/page-header";
-import { KpiSkeleton } from "@/components/skeleton";
+import { KpiSkeleton, TableSkeleton } from "@/components/skeleton";
 import { StatusBadge } from "@/components/status-badge";
 import { useAuth } from "@/lib/store/auth";
+import { api } from "@/lib/api/client";
 import {
   useActiveShift,
+  useArAging,
+  useApAging,
   useBiaya,
   useBiayaMutations,
   usePembayaranMutations,
   usePembelian,
+  useReconciliation,
   useRiwayatTransaksi,
   useTransaksiMutations,
 } from "@/hooks/queries";
@@ -254,7 +258,12 @@ function PanelPiutang() {
   const riwayat = useRiwayatTransaksi();
   const { bayarPiutang } = usePembayaranMutations();
   const [target, setTarget] = useState<TransaksiRiwayat | null>(null);
+  const aging = useArAging();
+  const reconciliation = useReconciliation("RECEIVABLE", "1200");
   const daftar = (riwayat.data ?? []).filter((t) => t.status !== "dibatalkan" && t.piutang > 0);
+  const totalPiutang = daftar.reduce((s, t) => s + t.piutang, 0);
+
+  const memuat = riwayat.isLoading || aging.isLoading || reconciliation.isLoading;
 
   const columns: Column<TransaksiRiwayat>[] = [
     { key: "nomor", header: "Nomor", render: (r) => <span className="font-semibold text-brand">{r.nomor}</span> },
@@ -271,7 +280,34 @@ function PanelPiutang() {
 
   return (
     <div className="panel p-4">
-      <DataTable columns={columns} rows={daftar} rowKey={(r) => r.nomor} loading={riwayat.isLoading} empty="Tidak ada piutang — semua penjualan kredit lunas." />
+      <div className="flex items-center justify-between mb-3">
+        <h2 className="text-sm font-bold text-brand">Piutang Pelanggan</h2>
+        <div className="flex items-center gap-2 text-sm">
+          <span className="font-semibold text-ink">Total piutang</span>
+          <MoneyDisplay value={totalPiutang} className="font-bold text-amber-600 tabular-nums" />
+        </div>
+      </div>
+      {memuat ? (
+        <TableSkeleton kolom={5} baris={5} />
+      ) : (
+        <>
+          {aging.data && (
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-5 mb-4">
+              <AgingKpi label="Saat tempo" value={aging.data.current} tone="emerald" />
+              <AgingKpi label="1–30 hari" value={aging.data.days30} tone="amber" />
+              <AgingKpi label="31–60 hari" value={aging.data.days60} tone="orange" />
+              <AgingKpi label="61–90 hari" value={aging.data.days90} tone="rose" />
+              <AgingKpi label="> 90 hari" value={aging.data.over90} tone="red" />
+            </div>
+          )}
+          <DataTable columns={columns} rows={daftar} rowKey={(r) => r.nomor} loading={riwayat.isLoading} empty="Tidak ada piutang — semua penjualan kredit lunas." />
+        </>
+      )}
+      {reconciliation.data && reconciliation.data.difference !== 0 && (
+        <div className="mt-3 rounded-xl bg-rose-50 px-3 py-2 text-xs text-rose-700">
+          Peringatan: selisih piutang {new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR" }).format(Math.abs(reconciliation.data.difference))} antara daftar faktur dan saldo akun 1200.
+        </div>
+      )}
       {target && (
         <BayarDialog
           judul={`Pelunasan piutang ${target.nomor}`}
@@ -290,11 +326,25 @@ function PanelPiutang() {
   );
 }
 
+function AgingKpi({ label, value, tone }: { label: string; value: number; tone: string }) {
+  return (
+    <div className="rounded-xl bg-white p-3 border border-line">
+      <div className="flex items-center justify-between">
+        <span className="text-xs text-muted">{label}</span>
+        <MoneyDisplay value={value} className="font-bold tabular-nums" />
+      </div>
+    </div>
+  );
+}
+
 function PanelHutang() {
   const pembelian = usePembelian();
   const { bayarHutang } = usePembayaranMutations();
   const [target, setTarget] = useState<Pembelian | null>(null);
+  const aging = useApAging();
+  const reconciliation = useReconciliation("PAYABLE", "2101");
   const hutang = (pembelian.data ?? []).filter((p) => p.terbayar < p.total);
+  const totalHutang = hutang.reduce((s, p) => s + (p.total - p.terbayar), 0);
 
   const columns: Column<Pembelian>[] = [
     { key: "nomor", header: "Nomor", render: (r) => <span className="font-semibold text-brand">{r.nomor}</span> },
@@ -307,9 +357,38 @@ function PanelHutang() {
     ) },
   ];
 
+  const memuat = pembelian.isLoading || aging.isLoading || reconciliation.isLoading;
+
   return (
     <div className="panel p-4">
-      <DataTable columns={columns} rows={hutang} rowKey={(r) => r.id} loading={pembelian.isLoading} empty="Tidak ada hutang ke pemasok." />
+      <div className="flex items-center justify-between mb-3">
+        <h2 className="text-sm font-bold text-brand">Hutang Pemasok</h2>
+        <div className="flex items-center gap-2 text-sm">
+          <span className="font-semibold text-ink">Total hutang</span>
+          <MoneyDisplay value={totalHutang} className="font-bold text-rose-600 tabular-nums" />
+        </div>
+      </div>
+      {memuat ? (
+        <TableSkeleton kolom={5} baris={5} />
+      ) : (
+        <>
+          {aging.data && (
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-5 mb-4">
+              <AgingKpi label="Saat tempo" value={aging.data.current} tone="emerald" />
+              <AgingKpi label="1–30 hari" value={aging.data.days30} tone="amber" />
+              <AgingKpi label="31–60 hari" value={aging.data.days60} tone="orange" />
+              <AgingKpi label="61–90 hari" value={aging.data.days90} tone="rose" />
+              <AgingKpi label="> 90 hari" value={aging.data.over90} tone="red" />
+            </div>
+          )}
+          <DataTable columns={columns} rows={hutang} rowKey={(r) => r.id} loading={pembelian.isLoading} empty="Tidak ada hutang ke pemasok." />
+        </>
+      )}
+      {reconciliation.data && reconciliation.data.difference !== 0 && (
+        <div className="mt-3 rounded-xl bg-rose-50 px-3 py-2 text-xs text-rose-700">
+          Peringatan: selisih hutang {new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR" }).format(Math.abs(reconciliation.data.difference))} antara daftar faktur dan saldo akun 2101.
+        </div>
+      )}
       {target && (
         <BayarDialog
           judul={`Pelunasan hutang ${target.nomor}`}

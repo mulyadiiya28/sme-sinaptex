@@ -44,6 +44,9 @@ import type {
   User,
   WorkingCapital,
   WorkingCapitalTurnover,
+  AgedInvoice,
+  AgingReport,
+  Reconciliation,
 } from "@/lib/api/types";
 import { mockDb, produkBaruId } from "@/lib/api/mock/db";
 import { useToko } from "@/lib/store/toko";
@@ -84,6 +87,8 @@ import {
   liveProductPerformanceRankings,
   liveProducts,
   liveProfitability,
+  liveAging,
+  liveReconciliation,
   liveRetur,
   liveReturRiwayat,
   liveShiftAktif,
@@ -440,6 +445,37 @@ export const api = {
       await delay(120);
       return {
         fastMoving: [], slowMoving: [], highMargin: [], topRevenue: [], topProfit: [],
+      };
+    },
+  },
+
+  aging: {
+    ar: async (asOfDate?: string): Promise<AgingReport> => {
+      if (API_MODE === "live") return liveAging("RECEIVABLE", asOfDate);
+      await delay(120);
+      return {
+        side: "RECEIVABLE", asOfDate: asOfDate ?? new Date().toISOString(),
+        outstandingTotal: 0, current: 0, days30: 0, days60: 0, days90: 0, over90: 0,
+        invoices: [],
+      };
+    },
+    ap: async (asOfDate?: string): Promise<AgingReport> => {
+      if (API_MODE === "live") return liveAging("PAYABLE", asOfDate);
+      await delay(120);
+      return {
+        side: "PAYABLE", asOfDate: asOfDate ?? new Date().toISOString(),
+        outstandingTotal: 0, current: 0, days30: 0, days60: 0, days90: 0, over90: 0,
+        invoices: [],
+      };
+    },
+    reconciliation: async (side: "RECEIVABLE" | "PAYABLE", accountCode: string, asOfDate?: string): Promise<Reconciliation> => {
+      if (API_MODE === "live") return liveReconciliation(side, accountCode, asOfDate);
+      await delay(120);
+      return {
+        side, accountCode,
+        invoiceCount: 0, invoicedTotal: 0, allocatedTotal: 0,
+        outstandingTotal: 0, ledgerBalance: 0, difference: 0,
+        isReconciled: true,
       };
     },
   },

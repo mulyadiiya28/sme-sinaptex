@@ -46,6 +46,9 @@ import type {
   User,
   WorkingCapital,
   WorkingCapitalTurnover,
+  AgedInvoice,
+  AgingReport,
+  Reconciliation,
 } from "@/lib/api/types";
 
 export const API_BASE_URL = (process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:5121").replace(/\/+$/, "");
@@ -1716,5 +1719,19 @@ export async function liveProductPerformance(startDate: string, endDate: string)
 
 export async function liveProductPerformanceRankings(startDate: string, endDate: string, top = 10): Promise<ProductPerformanceRankings> {
   const data = await minta<ProductPerformanceRankings>(`/api/analytics/product-performance/rankings?startDate=${startDate}&endDate=${endDate}&top=${top}`);
+  return data;
+}
+
+export async function liveAging(side: "RECEIVABLE" | "PAYABLE", asOfDate?: string): Promise<AgingReport> {
+  const qs = new URLSearchParams({ side });
+  if (asOfDate) qs.set("asOfDate", asOfDate);
+  const data = await minta<AgingReport>(`/api/reports/ar-ap/aging?${qs.toString()}`);
+  return data;
+}
+
+export async function liveReconciliation(side: "RECEIVABLE" | "PAYABLE", accountCode: string, asOfDate?: string): Promise<Reconciliation> {
+  const qs = new URLSearchParams({ side, accountCode });
+  if (asOfDate) qs.set("asOfDate", asOfDate);
+  const data = await minta<Reconciliation>(`/api/reports/ar-ap/reconciliation?${qs.toString()}`);
   return data;
 }

@@ -162,6 +162,30 @@ export function useProductPerformanceRankings(startDate: string, endDate: string
   });
 }
 
+export function useArAging(asOfDate?: string) {
+  return useQuery({
+    queryKey: ["aging", "ar", asOfDate],
+    queryFn: () => api.aging.ar(asOfDate),
+    enabled: true,
+  });
+}
+
+export function useApAging(asOfDate?: string) {
+  return useQuery({
+    queryKey: ["aging", "ap", asOfDate],
+    queryFn: () => api.aging.ap(asOfDate),
+    enabled: true,
+  });
+}
+
+export function useReconciliation(side: "RECEIVABLE" | "PAYABLE", accountCode: string, asOfDate?: string) {
+  return useQuery({
+    queryKey: ["aging", "reconciliation", side, accountCode, asOfDate],
+    queryFn: () => api.aging.reconciliation(side, accountCode, asOfDate),
+    enabled: !!side && !!accountCode,
+  });
+}
+
 export function useAuthUsers() {
   return useQuery({ queryKey: ["users"], queryFn: api.auth.users });
 }
