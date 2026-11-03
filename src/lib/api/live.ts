@@ -7,6 +7,7 @@ import type {
   CheckoutPayload,
   CheckoutResult,
   CompanyProfile,
+  KebijakanOperasional,
   Expense,
   ImportResult,
   ImporPelangganBaris,
@@ -1611,5 +1612,28 @@ export async function liveCompanyProfilePut(input: CompanyProfile): Promise<Comp
     website: data.website,
     npwp: data.npwp,
     logoUrl: data.logoUrl,
+  };
+}
+
+export async function liveKebijakanGet(): Promise<KebijakanOperasional> {
+  const data = await minta<KebijakanOperasional>("/api/settings/operational-policy");
+  return {
+    izinkanKredit: data.izinkanKredit,
+    saldoAwalShift: data.saldoAwalShift,
+  };
+}
+
+export async function liveKebijakanPut(input: KebijakanOperasional): Promise<KebijakanOperasional> {
+  const data = await minta<KebijakanOperasional>("/api/settings/operational-policy", {
+    method: "PUT",
+    idempotensiKunci: buatKunciIdempotensi(),
+    body: {
+      izinkanKredit: input.izinkanKredit,
+      saldoAwalShift: input.saldoAwalShift,
+    },
+  });
+  return {
+    izinkanKredit: data.izinkanKredit,
+    saldoAwalShift: data.saldoAwalShift,
   };
 }

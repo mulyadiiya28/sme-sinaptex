@@ -12,6 +12,7 @@ import type {
   ImporSaldoAwalBaris,
   JurnalEntry,
   JurnalParams,
+  KebijakanOperasional,
   LabaRugi,
   LoginResult,
   PaymentMethod,
@@ -48,6 +49,8 @@ import {
   liveCompanyProfileGet,
   liveCompanyProfilePut,
   liveCreateProduct,
+  liveKebijakanGet,
+  liveKebijakanPut,
   liveDeleteProduct,
   liveHapusUser,
   liveImporPelanggan,
@@ -327,6 +330,20 @@ export const api = {
           pajakPersen: p.pajakPersen,
         };
         useToko.getState().simpan(gabungan);
+        return input;
+      },
+    },
+    kebijakan: {
+      get: async (): Promise<KebijakanOperasional> => {
+        if (API_MODE === "live") return liveKebijakanGet();
+        await delay(120);
+        const k = useToko.getState().kebijakan;
+        return { izinkanKredit: k.izinkanKredit, saldoAwalShift: k.saldoAwalShift };
+      },
+      put: async (input: KebijakanOperasional): Promise<KebijakanOperasional> => {
+        if (API_MODE === "live") return liveKebijakanPut(input);
+        await delay(250);
+        useToko.getState().simpanKebijakan(input);
         return input;
       },
     },

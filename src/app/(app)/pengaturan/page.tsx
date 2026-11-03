@@ -1,7 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import { Building2, CheckCircle2, FileDown, FileUp, ShieldCheck } from "lucide-react";
+import { useEffect, useRef, useState } from "react";import { Building2, CheckCircle2, FileDown, FileUp, ShieldCheck } from "lucide-react";
 import type {
   AuditEntry,
   CompanyProfile,
@@ -9,6 +8,7 @@ import type {
   ImporPelangganBaris,
   ImporProdukBaris,
   ImporSaldoAwalBaris,
+  KebijakanOperasional,
   User,
 } from "@/lib/api/types";
 import { DataTable, type Column } from "@/components/data-table";
@@ -499,15 +499,53 @@ function PanelInfo({ grup }: { grup: string }) {
           </li>
         ))}
       </ul>
-      {grup === "Operasional" && <KebijakanOperasional />}
+      {grup === "Operasional" && <PanelKebijakanOperasional />}
       {grup === "Akuntansi" && <DaftarAkunInfo />}
     </div>
   );
 }
 
-function KebijakanOperasional() {
-  const kebijakan = useToko((s) => s.kebijakan);
-  const simpanKebijakan = useToko((s) => s.simpanKebijakan);
+function PanelKebijakanOperasional() {
+  const kebijakanLokal = useToko((s) => s.kebijakan);
+  const simpanKebijakanLokal = useToko((s) => s.simpanKebijakan);
+  const [draft, setDraft] = useState<KebijakanOperasional>({
+    izinkanKredit: kebijakanLokal.izinkanKredit,
+    saldoAwalShift: kebijakanLokal.saldoAwalShift,
+  });
+  const [sukses, setSukses] = useState(false);
+  const [mudah, setMudah] = useState(false);
+  const dimuat = useRef(false);
+
+  // Saat mode live, ambil kebijakan dari engine saat halaman pertama kali dibuka.
+  useEffect(() => {
+    if (dimuat.current) return;
+    dimuat.current = true;
+    api.toko.kebijakan
+      .get()
+      .then((k) => setDraft(k))
+      .catch((err) => console.error("Gagal muat kebijakan operasional:", err));
+  }, []);
+
+  const simpanSemua = async () => {
+    setMudah(true);
+    try {
+      const tersimpan = await api.toko.kebijakan.put(draft);
+      setDraft(tersimpan);
+      simpanKebijakanLokal(tersimpan);
+      setSukses(true);
+    } catch (err) {
+      setSukses(false);
+      throw err;
+    } finally {
+      setMudah(false);
+    }
+  };
+
+  const ubahKredit = (e: React.ChangeEvent<HTMLInputElement>) =>
+    setDraft({ ...draft, izinkanKredit: e.target.checked });
+
+  const ubahSaldo = (e: React.ChangeEvent<HTMLInputElement>) =>
+    setDraft({ ...draft, saldoAwalShift: Number(e.target.value) });
 
   return (
     <div className="mt-5 border-t border-line pt-4">
@@ -515,8 +553,9 @@ function KebijakanOperasional() {
       <label className="mt-2 flex items-center gap-2.5 text-sm text-muted">
         <input
           type="checkbox"
-          checked={kebijakan.izinkanKredit}
-          onChange={(e) => simpanKebijakan({ ...kebijakan, izinkanKredit: e.target.checked })}
+          checked={draft.izinkanKredit}
+          onChange={ubahKredit}
+          disabled={mudah}
         />
         Izinkan kasir mengubah sisa pembayaran menjadi piutang (penjualan kredit)
       </label>
@@ -532,11 +571,28 @@ function KebijakanOperasional() {
               type="number"
               min={0}
               className="input text-right tabular-nums"
-              value={kebijakan.saldoAwalShift ?? 0}
-              onChange={(e) => simpanKebijakan({ ...kebijakan, saldoAwalShift: Number(e.target.value) })}
+              value={draft.saldoAwalShift ?? 0}
+              onChange={ubahSaldo}
+              disabled={mudah}
             />
           </FormField>
         </div>
+      </div>
+
+      <div className="mt-3 flex items-center gap-3">
+        <button
+          type="button"
+          onClick={simpanSemua}
+          className={cn("btn-primary", mudah && "opacity-70")}
+          disabled={mudah}
+        >
+          {mudah ? "Menyimpan..." : "Simpan Kebijakan"}
+        </button>
+        {sukses && (
+          <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-emerald-700">
+            <CheckCircle2 className="size-4" aria-hidden /> Tersimpan
+          </span>
+        )}
       </div>
     </div>
   );

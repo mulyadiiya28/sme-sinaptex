@@ -283,6 +283,12 @@ export type CompanyProfile = {
   logoUrl: string;   // LogoUrl
 };
 
+/// <summary>Kebijakan operasional toko per tenant (engine: /api/settings/operational-policy).</summary>
+export type KebijakanOperasional = {
+  izinkanKredit: boolean;
+  saldoAwalShift: number;
+};
+
 export type Pelanggan = {
   id: string;
   nama: string;
