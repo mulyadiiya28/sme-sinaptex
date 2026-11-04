@@ -1,6 +1,14 @@
 import type {
+  AgedInvoice,
+  AgingReport,
+  ApprovalRule,
   Biaya,
+  CreateApprovalRuleRequest,
+  CreateFiscalPeriodRequest,
   CreateSupplierRequest,
+  DailyMovementEntry,
+  DailyMovementReport,
+  FiscalPeriod,
   HasilImpor,
   HealthIndicator,
   HealthSummary,
@@ -14,6 +22,7 @@ import type {
   Pembelian,
   PembelianInput,
   Product,
+  Reconciliation,
   ReturInput,
   ReturPenjualan,
   Role,
@@ -56,6 +65,24 @@ const DAFTAR_AKUN = [
   "Selisih stok",
 ];
 
+// Kode akun mengikuti default `.env.example` (chart SAK EMKM), supaya input
+// kode akun di halaman laporan berperilaku sama dengan mode live.
+const KODE_AKUN: Record<string, string> = {
+  Kas: "1121",
+  Bank: "1111",
+  "Penampung gateway": "1112",
+  "Piutang usaha": "1200",
+  Persediaan: "1300",
+  "Hutang usaha": "2101",
+  "Pajak keluaran": "2402",
+  Modal: "3100",
+  Penjualan: "4000",
+  "Retur penjualan": "4100",
+  HPP: "5000",
+  "Selisih stok": "5900",
+  "Biaya operasional": "6900",
+};
+
 const KAS_TUNAI_AWAL = 1_500_000;
 const KAS_BANK_AWAL = 3_000_000;
 const NILAI_PERSEDIAAN_AWAL = produkSeed.reduce((s, p) => s + p.stok * p.hargaBeli, 0);
@@ -84,6 +111,19 @@ function kasTunaiSistem(shift: ShiftInfo): number {
   return shift.saldoAwal + shift.kasMasuk - shift.kasKeluar + shift.penjualanTunai;
 }
 
+function umurFaktur(
+  asOf: Date,
+  tanggal: string,
+): Pick<AgedInvoice, "daysOverdue" | "bucket"> {
+  const selisih = Math.floor(
+    (asOf.getTime() - new Date(tanggal).getTime()) / (24 * 60 * 60 * 1000),
+  );
+  const hari = Math.max(0, selisih);
+  const bucket: AgedInvoice["bucket"] =
+    hari === 0 ? "CURRENT" : hari <= 30 ? "DAYS_30" : hari <= 60 ? "DAYS_60" : hari <= 90 ? "DAYS_90" : "OVER_90";
+  return { daysOverdue: hari, bucket };
+}
+
 export const mockDb = {
   products: [...produkSeed] as Product[],
   retur: [] as ReturPenjualan[],
@@ -101,6 +141,8 @@ export const mockDb = {
       isActive: true,
     },
   ] as Supplier[],
+  fiscalPeriods: [] as FiscalPeriod[],
+  approvalRules: [] as ApprovalRule[],
   users: [
     { id: "u1", nama: "Pemilik Toko", username: "pemilik", password: "pemilik123", role: "pemilik" as const },
     { id: "u2", nama: "Kasir 1", username: "kasir", password: "kasir123", role: "kasir" as const },
@@ -388,6 +430,237 @@ export const mockDb = {
     if (!target) throw new Error("Pemasok tidak ditemukan.");
     target.isActive = false;
     return structuredClone(target);
+  },
+
+  /**
+   * Periode fiskal mode mock.
+   *
+   * Disimpan in-memory seperti data mock lain — tanpa ini, daftar periode
+   * selalu kosong dan tombol "Buat periode" seolah tidak berefek.
+   */
+  daftarPeriodeFiskal(): FiscalPeriod[] {
+    return structuredClone(this.fiscalPeriods);
+  },
+
+  buatPeriodeFiskal(input: CreateFiscalPeriodRequest): FiscalPeriod {
+    if (!input.name.trim()) throw new Error("Nama periode wajib diisi.");
+    if (!input.startDate || !input.endDate) throw new Error("Tanggal mulai dan selesai wajib diisi.");
+    if (input.endDate < input.startDate) throw new Error("Tanggal selesai tidak boleh sebelum tanggal mulai.");
+    const bertumpuk = this.fiscalPeriods.some(
+      (p) => input.startDate <= p.endDate && input.endDate >= p.startDate,
+    );
+    if (bertumpuk) throw new Error("Rentang tanggal bertumpuk dengan periode lain.");
+
+    const periode: FiscalPeriod = {
+      id: crypto.randomUUID(),
+      businessId: "toko-utama",
+      name: input.name.trim(),
+      startDate: input.startDate,
+      endDate: input.endDate,
+      status: input.status ?? "OPEN",
+      version: 1,
+    };
+    this.fiscalPeriods.push(periode);
+    return structuredClone(periode);
+  },
+
+  ubahStatusPeriodeFiskal(id: string, status: FiscalPeriod["status"]): FiscalPeriod {
+    const periode = this.fiscalPeriods.find((p) => p.id === id);
+    if (!periode) throw new Error("Periode fiskal tidak ditemukan.");
+    periode.status = status;
+    periode.version += 1;
+    return structuredClone(periode);
+  },
+
+  periodeFiskalMenungguTutup(): FiscalPeriod[] {
+    const hariIni = new Date().toISOString().slice(0, 10);
+    return structuredClone(
+      this.fiscalPeriods.filter((p) => p.status === "OPEN" && p.endDate < hariIni),
+    );
+  },
+
+  daftarAturanApproval(): ApprovalRule[] {
+    return structuredClone(this.approvalRules);
+  },
+
+  buatAturanApproval(input: CreateApprovalRuleRequest): ApprovalRule {
+    if (!input.transactionType.trim()) throw new Error("Jenis transaksi wajib diisi.");
+    if (input.minimumAmount < 0) throw new Error("Ambang batas tidak boleh negatif.");
+    const sekarang = waktuSekarang();
+    const aturan: ApprovalRule = {
+      id: crypto.randomUUID(),
+      businessId: "toko-utama",
+      name: input.name?.trim() || null,
+      transactionType: input.transactionType.trim(),
+      minimumAmount: input.minimumAmount,
+      requiredLevel: input.requiredLevel,
+      resolutionMode: input.resolutionMode ?? "HIGHEST_LEVEL",
+      isActive: true,
+      version: 1,
+      createdAt: sekarang,
+      updatedAt: sekarang,
+    };
+    this.approvalRules.push(aturan);
+    return structuredClone(aturan);
+  },
+
+  nonaktifkanAturanApproval(id: string): ApprovalRule {
+    const aturan = this.approvalRules.find((a) => a.id === id);
+    if (!aturan) throw new Error("Aturan approval tidak ditemukan.");
+    aturan.isActive = false;
+    aturan.version += 1;
+    aturan.updatedAt = waktuSekarang();
+    return structuredClone(aturan);
+  },
+
+  /**
+   * Umur piutang/hutang mode mock.
+   *
+   * Dihitung dari transaksi/pembelian yang masih bersisa, bukan dari angka
+   * karangan — supaya KPI umur di halaman Keuangan cocok dengan daftar
+   * fakturnya. Mock tidak menyimpan tanggal jatuh tempo, jadi tanggal faktur
+   * dipakai sebagai patokan umur.
+   */
+  laporanAging(side: "RECEIVABLE" | "PAYABLE", asOfDate?: string): AgingReport {
+    const asOf = asOfDate ? new Date(asOfDate) : new Date();
+    const invoices: AgedInvoice[] =
+      side === "RECEIVABLE"
+        ? this.transaksi
+            .filter((t) => t.status !== "dibatalkan" && t.piutang > 0)
+            .map((t) => ({
+              invoiceId: t.nomor,
+              invoiceNumber: t.nomor,
+              counterpartyId: null,
+              invoiceDate: t.waktu,
+              dueDate: null,
+              invoiceTotal: t.total,
+              allocatedTotal: t.total - t.piutang,
+              outstandingAmount: t.piutang,
+              ...umurFaktur(asOf, t.waktu),
+            }))
+        : this.pembelian
+            .filter((p) => p.terbayar < p.total)
+            .map((p) => {
+              const sisa = p.total - p.terbayar;
+              return {
+                invoiceId: p.id,
+                invoiceNumber: p.nomor,
+                counterpartyId: p.supplierId ?? null,
+                invoiceDate: p.waktu,
+                dueDate: null,
+                invoiceTotal: p.total,
+                allocatedTotal: p.terbayar,
+                outstandingAmount: sisa,
+                ...umurFaktur(asOf, p.waktu),
+              };
+            });
+
+    const total = (pilih: (i: AgedInvoice) => boolean) =>
+      invoices.filter(pilih).reduce((s, i) => s + i.outstandingAmount, 0);
+
+    return {
+      side,
+      asOfDate: asOf.toISOString(),
+      outstandingTotal: total(() => true),
+      current: total((i) => i.bucket === "CURRENT"),
+      days30: total((i) => i.bucket === "DAYS_30"),
+      days60: total((i) => i.bucket === "DAYS_60"),
+      days90: total((i) => i.bucket === "DAYS_90"),
+      over90: total((i) => i.bucket === "OVER_90"),
+      invoices: structuredClone(invoices),
+    };
+  },
+
+  rekonsiliasi(
+    side: "RECEIVABLE" | "PAYABLE",
+    accountCode: string,
+    asOfDate?: string,
+  ): Reconciliation {
+    const laporan = this.laporanAging(side, asOfDate);
+    const namaAkun = side === "RECEIVABLE" ? "Piutang usaha" : "Hutang usaha";
+    const saldoAkun = this.akunSaldos().find((a) => a.akun === namaAkun)?.saldoAkhir ?? 0;
+    // Piutang bersaldo normal debit, hutang bersaldo normal kredit. Saldo akun
+    // mock disimpan sebagai debit - kredit, jadi sisi hutang dibalik agar bisa
+    // dibandingkan dengan total outstanding.
+    const ledgerBalance = side === "RECEIVABLE" ? saldoAkun : -saldoAkun;
+    const difference = Math.round((laporan.outstandingTotal - ledgerBalance) * 100) / 100;
+
+    return {
+      side,
+      accountCode,
+      invoiceCount: laporan.invoices.length,
+      invoicedTotal: laporan.invoices.reduce((s, i) => s + i.invoiceTotal, 0),
+      allocatedTotal: laporan.invoices.reduce((s, i) => s + i.allocatedTotal, 0),
+      outstandingTotal: laporan.outstandingTotal,
+      ledgerBalance,
+      difference,
+      isReconciled: Math.abs(difference) < 0.01,
+    };
+  },
+
+  /**
+   * Gerakan harian satu akun, diturunkan dari jurnal mock.
+   *
+   * Mock menyimpan jurnal lengkap, jadi laporan ini tidak perlu angka karangan:
+   * saldo awal dihitung dari jurnal sebelum tanggal yang dipilih, lalu setiap
+   * baris pada hari itu dijalankan berurutan.
+   */
+  gerakanHarian(tanggal: string, accountCode: string): DailyMovementReport {
+    const akun = this.akunSaldos().find(
+      (a) => a.kode === accountCode || a.akun === accountCode,
+    );
+    const awal = new Date(`${(tanggal || waktuSekarang()).slice(0, 10)}T00:00:00`);
+    const akhir = new Date(awal.getTime() + 24 * 60 * 60 * 1000);
+
+    const baris = this.jurnal
+      .slice()
+      .reverse()
+      .flatMap((j) =>
+        j.baris
+          .filter((b) => b.akun === akun?.akun)
+          .map((b) => ({ j, b, waktu: new Date(j.waktu) })),
+      );
+
+    let saldo = baris
+      .filter((x) => x.waktu < awal)
+      .reduce((s, x) => s + x.b.debit - x.b.kredit, 0);
+    const openingBalance = saldo;
+
+    const entries: DailyMovementEntry[] = [];
+    let totalDebit = 0;
+    let totalCredit = 0;
+
+    for (const x of baris) {
+      if (x.waktu < awal) continue;
+      if (x.waktu >= akhir) break;
+      saldo += x.b.debit - x.b.kredit;
+      totalDebit += x.b.debit;
+      totalCredit += x.b.kredit;
+      entries.push({
+        journalId: x.j.id,
+        entryDate: x.j.waktu,
+        transactionType: null,
+        transactionDescription: x.j.keterangan,
+        referenceType: null,
+        referenceId: x.j.ref,
+        reversalOfJournalId: null,
+        lineDescription: x.j.keterangan,
+        debit: x.b.debit,
+        credit: x.b.kredit,
+        runningBalance: saldo,
+      });
+    }
+
+    return {
+      date: awal.toISOString().slice(0, 10),
+      accountCode,
+      accountName: akun?.nama ?? "-",
+      openingBalance,
+      entries,
+      closingBalance: saldo,
+      totalDebit,
+      totalCredit,
+    };
   },
 
   bukaShift(input: ShiftBukaInput): ShiftInfo {
@@ -800,7 +1073,7 @@ export const mockDb = {
       const { awal, debit, kredit } = map.get(akun)!;
       return {
         akun,
-        kode: "",
+        kode: KODE_AKUN[akun] ?? "",
         nama: akun,
         saldoAwal: awal,
         debit,

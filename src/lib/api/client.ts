@@ -29,6 +29,7 @@ import type {
   Pembelian,
   PembelianInput,
   PenyesuaianStokInput,
+  PersetujuanBatch,
   Product,
   ProductPerformance,
   ProductPerformanceRankings,
@@ -91,6 +92,8 @@ import {
   liveApprovalRuleCreate,
   liveApprovalRuleDeactivate,
   liveApprovalRuleList,
+  livePersetujuanList,
+  liveSetujuiBatch,
   liveDeleteProduct,
   liveHapusUser,
   liveHealthSummary,
@@ -410,92 +413,57 @@ export const api = {
       list: async (): Promise<FiscalPeriod[]> => {
         if (API_MODE === "live") return liveFiscalPeriodList();
         await delay(120);
-        return [];
+        return mockDb.daftarPeriodeFiskal();
       },
       create: async (input: CreateFiscalPeriodRequest): Promise<FiscalPeriod> => {
         if (API_MODE === "live") return liveFiscalPeriodCreate(input);
         await delay(350);
-        return {
-          id: crypto.randomUUID(),
-          businessId: BUSINESS_ID,
-          name: input.name,
-          startDate: input.startDate,
-          endDate: input.endDate,
-          status: input.status ?? "OPEN",
-          version: 1,
-        };
+        return mockDb.buatPeriodeFiskal(input);
       },
       close: async (id: string, actorId: string, idempotensiKunci: string): Promise<FiscalPeriod> => {
         if (API_MODE === "live") return liveFiscalPeriodClose(id, actorId, idempotensiKunci);
         await delay(350);
-        return {
-          id,
-          businessId: BUSINESS_ID,
-          name: "",
-          startDate: "",
-          endDate: "",
-          status: "CLOSED",
-          version: 1,
-        };
+        void actorId;
+        void idempotensiKunci;
+        return mockDb.ubahStatusPeriodeFiskal(id, "CLOSED");
       },
       lock: async (id: string, actorId: string, actorLevel: string, reason: string, idempotensiKunci: string): Promise<FiscalPeriod> => {
         if (API_MODE === "live") return liveFiscalPeriodLock(id, actorId, actorLevel, reason, idempotensiKunci);
         await delay(350);
-        return {
-          id,
-          businessId: BUSINESS_ID,
-          name: "",
-          startDate: "",
-          endDate: "",
-          status: "LOCKED",
-          version: 1,
-        };
+        void actorId;
+        void actorLevel;
+        void reason;
+        void idempotensiKunci;
+        return mockDb.ubahStatusPeriodeFiskal(id, "LOCKED");
       },
       reopen: async (id: string, actorId: string, actorLevel: string, reason: string, idempotensiKunci: string): Promise<FiscalPeriod> => {
         if (API_MODE === "live") return liveFiscalPeriodReopen(id, actorId, actorLevel, reason, idempotensiKunci);
         await delay(350);
-        return {
-          id,
-          businessId: BUSINESS_ID,
-          name: "",
-          startDate: "",
-          endDate: "",
-          status: "OPEN",
-          version: 1,
-        };
+        void actorId;
+        void actorLevel;
+        void reason;
+        void idempotensiKunci;
+        return mockDb.ubahStatusPeriodeFiskal(id, "OPEN");
       },
       reverseClosing: async (id: string, actorId: string, actorLevel: string, reason: string, idempotensiKunci: string): Promise<FiscalPeriod> => {
         if (API_MODE === "live") return liveFiscalPeriodReverseClosing(id, actorId, actorLevel, reason, idempotensiKunci);
         await delay(350);
-        return {
-          id,
-          businessId: BUSINESS_ID,
-          name: "",
-          startDate: "",
-          endDate: "",
-          status: "OPEN",
-          version: 1,
-        };
+        void actorId;
+        void actorLevel;
+        void reason;
+        void idempotensiKunci;
+        return mockDb.ubahStatusPeriodeFiskal(id, "OPEN");
       },
       getPendingClose: async (): Promise<FiscalPeriod[]> => {
         if (API_MODE === "live") return liveFiscalPeriodGetPendingClose();
         await delay(120);
-        return [];
+        return mockDb.periodeFiskalMenungguTutup();
       },
     },
     dailyMovement: async (date: string, accountCode: string): Promise<DailyMovementReport> => {
       if (API_MODE === "live") return liveDailyMovement(date, accountCode);
       await delay(120);
-      return {
-        date,
-        accountCode,
-        accountName: "-",
-        openingBalance: 0,
-        entries: [],
-        closingBalance: 0,
-        totalDebit: 0,
-        totalCredit: 0,
-      };
+      return mockDb.gerakanHarian(date, accountCode);
     },
   },
 
@@ -615,30 +583,17 @@ export const api = {
     ar: async (asOfDate?: string): Promise<AgingReport> => {
       if (API_MODE === "live") return liveAging("RECEIVABLE", asOfDate);
       await delay(120);
-      return {
-        side: "RECEIVABLE", asOfDate: asOfDate ?? new Date().toISOString(),
-        outstandingTotal: 0, current: 0, days30: 0, days60: 0, days90: 0, over90: 0,
-        invoices: [],
-      };
+      return mockDb.laporanAging("RECEIVABLE", asOfDate);
     },
     ap: async (asOfDate?: string): Promise<AgingReport> => {
       if (API_MODE === "live") return liveAging("PAYABLE", asOfDate);
       await delay(120);
-      return {
-        side: "PAYABLE", asOfDate: asOfDate ?? new Date().toISOString(),
-        outstandingTotal: 0, current: 0, days30: 0, days60: 0, days90: 0, over90: 0,
-        invoices: [],
-      };
+      return mockDb.laporanAging("PAYABLE", asOfDate);
     },
     reconciliation: async (side: "RECEIVABLE" | "PAYABLE", accountCode: string, asOfDate?: string): Promise<Reconciliation> => {
       if (API_MODE === "live") return liveReconciliation(side, accountCode, asOfDate);
       await delay(120);
-      return {
-        side, accountCode,
-        invoiceCount: 0, invoicedTotal: 0, allocatedTotal: 0,
-        outstandingTotal: 0, ledgerBalance: 0, difference: 0,
-        isReconciled: true,
-      };
+      return mockDb.rekonsiliasi(side, accountCode, asOfDate);
     },
   },
 
@@ -664,41 +619,36 @@ export const api = {
     list: async (): Promise<ApprovalRule[]> => {
       if (API_MODE === "live") return liveApprovalRuleList();
       await delay(120);
-      return [];
+      return mockDb.daftarAturanApproval();
     },
     create: async (input: CreateApprovalRuleRequest): Promise<ApprovalRule> => {
       if (API_MODE === "live") return liveApprovalRuleCreate(input);
       await delay(350);
-      return {
-        id: crypto.randomUUID(),
-        businessId: BUSINESS_ID,
-        name: input.name ?? "",
-        transactionType: input.transactionType,
-        minimumAmount: input.minimumAmount,
-        requiredLevel: input.requiredLevel,
-        resolutionMode: input.resolutionMode ?? "HIGHEST_LEVEL",
-        isActive: true,
-        version: 1,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      };
+      return mockDb.buatAturanApproval(input);
     },
     deactivate: async (id: string): Promise<ApprovalRule> => {
       if (API_MODE === "live") return liveApprovalRuleDeactivate(id);
       await delay(350);
-      return {
-        id,
-        businessId: BUSINESS_ID,
-        name: "",
-        transactionType: "",
-        minimumAmount: 0,
-        requiredLevel: 0,
-        resolutionMode: "",
-        isActive: false,
-        version: 1,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      };
+      return mockDb.nonaktifkanAturanApproval(id);
+    },
+  },
+
+  persetujuan: {
+    list: async (): Promise<PersetujuanBatch[]> => {
+      if (API_MODE === "live") return livePersetujuanList();
+      await delay(120);
+      // Mode mock tidak punya gerbang approval: tidak ada batch tertahan.
+      return [];
+    },
+    setujui: async (batch: PersetujuanBatch): Promise<void> => {
+      if (API_MODE === "live") {
+        return liveSetujuiBatch(
+          batch.batchId,
+          batch.transaksi.map((t) => t.id),
+        );
+      }
+      await delay(350);
+      throw new Error("Mode mock tidak memiliki alur persetujuan transaksi.");
     },
   },
 
@@ -712,10 +662,10 @@ export const api = {
           nama: p.nama,
           alamat: p.alamat,
           telepon: p.telepon,
-          email: "",
-          website: "",
-          npwp: "",
-          logoUrl: "",
+          email: p.email ?? "",
+          website: p.website ?? "",
+          npwp: p.npwp ?? "",
+          logoUrl: p.logoUrl ?? "",
         };
       },
       put: async (input: CompanyProfile): Promise<CompanyProfile> => {
@@ -726,6 +676,10 @@ export const api = {
           nama: input.nama,
           alamat: input.alamat,
           telepon: input.telepon,
+          email: input.email,
+          website: input.website,
+          npwp: input.npwp,
+          logoUrl: input.logoUrl,
           mataUang: p.mataUang,
           zonaWaktu: p.zonaWaktu,
           footerStruk: p.footerStruk,

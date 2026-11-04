@@ -83,7 +83,16 @@ function PanelKas() {
   const totalHutang = pembelianHutang.reduce((s, p) => s + (p.total - p.terbayar), 0);
   const transaksiValid = (riwayat.data ?? []).filter((t) => t.status !== "dibatalkan");
   const totalPiutang = transaksiValid.reduce((s, t) => s + t.piutang, 0);
-  const menunggu = transaksiValid.filter((t) => t.status === "menunggu_pembayaran");
+  // Hanya transaksi dengan pembayaran QRIS yang benar-benar menunggu dana
+  // masuk. Di live, penjualan kredit penuh juga berstatus "menunggu
+  // pembayaran" (piutang = total), padahal tidak ada dana digital yang perlu
+  // dikonfirmasi — tanpa saringan ini tombol "Konfirmasi" menembak
+  // confirm-payment untuk dokumen yang tidak punya pembayaran tertunda.
+  const menunggu = transaksiValid.filter(
+    (t) =>
+      t.status === "menunggu_pembayaran" &&
+      (t.pembayaran ?? []).some((b) => b.metode === "qris"),
+  );
   const memuat = shift.isLoading || biaya.isLoading || pembelian.isLoading || riwayat.isLoading;
 
   return (

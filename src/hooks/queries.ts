@@ -11,6 +11,7 @@ import type {
   NeracaParams,
   PembelianInput,
   PenyesuaianStokInput,
+  PersetujuanBatch,
   Product,
   ProfilPerusahaan,
   ReturInput,
@@ -517,4 +518,28 @@ export function useCheckout(onSuccess: (data: Awaited<ReturnType<typeof api.tran
       onSuccess(data);
     },
   });
+}
+export function usePersetujuanList() {
+  return useQuery({
+    queryKey: ["persetujuan"],
+    queryFn: () => api.persetujuan.list(),
+  });
+}
+
+export function usePersetujuanMutations() {
+  const qc = useQueryClient();
+  const setujui = useMutation<void, Error, PersetujuanBatch>({
+    mutationFn: (batch: PersetujuanBatch) => api.persetujuan.setujui(batch),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["persetujuan"] });
+      qc.invalidateQueries({ queryKey: ["transaksi"] });
+      qc.invalidateQueries({ queryKey: ["products"] });
+      qc.invalidateQueries({ queryKey: ["shift"] });
+      qc.invalidateQueries({ queryKey: ["jurnal"] });
+      qc.invalidateQueries({ queryKey: ["akun"] });
+      qc.invalidateQueries({ queryKey: ["laba-rugi"] });
+      qc.invalidateQueries({ queryKey: ["pembelian"] });
+    },
+  });
+  return { setujui };
 }

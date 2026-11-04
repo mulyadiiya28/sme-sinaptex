@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useRef, useState } from "react";
-import { BadgePercent, CheckCircle2, Plus, ReceiptText, XCircle } from "lucide-react";
+import { BadgePercent, CheckCircle2, Clock3, Plus, ReceiptText, XCircle } from "lucide-react";
 import type { CheckoutResult, PaymentMethod } from "@/lib/api/types";
 import { MoneyDisplay } from "@/components/money-display";
 import { StatusBadge } from "@/components/status-badge";
@@ -19,12 +19,14 @@ const METODE: Array<{ id: PaymentMethod; label: string; digital: boolean }> = [
 const STATUS_TONE = {
   lunas: "success",
   menunggu_pembayaran: "warning",
+  menunggu_persetujuan: "warning",
   dibayar_sebagian: "warning",
 } as const;
 
 const STATUS_LABEL = {
   lunas: "Lunas",
   menunggu_pembayaran: "Menunggu pembayaran",
+  menunggu_persetujuan: "Menunggu persetujuan",
   dibayar_sebagian: "Dibayar sebagian (piutang)",
 } as const;
 
@@ -114,11 +116,22 @@ export function PaymentDialog({
     return (
       <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink/50 p-4 backdrop-blur-sm">
         <div className="panel w-full max-w-sm p-8 text-center">
-          <span className="mx-auto flex size-14 items-center justify-center rounded-2xl bg-emerald-50 text-emerald-600">
-            <CheckCircle2 className="size-7" aria-hidden />
+          <span
+            className={
+              "mx-auto flex size-14 items-center justify-center rounded-2xl " +
+              (sukses.menungguPersetujuan
+                ? "bg-amber-50 text-amber-600"
+                : "bg-emerald-50 text-emerald-600")
+            }
+          >
+            {sukses.menungguPersetujuan ? (
+              <Clock3 className="size-7" aria-hidden />
+            ) : (
+              <CheckCircle2 className="size-7" aria-hidden />
+            )}
           </span>
           <p className="mt-3 text-xs font-semibold uppercase tracking-widest text-muted">
-            Transaksi tercatat
+            {sukses.menungguPersetujuan ? "Menunggu persetujuan" : "Transaksi tercatat"}
           </p>
           <p className="text-2xl font-black text-brand">{sukses.nomor}</p>
           <div className="mt-2 flex justify-center">
@@ -142,14 +155,23 @@ export function PaymentDialog({
               </div>
             )}
           </dl>
+          {sukses.menungguPersetujuan && (
+            <p className="mt-3 rounded-xl bg-amber-50 px-3 py-2 text-xs text-amber-700">
+              Dokumen tersimpan sebagai draf. Kas, stok, dan jurnal belum berubah sampai
+              pemilik menyetujuinya di menu <strong>Persetujuan</strong>. Jangan serahkan
+              barang sebelum disetujui.
+            </p>
+          )}
           {sukses.status === "menunggu_pembayaran" && (
             <p className="mt-3 rounded-xl bg-amber-50 px-3 py-2 text-xs text-amber-700">
               Pembayaran digital menunggu konfirmasi status. Transaksi belum lunas sampai engine memvalidasi.
             </p>
           )}
-          <button type="button" onClick={() => cetakStruk(toko, dataStruk)} className="btn-secondary mt-2 w-full">
-            <ReceiptText className="size-4" aria-hidden /> Cetak Struk
-          </button>
+          {!sukses.menungguPersetujuan && (
+            <button type="button" onClick={() => cetakStruk(toko, dataStruk)} className="btn-secondary mt-2 w-full">
+              <ReceiptText className="size-4" aria-hidden /> Cetak Struk
+            </button>
+          )}
           <button type="button" onClick={() => onClose(true)} className="btn-primary mt-2 w-full">
             Transaksi Baru
           </button>

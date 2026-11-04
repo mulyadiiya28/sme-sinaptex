@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Download,
   FileText,
@@ -110,6 +110,12 @@ export default function LaporanPage() {
   const [dmDate, setDmDate] = useState("");
   const [dmAccount, setDmAccount] = useState("1121");
   const dailyMovement = useDailyMovement(dmDate, dmAccount);
+
+  // Tanggal diisi setelah mount, bukan saat render, supaya server dan klien
+  // merender nilai yang sama (hindari hydration mismatch pada tanggal).
+  useEffect(() => {
+    setDmDate(new Date().toISOString().slice(0, 10));
+  }, []);
 
   const transaksi = useMemo(() => {
     const semua = riwayat.data ?? [];

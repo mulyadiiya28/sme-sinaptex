@@ -2,6 +2,7 @@ import {
   BarChart3,
   BookText,
   Calculator,
+  ClipboardCheck,
   ClipboardList,
   History,
   LayoutDashboard,
@@ -48,6 +49,7 @@ export const NAV_GROUPS: NavGroup[] = [
   {
     title: "Sistem",
     items: [
+      { href: "/persetujuan", label: "Persetujuan", icon: ClipboardCheck, roles: ["pemilik"] },
       { href: "/approval-rules", label: "Aturan Approval", icon: ShieldCheck, roles: ["pemilik"] },
       { href: "/pengaturan", label: "Pengaturan", icon: Settings, roles: ["pemilik"] },
     ],

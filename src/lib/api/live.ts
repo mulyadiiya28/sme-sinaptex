@@ -29,6 +29,8 @@ import type {
   Pelanggan,
   Pembelian,
   PembelianInput,
+  PersetujuanBatch,
+  PersetujuanTransaksi,
   Product,
   ProductPerformance,
   ProductPerformanceRankings,
@@ -1104,9 +1106,7 @@ export async function liveBayarHutang(input: {
   // dokumen + AP ageing.
   const [pembelian, ap] = await Promise.all([
     minta<BtPembelian[]>(`/api/purchases?${rentangDaftar()}`),
-    minta<BtAging>("/api/reports/ar-ap/aging?side=PAYABLE").catch(() => ({
-      invoices: [],
-    })),
+    minta<BtAging>("/api/reports/ar-ap/aging?side=PAYABLE"),
   ]);
   const dokumen = pembelian.find((p) => p.id === input.pembelianId);
   const nomor = dokumen?.purchaseNumber ?? input.pembelianId;
@@ -1278,14 +1278,22 @@ export async function liveCheckout(payload: CheckoutPayload): Promise<CheckoutRe
   });
 
   const piutang = hasil.outstandingAmount;
-  const status: CheckoutResult["status"] = piutang > 0 ? "dibayar_sebagian" : "lunas";
+  const tertahan = hasil.approvalRequired;
+  const status: CheckoutResult["status"] = tertahan
+    ? "menunggu_persetujuan"
+    : piutang > 0
+      ? "dibayar_sebagian"
+      : "lunas";
 
   return {
     nomor: hasil.documentNumber ?? hasil.documentId,
     total: hasil.documentTotal,
     kembalian: 0,
-    piutang,
+    // Batch yang tertahan belum memposting apa pun: piutangnya belum lahir,
+    // dan uang yang diserahkan kasir belum tercatat sebagai kas.
+    piutang: tertahan ? 0 : piutang,
     status,
+    menungguPersetujuan: tertahan,
   };
 }
 async function cariPelangganId(nama: string): Promise<string | null> {
@@ -1299,9 +1307,7 @@ export async function liveTransaksiRiwayat(): Promise<TransaksiRiwayat[]> {
     minta<BtPenjualan[]>(`/api/sales?${rentangDaftar()}`),
     minta<BtProduk[]>("/api/products"),
     minta<BtPelanggan[]>("/api/customers"),
-    minta<BtAging>(
-      "/api/reports/ar-ap/aging?side=RECEIVABLE",
-    ).catch(() => ({ invoices: [] })),
+    minta<BtAging>("/api/reports/ar-ap/aging?side=RECEIVABLE"),
   ]);
   const namaProduk = new Map(produk.map((p) => [p.id, p.name]));
   const namaPelanggan = new Map(pelanggan.map((c) => [c.id, c.name]));
@@ -1318,13 +1324,15 @@ export async function liveTransaksiRiwayat(): Promise<TransaksiRiwayat[]> {
     const piutang = dibatalkan ? 0 : (sisaPiutang.get(nomor) ?? 0);
     const status: TransaksiRiwayat["status"] = dibatalkan
       ? "dibatalkan"
-      : sale.status !== "POSTED"
-        ? "menunggu_pembayaran"
-        : piutang <= 0
-          ? "lunas"
-          : piutang >= sale.totalAmount
-            ? "menunggu_pembayaran"
-            : "dibayar_sebagian";
+      : sale.status === "SUBMITTED"
+        ? "menunggu_persetujuan"
+        : sale.status !== "POSTED"
+          ? "menunggu_pembayaran"
+          : piutang <= 0
+            ? "lunas"
+            : piutang >= sale.totalAmount
+              ? "menunggu_pembayaran"
+              : "dibayar_sebagian";
 
     hasil.push(
       petakanPenjualan(
@@ -1344,9 +1352,7 @@ export async function livePembelianList(): Promise<Pembelian[]> {
     minta<BtPembelian[]>(`/api/purchases?${rentangDaftar()}`),
     minta<BtProduk[]>("/api/products"),
     minta<{ id: string; name: string }[]>("/api/suppliers?includeInactive=true"),
-    minta<BtAging>("/api/reports/ar-ap/aging?side=PAYABLE").catch(() => ({
-      invoices: [],
-    })),
+    minta<BtAging>("/api/reports/ar-ap/aging?side=PAYABLE"),
   ]);
   const namaProduk = new Map(produk.map((p) => [p.id, p.name]));
   const namaPemasok = new Map(pemasok.map((s) => [s.id, s.name]));
@@ -2032,4 +2038,103 @@ export async function liveSupplierDeactivate(id: string): Promise<Supplier> {
     body: {},
   });
   return data;
+}
+
+type BtTransaksiPersetujuan = {
+  id: string;
+  transactionType: string;
+  transactionDate: string;
+  status: string;
+  requestedBy: string;
+  description: string | null;
+  batchId: string | null;
+};
+
+type BtApprovalTransaksi = {
+  transactionId: string;
+  transactionStatus: string;
+  request: {
+    amount: number;
+    pendingSteps: number;
+    steps: Array<{ stepNumber: number; requiredLevel: number; status: string }>;
+  } | null;
+};
+
+/// Jenis transaksi yang ditulis oleh batch kas. Jenis lain (retur, transfer,
+/// pinjaman) punya alur persetujuannya sendiri dan tidak diposting lewat
+/// `/api/cash-batches/{id}/post`.
+const TIPE_BATCH_KAS = new Set([
+  "SALE",
+  "PURCHASE",
+  "CUSTOMER_PAYMENT",
+  "SUPPLIER_PAYMENT",
+]);
+
+export async function livePersetujuanList(): Promise<PersetujuanBatch[]> {
+  const [rows, pengguna] = await Promise.all([
+    minta<BtTransaksiPersetujuan[]>("/api/transactions?status=SUBMITTED"),
+    minta<Array<{ id: string; username: string; fullName: string | null }>>("/api/users").catch(
+      () => [],
+    ),
+  ]);
+  const namaPengguna = new Map(pengguna.map((u) => [u.id, u.fullName ?? u.username]));
+
+  const relevan = rows.filter((r) => r.batchId && TIPE_BATCH_KAS.has(r.transactionType));
+
+  // Nominal dan langkah persetujuan hanya ada di snapshot approval, bukan di
+  // daftar transaksi, jadi tiap kaki dibaca detailnya.
+  const detail = await Promise.all(
+    relevan.map(async (r) => ({
+      r,
+      approval:
+        (await minta<BtApprovalTransaksi>(`/api/transactions/${r.id}/approval`).catch(
+          () => null,
+        )),
+    })),
+  );
+
+  const peta = new Map<string, PersetujuanBatch>();
+  for (const { r, approval } of detail) {
+    const batchId = r.batchId!;
+    const baris: PersetujuanTransaksi = {
+      id: r.id,
+      batchId,
+      tipe: r.transactionType,
+      peminta: namaPengguna.get(r.requestedBy) ?? r.requestedBy.slice(0, 8),
+      tanggal: r.transactionDate,
+      keterangan: r.description,
+      nominal: approval?.request?.amount ?? 0,
+      langkah: (approval?.request?.steps ?? []).map((s) => ({
+        nomor: s.stepNumber,
+        level: s.requiredLevel,
+        status: s.status,
+      })),
+    };
+
+    const batch = peta.get(batchId) ?? {
+      batchId,
+      peminta: baris.peminta,
+      tanggal: r.transactionDate,
+      keterangan: r.description,
+      nominal: 0,
+      transaksi: [],
+    };
+    batch.transaksi.push(baris);
+    batch.nominal = Math.max(batch.nominal, baris.nominal);
+    peta.set(batchId, batch);
+  }
+
+  return [...peta.values()].sort((a, b) => b.tanggal.localeCompare(a.tanggal));
+}
+
+export async function liveSetujuiBatch(batchId: string, transaksiIds: string[]): Promise<void> {
+  // Engine menilai tiap kaki batch sendiri-sendiri; semuanya harus APPROVED
+  // sebelum batch boleh diposting. Posting memindahkan stok, kas, dan jurnal.
+  for (const id of transaksiIds) {
+    await minta(`/api/transactions/${id}/approve`, { method: "POST" });
+  }
+  await minta(`/api/cash-batches/${batchId}/post`, {
+    method: "POST",
+    idempotensiKunci: buatKunciIdempotensi(),
+  });
 }

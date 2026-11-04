@@ -102,7 +102,9 @@ daftar/ubah/hapus user (`GET/PUT/DELETE /api/users`), jejak audit (`GET /api/aud
 master pemasok (`GET/POST /api/suppliers`, `POST /api/suppliers/{id}/deactivate`),
 kebijakan operasional (`GET/PUT /api/settings/operational-policy`), periode fiskal
 (`/api/fiscal-periods`), umur piutang/hutang + rekonsiliasi (`/api/reports/ar-ap/*`),
-analitik kesehatan & rasio (`/api/analytics/*`).
+analitik kesehatan & rasio (`/api/analytics/*`), dan persetujuan transaksi
+(`GET /api/transactions?status=SUBMITTED`, `POST /api/transactions/{id}/approve`,
+`POST /api/cash-batches/{batchId}/post`).
 
 Tidak ada lagi jalur 501: `engineBelumAda` sudah dihapus. Bila akun kas untuk kode akun yang dipakai
 checkout/pelunasan/biaya belum ada, POS membuatnya lewat `POST /api/cash-accounts`.

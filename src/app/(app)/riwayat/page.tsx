@@ -19,6 +19,7 @@ import { cn } from "@/lib/utils";
 const STATUS_TONE = {
   lunas: "success",
   menunggu_pembayaran: "warning",
+  menunggu_persetujuan: "warning",
   dibayar_sebagian: "warning",
   dibatalkan: "danger",
 } as const;
@@ -26,6 +27,7 @@ const STATUS_TONE = {
 const STATUS_LABEL = {
   lunas: "Lunas",
   menunggu_pembayaran: "Menunggu pembayaran",
+  menunggu_persetujuan: "Menunggu persetujuan",
   dibayar_sebagian: "Sebagian (piutang)",
   dibatalkan: "Dibatalkan",
 } as const;

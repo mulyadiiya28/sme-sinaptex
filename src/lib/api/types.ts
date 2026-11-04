@@ -43,7 +43,13 @@ export type CheckoutResult = {
   total: number;
   kembalian: number;
   piutang: number;
-  status: "lunas" | "menunggu_pembayaran" | "dibayar_sebagian";
+  status: "lunas" | "menunggu_pembayaran" | "menunggu_persetujuan" | "dibayar_sebagian";
+  /**
+   * True bila engine menahan batch ini untuk persetujuan. Dokumen sudah
+   * tersimpan, tetapi kas, stok, dan jurnal belum berubah sampai pemilik
+   * menyetujuinya di menu Persetujuan.
+   */
+  menungguPersetujuan?: boolean;
 };
 
 export type ShiftInfo = {
@@ -96,8 +102,35 @@ export type TransaksiRiwayat = {
   total: number;
   kembalian: number;
   piutang: number;
-  status: "lunas" | "menunggu_pembayaran" | "dibayar_sebagian" | "dibatalkan";
+  status: "lunas" | "menunggu_pembayaran" | "menunggu_persetujuan" | "dibayar_sebagian" | "dibatalkan";
   pembayaran?: Array<{ metode: PaymentMethod; nominal: number }>;
+};
+
+/**
+ * Satu kaki transaksi yang menunggu persetujuan (GET /api/transactions).
+ *
+ * Satu batch kas bisa punya dua kaki (dokumen + pembayaran); keduanya harus
+ * disetujui sebelum batch boleh diposting.
+ */
+export type PersetujuanTransaksi = {
+  id: string;
+  batchId: string;
+  tipe: string;
+  peminta: string;
+  tanggal: string;
+  keterangan: string | null;
+  nominal: number;
+  langkah: Array<{ nomor: number; level: number; status: string }>;
+};
+
+/** Batch kas yang tertahan oleh aturan approval. */
+export type PersetujuanBatch = {
+  batchId: string;
+  peminta: string;
+  tanggal: string;
+  keterangan: string | null;
+  nominal: number;
+  transaksi: PersetujuanTransaksi[];
 };
 
 export type SaleReturn = {
