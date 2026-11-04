@@ -8,8 +8,7 @@ import { FormField } from "@/components/form-field";
 import { MoneyDisplay } from "@/components/money-display";
 import { PageHeader } from "@/components/page-header";
 import { StatusBadge } from "@/components/status-badge";
-import { usePembelian, usePembelianMutations } from "@/hooks/queries";
-import { useProducts, useSupplierList } from "@/hooks/queries";
+import { usePembelian, usePembelianMutations, useProducts, useSupplierList } from "@/hooks/queries";
 
 export default function PembelianPage() {
   const pembelian = usePembelian();
@@ -117,7 +116,7 @@ function PembelianFormDialog({ onClose }: { onClose: () => void }) {
                 setPemasokNama(s?.name ?? "");
               }}>
                 <option value="">Pilih pemasok...</option>
-                {(suppliers.data ?? []).map((s) => (
+                {(suppliers.data ?? []).filter((s) => s.isActive).map((s) => (
                   <option key={s.id} value={s.id}>{s.name}</option>
                 ))}
               </select>

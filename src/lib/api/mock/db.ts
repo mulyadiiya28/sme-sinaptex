@@ -1,5 +1,6 @@
 import type {
   Biaya,
+  CreateSupplierRequest,
   HasilImpor,
   HealthIndicator,
   HealthSummary,
@@ -20,6 +21,7 @@ import type {
   ShiftInfo,
   ShiftMutasiInput,
   ShiftRiwayat,
+  Supplier,
   TransaksiRiwayat,
   User,
 } from "@/lib/api/types";
@@ -86,6 +88,19 @@ export const mockDb = {
   products: [...produkSeed] as Product[],
   retur: [] as ReturPenjualan[],
   pelanggan: [] as Pelanggan[],
+  suppliers: [
+    {
+      id: "sup-1",
+      businessId: "toko-utama",
+      code: "SUP-001",
+      name: "Toko Grosir Sembako",
+      address: "Pasar Induk Kedaung",
+      phone: "0812-1000-0001",
+      email: null,
+      taxNumber: null,
+      isActive: true,
+    },
+  ] as Supplier[],
   users: [
     { id: "u1", nama: "Pemilik Toko", username: "pemilik", password: "pemilik123", role: "pemilik" as const },
     { id: "u2", nama: "Kasir 1", username: "kasir", password: "kasir123", role: "kasir" as const },
@@ -336,6 +351,43 @@ export const mockDb = {
 
   daftarPelanggan(): Pelanggan[] {
     return structuredClone(this.pelanggan);
+  },
+
+  /**
+   * Master pemasok mode mock.
+   *
+   * Tanpa daftar ini dropdown pemasok di form pembelian kosong — dan karena
+   * faktur wajib menunjuk master, pembelian jadi tidak bisa dibuat sama
+   * sekali di mode mock.
+   */
+  buatSupplier(input: CreateSupplierRequest): Supplier {
+    const code = input.code.trim();
+    const name = input.name.trim();
+    if (!code) throw new Error("Kode pemasok wajib diisi.");
+    if (!name) throw new Error("Nama pemasok wajib diisi.");
+    if (this.suppliers.some((s) => s.code.toLowerCase() === code.toLowerCase())) {
+      throw new Error(`Kode pemasok ${code} sudah dipakai.`);
+    }
+    const supplier: Supplier = {
+      id: `sup-${Date.now().toString(36)}-${Math.random().toString(16).slice(2, 8)}`,
+      businessId: "toko-utama",
+      code,
+      name,
+      address: input.address?.trim() || null,
+      phone: input.phone?.trim() || null,
+      email: input.email?.trim() || null,
+      taxNumber: input.taxNumber?.trim() || null,
+      isActive: true,
+    };
+    this.suppliers.push(supplier);
+    return structuredClone(supplier);
+  },
+
+  nonaktifkanSupplier(id: string): Supplier {
+    const target = this.suppliers.find((s) => s.id === id);
+    if (!target) throw new Error("Pemasok tidak ditemukan.");
+    target.isActive = false;
+    return structuredClone(target);
   },
 
   bukaShift(input: ShiftBukaInput): ShiftInfo {

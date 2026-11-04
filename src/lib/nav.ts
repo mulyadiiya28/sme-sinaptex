@@ -7,7 +7,9 @@ import {
   LayoutDashboard,
   Package,
   Settings,
+  ShieldCheck,
   Timer,
+  Truck,
   Wallet,
 } from "lucide-react";
 import type { Role } from "@/lib/api/types";
@@ -32,6 +34,7 @@ export const NAV_GROUPS: NavGroup[] = [
     items: [
       { href: "/produk", label: "Produk", icon: Package, roles: ["pemilik"] },
       { href: "/pembelian", label: "Pembelian", icon: ClipboardList, roles: ["pemilik"] },
+      { href: "/supplier", label: "Pemasok", icon: Truck, roles: ["pemilik"] },
     ],
   },
   {
@@ -44,6 +47,9 @@ export const NAV_GROUPS: NavGroup[] = [
   },
   {
     title: "Sistem",
-    items: [{ href: "/pengaturan", label: "Pengaturan", icon: Settings, roles: ["pemilik"] }],
+    items: [
+      { href: "/approval-rules", label: "Aturan Approval", icon: ShieldCheck, roles: ["pemilik"] },
+      { href: "/pengaturan", label: "Pengaturan", icon: Settings, roles: ["pemilik"] },
+    ],
   },
 ];

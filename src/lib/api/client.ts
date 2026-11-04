@@ -646,37 +646,17 @@ export const api = {
     list: async (): Promise<Supplier[]> => {
       if (API_MODE === "live") return liveSupplierList();
       await delay(120);
-      return [];
+      return structuredClone(mockDb.suppliers);
     },
     create: async (input: CreateSupplierRequest): Promise<Supplier> => {
       if (API_MODE === "live") return liveSupplierCreate(input);
       await delay(350);
-      return {
-        id: crypto.randomUUID(),
-        businessId: BUSINESS_ID,
-        code: input.code,
-        name: input.name,
-        address: input.address ?? null,
-        phone: input.phone ?? null,
-        email: input.email ?? null,
-        taxNumber: input.taxNumber ?? null,
-        isActive: true,
-      };
+      return mockDb.buatSupplier(input);
     },
     deactivate: async (id: string): Promise<Supplier> => {
       if (API_MODE === "live") return liveSupplierDeactivate(id);
       await delay(350);
-      return {
-        id,
-        businessId: BUSINESS_ID,
-        code: "",
-        name: "",
-        address: null,
-        phone: null,
-        email: null,
-        taxNumber: null,
-        isActive: false,
-      };
+      return mockDb.nonaktifkanSupplier(id);
     },
   },
 

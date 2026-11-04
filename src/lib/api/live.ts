@@ -1343,7 +1343,7 @@ export async function livePembelianList(): Promise<Pembelian[]> {
   const [pembelian, produk, pemasok, ap] = await Promise.all([
     minta<BtPembelian[]>(`/api/purchases?${rentangDaftar()}`),
     minta<BtProduk[]>("/api/products"),
-    minta<{ id: string; name: string }[]>("/api/suppliers"),
+    minta<{ id: string; name: string }[]>("/api/suppliers?includeInactive=true"),
     minta<BtAging>("/api/reports/ar-ap/aging?side=PAYABLE").catch(() => ({
       invoices: [],
     })),
