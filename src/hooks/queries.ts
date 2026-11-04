@@ -1,7 +1,10 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api/client";
 import type {
+  ApprovalRule,
   CheckoutPayload,
+  CreateApprovalRuleRequest,
+  CreateSupplierRequest,
   ImporPelangganBaris,
   ImporProdukBaris,
   ImporSaldoAwalBaris,
@@ -13,6 +16,7 @@ import type {
   ReturInput,
   ShiftBukaInput,
   ShiftMutasiInput,
+  Supplier,
   User,
 } from "@/lib/api/types";
 
@@ -64,9 +68,10 @@ export function useProfilPerusahaan() {
 }
 
 export function useRingkasanKesehatan() {
+  const hari = new Date().toISOString().slice(0, 10);
   return useQuery({
-    queryKey: ["kesehatan-usaha"],
-    queryFn: api.analitik.ringkasanKesehatan,
+    queryKey: ["kesehatan-usaha", hari],
+    queryFn: () => api.analytics.healthSummary(hari),
   });
 }
 
@@ -91,6 +96,203 @@ export function usePengaturanMutations() {
 
 export function useLabaRugi() {
   return useQuery({ queryKey: ["laba-rugi"], queryFn: api.akuntansi.labaRugi });
+}
+
+export function useDailyMovement(date: string, accountCode: string) {
+  return useQuery({
+    queryKey: ["laporan", "daily-movement", date, accountCode],
+    queryFn: () => api.akuntansi.dailyMovement(date, accountCode),
+    enabled: !!date && !!accountCode,
+  });
+}
+
+export function useArAging(asOfDate?: string) {
+  return useQuery({
+    queryKey: ["aging", "ar", asOfDate],
+    queryFn: () => api.aging.ar(asOfDate),
+    enabled: true,
+  });
+}
+
+export function useApAging(asOfDate?: string) {
+  return useQuery({
+    queryKey: ["aging", "ap", asOfDate],
+    queryFn: () => api.aging.ap(asOfDate),
+    enabled: true,
+  });
+}
+
+export function useReconciliation(side: "RECEIVABLE" | "PAYABLE", accountCode: string, asOfDate?: string) {
+  return useQuery({
+    queryKey: ["aging", "reconciliation", side, accountCode, asOfDate],
+    queryFn: () => api.aging.reconciliation(side, accountCode, asOfDate),
+    enabled: !!side && !!accountCode,
+  });
+}
+
+export function useFiscalPeriodList() {
+  return useQuery({
+    queryKey: ["akuntansi", "fiscal-periods"],
+    queryFn: () => api.akuntansi.fiscalPeriods.list(),
+  });
+}
+
+export function useProfitability(startDate: string, endDate: string) {
+  return useQuery({
+    queryKey: ["analytics", "profitability", startDate, endDate],
+    queryFn: () => api.analytics.profitability(startDate, endDate),
+    enabled: !!startDate && !!endDate,
+  });
+}
+
+export function useInventoryTurnover(startDate: string, endDate: string) {
+  return useQuery({
+    queryKey: ["analytics", "inventory-turnover", startDate, endDate],
+    queryFn: () => api.analytics.inventoryTurnover(startDate, endDate),
+    enabled: !!startDate && !!endDate,
+  });
+}
+
+export function useArTurnover(startDate: string, endDate: string) {
+  return useQuery({
+    queryKey: ["analytics", "ar-turnover", startDate, endDate],
+    queryFn: () => api.analytics.arTurnover(startDate, endDate),
+    enabled: !!startDate && !!endDate,
+  });
+}
+
+export function useApTurnover(startDate: string, endDate: string) {
+  return useQuery({
+    queryKey: ["analytics", "ap-turnover", startDate, endDate],
+    queryFn: () => api.analytics.apTurnover(startDate, endDate),
+    enabled: !!startDate && !!endDate,
+  });
+}
+
+export function useWorkingCapital(date: string) {
+  return useQuery({
+    queryKey: ["analytics", "working-capital", date],
+    queryFn: () => api.analytics.workingCapital(date),
+    enabled: !!date,
+  });
+}
+
+export function useWorkingCapitalTurnover(startDate: string, endDate: string) {
+  return useQuery({
+    queryKey: ["analytics", "working-capital-turnover", startDate, endDate],
+    queryFn: () => api.analytics.workingCapitalTurnover(startDate, endDate),
+    enabled: !!startDate && !!endDate,
+  });
+}
+
+export function useCurrentRatio(date: string) {
+  return useQuery({
+    queryKey: ["analytics", "current-ratio", date],
+    queryFn: () => api.analytics.currentRatio(date),
+    enabled: !!date,
+  });
+}
+
+export function useCashRatio(date: string) {
+  return useQuery({
+    queryKey: ["analytics", "cash-ratio", date],
+    queryFn: () => api.analytics.cashRatio(date),
+    enabled: !!date,
+  });
+}
+
+export function useSolvency(date: string) {
+  return useQuery({
+    queryKey: ["analytics", "solvency", date],
+    queryFn: () => api.analytics.solvency(date),
+    enabled: !!date,
+  });
+}
+
+export function useCashConversionCycle(startDate: string, endDate: string) {
+  return useQuery({
+    queryKey: ["analytics", "cash-conversion-cycle", startDate, endDate],
+    queryFn: () => api.analytics.cashConversionCycle(startDate, endDate),
+    enabled: !!startDate && !!endDate,
+  });
+}
+
+export function useHealthSummary(date: string, startDate?: string, endDate?: string) {
+  return useQuery({
+    queryKey: ["analytics", "health-summary", date, startDate, endDate],
+    queryFn: () => api.analytics.healthSummary(date, startDate, endDate),
+    enabled: !!date,
+  });
+}
+
+export function useProductPerformance(startDate: string, endDate: string) {
+  return useQuery({
+    queryKey: ["analytics", "product-performance", startDate, endDate],
+    queryFn: () => api.analytics.productPerformance(startDate, endDate),
+    enabled: !!startDate && !!endDate,
+  });
+}
+
+export function useProductPerformanceRankings(startDate: string, endDate: string, top = 10) {
+  return useQuery({
+    queryKey: ["analytics", "product-performance-rankings", startDate, endDate, top],
+    queryFn: () => api.analytics.productPerformanceRankings(startDate, endDate, top),
+    enabled: !!startDate && !!endDate,
+  });
+}
+
+export function useSupplierList() {
+  return useQuery({
+    queryKey: ["master", "suppliers"],
+    queryFn: () => api.supplier.list(),
+  });
+}
+
+export function useSupplierCreate() {
+  const qc = useQueryClient();
+  return useMutation<Supplier, Error, CreateSupplierRequest>({
+    mutationFn: (input: CreateSupplierRequest) => api.supplier.create(input),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["master", "suppliers"] });
+    },
+  });
+}
+
+export function useSupplierDeactivate() {
+  const qc = useQueryClient();
+  return useMutation<Supplier, Error, string>({
+    mutationFn: (id: string) => api.supplier.deactivate(id),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["master", "suppliers"] });
+    },
+  });
+}
+
+export function useApprovalRuleList() {
+  return useQuery({
+    queryKey: ["master", "approval-rules"],
+    queryFn: () => api.approvalRules.list(),
+  });
+}
+
+export function useApprovalRuleCreate() {
+  const qc = useQueryClient();
+  return useMutation<ApprovalRule, Error, CreateApprovalRuleRequest>({
+    mutationFn: (input: CreateApprovalRuleRequest) => api.approvalRules.create(input),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["master", "approval-rules"] });
+    },
+  });
+}
+
+export function useApprovalRuleDeactivate() {
+  const qc = useQueryClient();
+  return useMutation<ApprovalRule, Error, string>({
+    mutationFn: (id: string) => api.approvalRules.deactivate(id),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["master", "approval-rules"] });
+    },
+  });
 }
 
 export function useAuthUsers() {
@@ -119,7 +321,8 @@ export function useUserMutations() {
     onSuccess: invalidate,
   });
   const hapus = useMutation({
-    mutationFn: (args: { id: string; actor: User }) => api.auth.hapusUser(args.id, args.actor),
+    mutationFn: (args: { id: string; actor: User }) =>
+      api.auth.hapusUser(args.id, args.actor),
     onSuccess: invalidate,
   });
 

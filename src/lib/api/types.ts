@@ -156,6 +156,7 @@ export type Pembelian = {
   id: string;
   nomor: string;
   pemasok: string;
+  supplierId: string | null;
   waktu: string;
   items: PembelianItem[];
   total: number;
@@ -165,6 +166,7 @@ export type Pembelian = {
 
 export type PembelianInput = {
   pemasok: string;
+  supplierId: string | null;
   items: PembelianItem[];
   metode: PembelianMetode;
 };
@@ -292,33 +294,24 @@ export type ProfilToko = {
   pajakPersen?: number;
 };
 
-export type ProfilPerusahaan = {
-  nama: string;
-  alamat: string;
-  telepon: string;
-  email: string;
-  website: string;
-  npwp: string;
-  logoUrl: string;
+/// <summary>Profil toko sesuai kontrak engine (`GET/PUT /api/settings/company-profile`).</summary>
+export type CompanyProfile = {
+  nama: string;      // CompanyName
+  alamat: string;    // Address
+  telepon: string;   // Phone
+  email: string;     // Email
+  website: string;   // Website
+  npwp: string;      // TaxNumber
+  logoUrl: string;   // LogoUrl
 };
 
-export type RatingKesehatan = "BAIK" | "CUKUP" | "KURANG SEHAT" | "TIDAK BERLAKU";
+/// <summary>Nama lama tipe profil — dipakai POS di beberapa tempat.</summary>
+export type ProfilPerusahaan = CompanyProfile;
 
-export type IndikatorKesehatan = {
-  nama: string;
-  nilai: number;
-  satuan: string;
-  display: string;
-  rating: RatingKesehatan;
-  penjelasan: string;
-  patokan: string;
-};
-
-export type RingkasanKesehatan = {
-  tanggal: string;
-  verdict: string;
-  penjelasan: string;
-  indikator: IndikatorKesehatan[];
+/// <summary>Kebijakan operasional toko per tenant (engine: /api/settings/operational-policy).</summary>
+export type KebijakanOperasional = {
+  izinkanKredit: boolean;
+  saldoAwalShift: number;
 };
 
 export type Pelanggan = {
@@ -359,4 +352,291 @@ export type ImportResult = {
   successCount: number;
   failedCount: number;
   errors: ImportRowError[];
+};
+
+/// <summary>The verdict on one figure: how healthy it is, why, and what it was measured against.</summary>
+export type Assessment = {
+  rating: string;
+  explanation: string;
+  benchmark: string;
+};
+
+/// <summary>The profitability ratios of a period.</summary>
+export type ProfitabilityRatio = {
+  roe: number;
+  roa: number;
+  netProfitMargin: number;
+  totalNetIncome: number;
+  totalEquity: number;
+  totalAssets: number;
+  totalRevenue: number;
+  roeAssessment: Assessment;
+  roaAssessment: Assessment;
+  netProfitMarginAssessment: Assessment;
+  description: string;
+};
+
+/// <summary>How fast the stock turns over.</summary>
+export type InventoryTurnover = {
+  turnoverRatio: number;
+  daysInInventory: number;
+  costOfGoodsSold: number;
+  averageInventory: number;
+  assessment: Assessment;
+  description: string;
+};
+
+/// <summary>How fast receivables or payables turn over.</summary>
+export type ArApTurnover = {
+  turnoverRatio: number;
+  daysOutstanding: number;
+  totalBase: number;
+  averageBalance: number;
+  assessment: Assessment;
+  description: string;
+};
+
+/// <summary>One liquidity ratio.</summary>
+export type LiquidityRatio = {
+  ratio: number;
+  numerator: number;
+  denominator: number;
+  description: string;
+  assessment: Assessment;
+};
+
+/// <summary>Working capital on one date.</summary>
+export type WorkingCapital = {
+  currentAssets: number;
+  currentLiabilities: number;
+  workingCapital: number;
+  workingCapitalRatio: number;
+  description: string;
+  assessment: Assessment;
+};
+
+/// <summary>How fast working capital turns over in a period.</summary>
+export type WorkingCapitalTurnover = {
+  turnoverRatio: number;
+  daysTurnover: number;
+  totalRevenue: number;
+  averageWorkingCapital: number;
+  openingWorkingCapital: number;
+  closingWorkingCapital: number;
+  assessment: Assessment;
+  description: string;
+};
+
+/// <summary>How one product performed.</summary>
+export type ProductPerformance = {
+  productId: string;
+  productName: string;
+  totalQuantitySold: number;
+  totalRevenue: number;
+  totalCost: number;
+  grossProfit: number;
+  marginPercentage: number;
+  revenueContributionPercentage: number;
+  profitContributionPercentage: number;
+  assessment: Assessment;
+  description: string;
+};
+
+/// <summary>Five product rankings of a period.</summary>
+export type ProductPerformanceRankings = {
+  fastMoving: ProductPerformance[];
+  slowMoving: ProductPerformance[];
+  highMargin: ProductPerformance[];
+  topRevenue: ProductPerformance[];
+  topProfit: ProductPerformance[];
+};
+
+/// <summary>How the business is financed.</summary>
+export type Solvency = {
+  debtToAssets: number;
+  debtToEquity: number;
+  equityRatio: number;
+  totalLiabilities: number;
+  totalAssets: number;
+  totalEquity: number;
+  assessment: Assessment;
+  description: string;
+};
+
+/// <summary>How long money is tied up between paying and being paid.</summary>
+export type CashConversionCycle = {
+  cashConversionCycleDays: number;
+  daysInventoryOutstanding: number;
+  daysSalesOutstanding: number;
+  daysPayableOutstanding: number;
+  assessment: Assessment;
+  description: string;
+};
+
+/// <summary>Where ROE comes from.</summary>
+export type Dupont = {
+  returnOnEquity: number;
+  netProfitMargin: number;
+  assetTurnover: number;
+  equityMultiplier: number;
+  dominantDriver: string;
+};
+
+/// <summary>One indicator in the health summary.</summary>
+export type HealthIndicator = {
+  name: string;
+  unit: string;
+  value: number;
+  displayValue: string;
+  previousValue: number | null;
+  trend: string;
+  rating: string;
+  explanation: string;
+  benchmark: string;
+};
+
+/// <summary>The health of the business on one date.</summary>
+export type HealthSummary = {
+  date: string;
+  startDate: string;
+  endDate: string;
+  comparisonStartDate: string;
+  comparisonEndDate: string;
+  overallVerdict: string;
+  overallExplanation: string;
+  indicators: HealthIndicator[];
+  dupont: Dupont;
+};
+
+/// <summary>Umur piutang atau hutang per faktur.</summary>
+export type AgedInvoice = {
+  invoiceId: string;
+  invoiceNumber: string | null;
+  counterpartyId: string | null;
+  invoiceDate: string;
+  dueDate: string | null;
+  invoiceTotal: number;
+  allocatedTotal: number;
+  outstandingAmount: number;
+  daysOverdue: number;
+  bucket: "CURRENT" | "DAYS_30" | "DAYS_60" | "DAYS_90" | "OVER_90";
+};
+
+/// <summary>Laporan umur piutang/hutang dari engine.</summary>
+export type AgingReport = {
+  side: "RECEIVABLE" | "PAYABLE";
+  asOfDate: string;
+  outstandingTotal: number;
+  current: number;
+  days30: number;
+  days60: number;
+  days90: number;
+  over90: number;
+  invoices: AgedInvoice[];
+};
+
+/// <summary>Hasil rekonsiliasi piutang/hutang terhadap saldo akun buku besar.</summary>
+export type Reconciliation = {
+  side: string;
+  accountCode: string;
+  invoiceCount: number;
+  invoicedTotal: number;
+  allocatedTotal: number;
+  outstandingTotal: number;
+  ledgerBalance: number;
+  difference: number;
+  isReconciled: boolean;
+};
+
+/// <summary>Periode fiskal dari engine (GET/POST /api/fiscal-periods).</summary>
+export type FiscalPeriod = {
+  id: string;
+  businessId: string;
+  name: string;
+  startDate: string;
+  endDate: string;
+  status: "OPEN" | "CLOSED" | "LOCKED";
+  version: number;
+};
+
+/// <summary>Request membuat periode fiskal baru (POST /api/fiscal-periods).</summary>
+export type CreateFiscalPeriodRequest = {
+  name: string;
+  startDate: string;
+  endDate: string;
+  status?: "OPEN" | "CLOSED" | "LOCKED";
+};
+
+/// <summary>Satu entri dalam Gerakan Harian: satu baris jurnal pada satu akun.</summary>
+export type DailyMovementEntry = {
+  journalId: string;
+  entryDate: string;
+  transactionType: string | null;
+  transactionDescription: string | null;
+  referenceType: string | null;
+  referenceId: string | null;
+  reversalOfJournalId: string | null;
+  lineDescription: string | null;
+  debit: number;
+  credit: number;
+  runningBalance: number;
+};
+
+/// <summary>Gerakan Harian untuk satu akun pada satu tanggal.</summary>
+export type DailyMovementReport = {
+  date: string;
+  accountCode: string;
+  accountName: string;
+  openingBalance: number;
+  entries: DailyMovementEntry[];
+  closingBalance: number;
+  totalDebit: number;
+  totalCredit: number;
+};
+
+/// <summary>Aturan approval transaksi (engine: GET/POST /api/approval-rules).</summary>
+export type ApprovalRule = {
+  id: string;
+  businessId: string;
+  name: string | null;
+  transactionType: string;
+  minimumAmount: number;
+  requiredLevel: number;
+  resolutionMode: string;
+  isActive: boolean;
+  version: number;
+  createdAt: string;
+  updatedAt: string;
+};
+
+/// <summary>Request membuat aturan approval baru (POST /api/approval-rules).</summary>
+export type CreateApprovalRuleRequest = {
+  name?: string;
+  transactionType: string;
+  minimumAmount: number;
+  requiredLevel: number;
+  resolutionMode?: string;
+};
+
+/// <summary>Supplier master data (engine: GET/POST /api/suppliers).</summary>
+export type Supplier = {
+  id: string;
+  businessId: string;
+  code: string;
+  name: string;
+  address: string | null;
+  phone: string | null;
+  email: string | null;
+  taxNumber: string | null;
+  isActive: boolean;
+};
+
+/// <summary>Request membuat supplier baru (POST /api/suppliers).</summary>
+export type CreateSupplierRequest = {
+  code: string;
+  name: string;
+  address?: string;
+  phone?: string;
+  email?: string;
+  taxNumber?: string;
 };

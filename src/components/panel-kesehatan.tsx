@@ -4,17 +4,17 @@ import { Activity, RefreshCw } from "lucide-react";
 import { Skeleton } from "@/components/skeleton";
 import { StatusBadge, type StatusTone } from "@/components/status-badge";
 import { useRingkasanKesehatan } from "@/hooks/queries";
-import type { IndikatorKesehatan, RatingKesehatan } from "@/lib/api/types";
+import type { HealthIndicator } from "@/lib/api/types";
 import { cn } from "@/lib/utils";
 
-const TONE_RATING: Record<RatingKesehatan, StatusTone> = {
+const TONE_RATING: Record<string, StatusTone> = {
   BAIK: "success",
   CUKUP: "info",
   "KURANG SEHAT": "warning",
   "TIDAK BERLAKU": "neutral",
 };
 
-const LABEL_RATING: Record<RatingKesehatan, string> = {
+const LABEL_RATING: Record<string, string> = {
   BAIK: "Baik",
   CUKUP: "Cukup",
   "KURANG SEHAT": "Kurang sehat",
@@ -44,7 +44,7 @@ export function PanelKesehatan({ className }: { className?: string }) {
           </p>
         </div>
         {kesehatan.data && (
-          <StatusBadge label={kesehatan.data.verdict} tone={toneVerdict(kesehatan.data.verdict)} />
+          <StatusBadge label={kesehatan.data.overallVerdict} tone={toneVerdict(kesehatan.data.overallVerdict)} />
         )}
       </div>
 
@@ -78,10 +78,10 @@ export function PanelKesehatan({ className }: { className?: string }) {
 
       {kesehatan.data && (
         <>
-          <p className="mt-3 text-sm text-ink">{kesehatan.data.penjelasan}</p>
+          <p className="mt-3 text-sm text-ink">{kesehatan.data.overallExplanation}</p>
           <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
-            {kesehatan.data.indikator.map((indikator) => (
-              <KartuIndikator key={indikator.nama} indikator={indikator} />
+            {kesehatan.data.indicators.map((indikator) => (
+              <KartuIndikator key={indikator.name} indikator={indikator} />
             ))}
           </div>
         </>
@@ -90,21 +90,21 @@ export function PanelKesehatan({ className }: { className?: string }) {
   );
 }
 
-function KartuIndikator({ indikator }: { indikator: IndikatorKesehatan }) {
+function KartuIndikator({ indikator }: { indikator: HealthIndicator }) {
   return (
     <div className="rounded-2xl border border-line/70 bg-slate-50/60 p-3.5">
       <div className="flex items-start justify-between gap-2">
-        <p className="text-sm font-semibold text-ink">{indikator.nama}</p>
+        <p className="text-sm font-semibold text-ink">{indikator.name}</p>
         <StatusBadge
-          label={LABEL_RATING[indikator.rating]}
-          tone={TONE_RATING[indikator.rating]}
+          label={LABEL_RATING[indikator.rating] ?? indikator.rating}
+          tone={TONE_RATING[indikator.rating] ?? "neutral"}
         />
       </div>
-      <p className="mt-1.5 text-lg font-black text-brand tabular-nums">{indikator.display}</p>
-      <p className="mt-1.5 text-xs leading-relaxed text-muted">{indikator.penjelasan}</p>
-      {indikator.patokan && (
+      <p className="mt-1.5 text-lg font-black text-brand tabular-nums">{indikator.displayValue}</p>
+      <p className="mt-1.5 text-xs leading-relaxed text-muted">{indikator.explanation}</p>
+      {indikator.benchmark && (
         <p className="mt-2 border-t border-line/70 pt-2 text-[11px] leading-relaxed text-muted">
-          {indikator.patokan}
+          {indikator.benchmark}
         </p>
       )}
     </div>

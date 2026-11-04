@@ -2,19 +2,27 @@ import { useAuth } from "@/lib/store/auth";
 import type {
   AkunSaldo,
   AuditEntry,
+  ArApTurnover,
   Biaya,
   BiayaParams,
+  CashConversionCycle,
   CheckoutPayload,
   CheckoutResult,
+  CompanyProfile,
+  Dupont,
   Expense,
+  HealthIndicator,
+  HealthSummary,
   ImportResult,
   ImporPelangganBaris,
   ImporProdukBaris,
   ImporSaldoAwalBaris,
-  IndikatorKesehatan,
+  InventoryTurnover,
   JurnalEntry,
   JurnalParams,
+  KebijakanOperasional,
   LabaRugi,
+  LiquidityRatio,
   LoginResult,
   NeracaParams,
   PenyesuaianStokInput,
@@ -22,9 +30,11 @@ import type {
   Pembelian,
   PembelianInput,
   Product,
+  ProductPerformance,
+  ProductPerformanceRankings,
   ProfilPerusahaan,
-  RatingKesehatan,
-  RingkasanKesehatan,
+  ProfilToko,
+  ProfitabilityRatio,
   ReturInput,
   ReturPenjualan,
   ReturRiwayatParams,
@@ -33,8 +43,21 @@ import type {
   ShiftInfo,
   ShiftMutasiInput,
   ShiftRiwayat,
+  Solvency,
   TransaksiRiwayat,
   User,
+  WorkingCapital,
+  WorkingCapitalTurnover,
+  AgedInvoice,
+  AgingReport,
+  ApprovalRule,
+  CreateApprovalRuleRequest,
+  CreateFiscalPeriodRequest,
+  CreateSupplierRequest,
+  DailyMovementReport,
+  FiscalPeriod,
+  Reconciliation,
+  Supplier,
 } from "@/lib/api/types";
 
 export const API_BASE_URL = (process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:5121").replace(/\/+$/, "");
@@ -67,6 +90,7 @@ type OpsiLive = {
   method?: "GET" | "POST" | "PUT" | "DELETE";
   body?: unknown;
   idempotensiKunci?: string;
+  headers?: Record<string, string>;
 };
 
 type SesiEngine = {
@@ -141,7 +165,7 @@ function headerLive(opsi: { json?: boolean; idempotensiKunci?: string } = {}): R
 
 async function minta<T>(path: string, opsi: OpsiLive = {}, bolehUlang = true): Promise<T> {
   const state = useAuth.getState();
-  const headers = headerLive({ json: true, idempotensiKunci: opsi.idempotensiKunci });
+  const headers = { ...headerLive({ json: true, idempotensiKunci: opsi.idempotensiKunci }), ...opsi.headers };
 
   const response = await fetch(`${API_BASE_URL}${path}`, {
     method: opsi.method ?? "GET",
@@ -518,6 +542,27 @@ export async function liveCreateProduct(p: Omit<Product, "id">): Promise<Product
       category: p.kategori === "" ? null : p.kategori,
     },
   });
+
+  // Stok awal produk: catat sebagai penyesuaian masuk di gudang default
+  // agar stok yang terlihat di POS sama dengan yang diinput user.
+  if (p.stok > 0) {
+    const gudang = await gudangDefault();
+    await minta("/api/inventory/adjustments", {
+      method: "POST",
+      idempotensiKunci: buatKunciIdempotensi(),
+      body: {
+        productId: dibuat.id,
+        warehouseId: gudang,
+        direction: "IN",
+        quantity: p.stok,
+        movementType: "STOCK_ADJUSTMENT_IN",
+        costingMethod: "AVERAGE",
+        unitCost: p.hargaBeli,
+        reason: `Stok awal produk ${p.nama}`,
+      },
+    });
+  }
+
   const [satuan, stok] = await Promise.all([
     minta<BtSatuan[]>("/api/units"),
     minta<BtStok>("/api/inventory/stock"),
@@ -1075,6 +1120,7 @@ export async function liveBayarHutang(input: {
     nomor,
     waktu: dokumen?.purchaseDate ?? new Date().toISOString(),
     pemasok: dokumen?.supplierId ?? "",
+    supplierId: dokumen?.supplierId ?? null,
     items: [],
     total,
     metode: sisaHutang > 0 ? "hutang" : "tunai",
@@ -1186,20 +1232,13 @@ export async function liveCheckout(payload: CheckoutPayload): Promise<CheckoutRe
       400,
     );
   }
-  // Batch penjualan engine menolak pembayaran 0 (409 "A payment must be
-  // greater than zero"), jadi penjualan kredit tanpa uang muka tidak bisa
-  // lewat jalur kasir. Alur dokumen kredit butuh maker-checker (pembuat dan
-  // penyetuju harus dua akun berbeda) yang belum ada di POS.
-  if (dibayar <= 0) {
-    throw new LiveApiError(
-      "Penjualan kredit tanpa uang muka belum didukung mode live (engine menolak pembayaran 0). Isi nominal bayar minimal sebagian — sisanya otomatis tercatat sebagai piutang.",
-      400,
-    );
-  }
-
-  const cashAccountId = await akunKasDefault(
-    ringkasan.tunai > 0 ? KODE.kas : KODE.bank,
-  );
+  // Penjualan tanpa uang muka (dibayar 0) adalah penjualan kredit: engine
+  // menulis dokumennya saja — tanpa kas movement, tanpa jurnal settlement dan
+  // tanpa alokasi — sehingga piutang tetap terbuka.
+  const cashAccountId =
+    dibayar > 0
+      ? await akunKasDefault(ringkasan.tunai > 0 ? KODE.kas : KODE.bank)
+      : null;
   const pelangganId = payload.pelanggan
     ? await cariPelangganId(payload.pelanggan)
     : null;
@@ -1324,6 +1363,7 @@ export async function livePembelianList(): Promise<Pembelian[]> {
       id: p.id,
       nomor,
       pemasok: p.supplierId ? namaPemasok.get(p.supplierId) ?? p.supplierId : "-",
+      supplierId: p.supplierId,
       waktu: p.purchaseDate,
       items: p.items.map((item) => ({
         productId: item.productId,
@@ -1342,16 +1382,13 @@ export async function livePembelianBuat(input: PembelianInput): Promise<Pembelia
   const gudang = await gudangDefault();
   const actor = useAuth.getState().user?.id ?? ENGINE_APPROVER;
   const total = input.items.reduce((sum, i) => sum + i.hargaBeli * i.qty, 0);
+  const hutang = input.metode === "hutang";
 
-  // Sama seperti penjualan: batch pembelian engine menolak pembayaran 0, dan
-  // alur dokumen kredit butuh penyetuju kedua. Jadi pembelian 100% hutang
-  // ditolak di sini dengan pesan yang jelas, bukan 409 berbahasa Inggris.
-  if (input.metode === "hutang") {
-    throw new LiveApiError(
-      "Pembelian 100% hutang belum didukung mode live (engine menolak pembayaran 0). Bayar minimal sebagian sebagai uang muka — sisanya tercatat sebagai hutang.",
-      400,
-    );
-  }
+  // Pembelian hutang pays nothing now: engine writes the document alone, so
+  // the payable stays open and no till is touched.
+  const cashAccountId = hutang
+    ? null
+    : await akunKasDefault(input.metode === "bank" ? KODE.bank : KODE.kas);
 
   const hasil = await minta<{
     documentId: string;
@@ -1363,9 +1400,9 @@ export async function livePembelianBuat(input: PembelianInput): Promise<Pembelia
     body: {
       requestedBy: actor,
       approvedBy: actor === ENGINE_APPROVER ? `${ENGINE_APPROVER}-otorisasi` : ENGINE_APPROVER,
-      supplierId: null,
-      cashAccountId: await akunKasDefault(input.metode === "bank" ? KODE.bank : KODE.kas),
-      paymentAmount: total,
+      supplierId: input.supplierId,
+      cashAccountId,
+      paymentAmount: hutang ? 0 : total,
       costingMethod: "AVERAGE",
       payableAccountCode: KODE.hutang,
       inventoryAccountCode: KODE.persediaan,
@@ -1384,11 +1421,12 @@ export async function livePembelianBuat(input: PembelianInput): Promise<Pembelia
     id: hasil.documentId,
     nomor: hasil.documentNumber ?? hasil.documentId,
     pemasok: input.pemasok,
+    supplierId: input.supplierId,
     waktu: new Date().toISOString(),
     items: input.items,
     total: hasil.documentTotal,
-    metode: input.metode === "bank" ? "bank" : "tunai",
-    terbayar: hasil.documentTotal,
+    metode: input.metode === "bank" ? "bank" : hutang ? "hutang" : "tunai",
+    terbayar: hutang ? 0 : hasil.documentTotal,
   };
 }
 
@@ -1684,16 +1722,22 @@ export async function liveAuditLog(): Promise<AuditEntry[]> {
   }));
 }
 
-export async function liveProfilPerusahaan(): Promise<ProfilPerusahaan> {
+/**
+ * Profil toko dari engine.
+ *
+ * Engine memakai nama field berbahasa Inggris (`companyName`, `address`, ...)
+ * dan ASP.NET menyerializkannya sebagai camelCase — jadi pemetaan ke nama
+ * field POS dilakukan di sini, bukan diasumsikan sama.
+ */
+export async function liveCompanyProfileGet(): Promise<CompanyProfile> {
   const p = await minta<BtProfil>("/api/settings/company-profile");
   return petakanProfil(p);
 }
 
-export async function liveSimpanProfilPerusahaan(
-  input: ProfilPerusahaan,
-): Promise<ProfilPerusahaan> {
+export async function liveCompanyProfilePut(input: CompanyProfile): Promise<CompanyProfile> {
   const p = await minta<BtProfil>("/api/settings/company-profile", {
     method: "PUT",
+    idempotensiKunci: buatKunciIdempotensi(),
     body: {
       companyName: input.nama,
       address: input.alamat,
@@ -1744,35 +1788,248 @@ function petakanProfil(p: BtProfil): ProfilPerusahaan {
   };
 }
 
-function keRating(nilai: string): RatingKesehatan {
-  const teks = nilai.trim().toUpperCase();
-  if (teks === "BAIK" || teks === "CUKUP" || teks === "KURANG SEHAT") return teks;
-  return "TIDAK BERLAKU";
+export async function liveKebijakanGet(): Promise<KebijakanOperasional> {
+  const data = await minta<KebijakanOperasional>("/api/settings/operational-policy");
+  return {
+    izinkanKredit: data.izinkanKredit,
+    saldoAwalShift: data.saldoAwalShift,
+  };
 }
 
-/**
- * Ringkasan kesehatan usaha dihitung engine dari jurnal yang sama dengan
- * neraca saldo — jadi angka dashboard dan angka akuntansi tidak bisa
- * berbeda karena dihitung dua kali di tempat berbeda.
- */
-export async function liveRingkasanKesehatan(): Promise<RingkasanKesehatan> {
-  const hari = new Date().toISOString().slice(0, 10);
-  const data = await minta<BtKesehatan>(`/api/analytics/health-summary?date=${hari}`);
-
-  const indikator: IndikatorKesehatan[] = data.indicators.map((i) => ({
-    nama: i.name,
-    nilai: i.value,
-    satuan: i.unit,
-    display: i.displayValue,
-    rating: keRating(i.rating),
-    penjelasan: i.explanation,
-    patokan: i.benchmark,
-  }));
-
+export async function liveKebijakanPut(input: KebijakanOperasional): Promise<KebijakanOperasional> {
+  const data = await minta<KebijakanOperasional>("/api/settings/operational-policy", {
+    method: "PUT",
+    idempotensiKunci: buatKunciIdempotensi(),
+    body: {
+      izinkanKredit: input.izinkanKredit,
+      saldoAwalShift: input.saldoAwalShift,
+    },
+  });
   return {
-    tanggal: data.date,
-    verdict: data.overallVerdict,
-    penjelasan: data.overallExplanation,
-    indikator,
+    izinkanKredit: data.izinkanKredit,
+    saldoAwalShift: data.saldoAwalShift,
   };
+}
+
+export async function liveProfitability(startDate: string, endDate: string): Promise<ProfitabilityRatio> {
+  const data = await minta<ProfitabilityRatio>(`/api/analytics/profitability?startDate=${startDate}&endDate=${endDate}`);
+  return data;
+}
+
+export async function liveInventoryTurnover(startDate: string, endDate: string): Promise<InventoryTurnover> {
+  const data = await minta<InventoryTurnover>(`/api/analytics/inventory-turnover?startDate=${startDate}&endDate=${endDate}`);
+  return data;
+}
+
+export async function liveArTurnover(startDate: string, endDate: string): Promise<ArApTurnover> {
+  const data = await minta<ArApTurnover>(`/api/analytics/ar-turnover?startDate=${startDate}&endDate=${endDate}`);
+  return data;
+}
+
+export async function liveApTurnover(startDate: string, endDate: string): Promise<ArApTurnover> {
+  const data = await minta<ArApTurnover>(`/api/analytics/ap-turnover?startDate=${startDate}&endDate=${endDate}`);
+  return data;
+}
+
+export async function liveWorkingCapital(date: string): Promise<WorkingCapital> {
+  const data = await minta<WorkingCapital>(`/api/analytics/working-capital?date=${date}`);
+  return data;
+}
+
+export async function liveWorkingCapitalTurnover(startDate: string, endDate: string): Promise<WorkingCapitalTurnover> {
+  const data = await minta<WorkingCapitalTurnover>(`/api/analytics/working-capital-turnover?startDate=${startDate}&endDate=${endDate}`);
+  return data;
+}
+
+export async function liveCurrentRatio(date: string): Promise<LiquidityRatio> {
+  const data = await minta<LiquidityRatio>(`/api/analytics/current-ratio?date=${date}`);
+  return data;
+}
+
+export async function liveCashRatio(date: string): Promise<LiquidityRatio> {
+  const data = await minta<LiquidityRatio>(`/api/analytics/cash-ratio?date=${date}`);
+  return data;
+}
+
+export async function liveSolvency(date: string): Promise<Solvency> {
+  const data = await minta<Solvency>(`/api/analytics/solvency?date=${date}`);
+  return data;
+}
+
+export async function liveCashConversionCycle(startDate: string, endDate: string): Promise<CashConversionCycle> {
+  const data = await minta<CashConversionCycle>(`/api/analytics/cash-conversion-cycle?startDate=${startDate}&endDate=${endDate}`);
+  return data;
+}
+
+export async function liveHealthSummary(date: string, startDate?: string, endDate?: string): Promise<HealthSummary> {
+  const qs = new URLSearchParams({ date });
+  if (startDate) qs.set("startDate", startDate);
+  if (endDate) qs.set("endDate", endDate);
+  const data = await minta<HealthSummary>(`/api/analytics/health-summary?${qs.toString()}`);
+  return data;
+}
+
+export async function liveProductPerformance(startDate: string, endDate: string): Promise<ProductPerformance[]> {
+  const data = await minta<ProductPerformance[]>(`/api/analytics/product-performance?startDate=${startDate}&endDate=${endDate}`);
+  return data;
+}
+
+export async function liveProductPerformanceRankings(startDate: string, endDate: string, top = 10): Promise<ProductPerformanceRankings> {
+  const data = await minta<ProductPerformanceRankings>(`/api/analytics/product-performance/rankings?startDate=${startDate}&endDate=${endDate}&top=${top}`);
+  return data;
+}
+
+export async function liveFiscalPeriodList(): Promise<FiscalPeriod[]> {
+  const data = await minta<FiscalPeriod[]>("/api/fiscal-periods");
+  return data;
+}
+
+export async function liveFiscalPeriodCreate(input: CreateFiscalPeriodRequest): Promise<FiscalPeriod> {
+  const data = await minta<FiscalPeriod>("/api/fiscal-periods", {
+    method: "POST",
+    idempotensiKunci: buatKunciIdempotensi(),
+    body: {
+      name: input.name,
+      startDate: input.startDate,
+      endDate: input.endDate,
+      status: input.status,
+    },
+  });
+  return data;
+}
+
+export async function liveFiscalPeriodClose(id: string, actorId: string, idempotensiKunci: string): Promise<FiscalPeriod> {
+  const data = await minta<FiscalPeriod>(`/api/fiscal-periods/${id}/close`, {
+    method: "POST",
+    idempotensiKunci,
+    body: {},
+  });
+  return data;
+}
+
+export async function liveFiscalPeriodLock(id: string, actorId: string, actorLevel: string, reason: string, idempotensiKunci: string): Promise<FiscalPeriod> {
+  const data = await minta<FiscalPeriod>(`/api/fiscal-periods/${id}/lock`, {
+    method: "POST",
+    idempotensiKunci,
+    headers: {
+      "X-Actor-Id": actorId,
+      "X-Actor-Level": actorLevel,
+      "X-Reason": reason,
+    },
+    body: {},
+  });
+  return data;
+}
+
+export async function liveFiscalPeriodReopen(id: string, actorId: string, actorLevel: string, reason: string, idempotensiKunci: string): Promise<FiscalPeriod> {
+  const data = await minta<FiscalPeriod>(`/api/fiscal-periods/${id}/reopen`, {
+    method: "POST",
+    idempotensiKunci,
+    headers: {
+      "X-Actor-Id": actorId,
+      "X-Actor-Level": actorLevel,
+      "X-Reason": reason,
+    },
+    body: {},
+  });
+  return data;
+}
+
+export async function liveFiscalPeriodReverseClosing(id: string, actorId: string, actorLevel: string, reason: string, idempotensiKunci: string): Promise<FiscalPeriod> {
+  const data = await minta<FiscalPeriod>(`/api/fiscal-periods/${id}/reverse-closing`, {
+    method: "POST",
+    idempotensiKunci,
+    headers: {
+      "X-Actor-Id": actorId,
+      "X-Actor-Level": actorLevel,
+      "X-Reason": reason,
+    },
+    body: {},
+  });
+  return data;
+}
+
+export async function liveFiscalPeriodGetPendingClose(): Promise<FiscalPeriod[]> {
+  const data = await minta<FiscalPeriod[]>("/api/fiscal-periods/pending-close");
+  return data;
+}
+
+export async function liveApprovalRuleList(): Promise<ApprovalRule[]> {
+  const data = await minta<ApprovalRule[]>("/api/approval-rules");
+  return data;
+}
+
+export async function liveApprovalRuleCreate(input: CreateApprovalRuleRequest): Promise<ApprovalRule> {
+  const data = await minta<ApprovalRule>("/api/approval-rules", {
+    method: "POST",
+    idempotensiKunci: buatKunciIdempotensi(),
+    body: {
+      name: input.name,
+      transactionType: input.transactionType,
+      minimumAmount: input.minimumAmount,
+      requiredLevel: input.requiredLevel,
+      resolutionMode: input.resolutionMode,
+    },
+  });
+  return data;
+}
+
+export async function liveApprovalRuleDeactivate(id: string): Promise<ApprovalRule> {
+  const data = await minta<ApprovalRule>(`/api/approval-rules/${id}/deactivate`, {
+    method: "POST",
+    idempotensiKunci: buatKunciIdempotensi(),
+    body: {},
+  });
+  return data;
+}
+
+export async function liveDailyMovement(date: string, accountCode: string): Promise<DailyMovementReport> {
+  const qs = new URLSearchParams({ date, accountCode });
+  const data = await minta<DailyMovementReport>(`/api/reports/daily-movement?${qs.toString()}`);
+  return data;
+}
+
+export async function liveAging(side: "RECEIVABLE" | "PAYABLE", asOfDate?: string): Promise<AgingReport> {
+  const qs = new URLSearchParams({ side });
+  if (asOfDate) qs.set("asOfDate", asOfDate);
+  const data = await minta<AgingReport>(`/api/reports/ar-ap/aging?${qs.toString()}`);
+  return data;
+}
+
+export async function liveReconciliation(side: "RECEIVABLE" | "PAYABLE", accountCode: string, asOfDate?: string): Promise<Reconciliation> {
+  const qs = new URLSearchParams({ side, accountCode });
+  if (asOfDate) qs.set("asOfDate", asOfDate);
+  const data = await minta<Reconciliation>(`/api/reports/ar-ap/reconciliation?${qs.toString()}`);
+  return data;
+}
+
+export async function liveSupplierList(): Promise<Supplier[]> {
+  // `includeInactive` supaya pemasok yang dinonaktifkan tetap terlihat di master.
+  const data = await minta<Supplier[]>("/api/suppliers?includeInactive=true");
+  return data;
+}
+
+export async function liveSupplierCreate(input: CreateSupplierRequest): Promise<Supplier> {
+  const data = await minta<Supplier>("/api/suppliers", {
+    method: "POST",
+    idempotensiKunci: buatKunciIdempotensi(),
+    body: {
+      code: input.code,
+      name: input.name,
+      address: input.address,
+      phone: input.phone,
+      email: input.email,
+      taxNumber: input.taxNumber,
+    },
+  });
+  return data;
+}
+
+export async function liveSupplierDeactivate(id: string): Promise<Supplier> {
+  const data = await minta<Supplier>(`/api/suppliers/${id}/deactivate`, {
+    method: "POST",
+    idempotensiKunci: buatKunciIdempotensi(),
+    body: {},
+  });
+  return data;
 }

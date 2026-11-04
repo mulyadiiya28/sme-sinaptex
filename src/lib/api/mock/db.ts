@@ -1,10 +1,11 @@
 import type {
   Biaya,
   HasilImpor,
+  HealthIndicator,
+  HealthSummary,
   ImporPelangganBaris,
   ImporProdukBaris,
   ImporSaldoAwalBaris,
-  IndikatorKesehatan,
   JurnalBaris,
   JurnalEntry,
   LoginResult,
@@ -12,8 +13,6 @@ import type {
   Pembelian,
   PembelianInput,
   Product,
-  RatingKesehatan,
-  RingkasanKesehatan,
   ReturInput,
   ReturPenjualan,
   Role,
@@ -611,6 +610,7 @@ export const mockDb = {
       id: `PB-${String(pembelianCounter).padStart(4, "0")}`,
       nomor: `POB-${String(pembelianCounter).padStart(6, "0")}`,
       pemasok: input.pemasok,
+      supplierId: input.supplierId,
       waktu: waktuSekarang(),
       items: input.items,
       total,
@@ -777,7 +777,7 @@ export const mockDb = {
    * perputaran butuh periode 12 bulan seperti engine — di mode mock
    * lebih baik jujur soal batasnya daripada mengarang angka.
    */
-  ringkasanKesehatan(): RingkasanKesehatan {
+  ringkasanKesehatan(tanggal: string): HealthSummary {
     const s = new Map(this.akunSaldos().map((a) => [a.akun, a.saldoAkhir]));
     const kas = s.get("Kas") ?? 0;
     const bank = s.get("Bank") ?? 0;
@@ -790,73 +790,83 @@ export const mockDb = {
     const liabilitasLancar = hutang;
     const kasBisa = kas + bank;
 
-    const indikator: IndikatorKesehatan[] = [];
+    const indikator: HealthIndicator[] = [];
 
     if (liabilitasLancar > 0) {
       const rasioLancar = asetLancar / liabilitasLancar;
       indikator.push({
-        nama: "Rasio Lancar",
-        nilai: rasioLancar,
-        satuan: "×",
-        display: formatNilaiIndikator(rasioLancar, "×"),
+        name: "Rasio Lancar",
+        unit: "×",
+        value: rasioLancar,
+        displayValue: formatNilaiIndikator(rasioLancar, "×"),
+        previousValue: null,
+        trend: "TIDAK ADA PERBANDINGAN",
         rating: rasioLancar >= 1.5 ? "BAIK" : rasioLancar >= 1 ? "CUKUP" : "KURANG SEHAT",
-        penjelasan:
+        explanation:
           rasioLancar >= 1.5
             ? "Aset lancar menutup liabilitas lancar lebih dari 1,5 kali — ada ruang untuk menghadapi penurunan penjualan atau penundaan tagihan."
             : rasioLancar >= 1
               ? "Aset lancar masih menutup liabilitas lancar, tapi ruang amannya tipis."
               : "Liabilitas lancar lebih besar dari aset lancar — kewajiban jangka pendek bisa menekan kas.",
-        patokan: "Patokan praktis: 1,0× — titik impas; 1,5× — ruang aman untuk fluktuasi penjualan.",
+        benchmark: "Patokan praktis: 1,0× — titik impas; 1,5× — ruang aman untuk fluktuasi penjualan.",
       });
 
       const rasioKas = kasBisa / liabilitasLancar;
       indikator.push({
-        nama: "Rasio Kas",
-        nilai: rasioKas,
-        satuan: "×",
-        display: formatNilaiIndikator(rasioKas, "×"),
+        name: "Rasio Kas",
+        unit: "×",
+        value: rasioKas,
+        displayValue: formatNilaiIndikator(rasioKas, "×"),
+        previousValue: null,
+        trend: "TIDAK ADA PERBANDINGAN",
         rating: rasioKas >= 0.2 ? "BAIK" : rasioKas >= 0.1 ? "CUKUP" : "KURANG SEHAT",
-        penjelasan:
+        explanation:
           rasioKas >= 0.2
             ? "Kas menutup sedikitnya 20% liabilitas lancar — kewajiban jangka pendek bisa dibayar tanpa menyentuh aset lain."
             : rasioKas >= 0.1
               ? "Kas menutup sebagian liabilitas lancar, tapi belum ada ruang aman yang nyaman."
               : "Kas hampir tidak menutup liabilitas lancar — rupiah yang masuk sebaiknya ditahan untuk kewajiban jangka pendek.",
-        patokan: "Patokan praktis: 0,2× — kas menutup seperlima liabilitas lancar.",
+        benchmark: "Patokan praktis: 0,2× — kas menutup seperlima liabilitas lancar.",
       });
     } else {
       indikator.push({
-        nama: "Rasio Lancar",
-        nilai: 0,
-        satuan: "×",
-        display: "—",
+        name: "Rasio Lancar",
+        unit: "×",
+        value: 0,
+        displayValue: "—",
+        previousValue: null,
+        trend: "TIDAK ADA PERBANDINGAN",
         rating: "TIDAK BERLAKU",
-        penjelasan: "Tidak ada liabilitas lancar — rasio tidak punya arti karena tidak ada yang harus ditutup.",
-        patokan: "Patokan praktis: 1,0× — titik impas; 1,5× — ruang aman untuk fluktuasi penjualan.",
+        explanation: "Tidak ada liabilitas lancar — rasio tidak punya arti karena tidak ada yang harus ditutup.",
+        benchmark: "Patokan praktis: 1,0× — titik impas; 1,5× — ruang aman untuk fluktuasi penjualan.",
       });
       indikator.push({
-        nama: "Rasio Kas",
-        nilai: 0,
-        satuan: "×",
-        display: "—",
+        name: "Rasio Kas",
+        unit: "×",
+        value: 0,
+        displayValue: "—",
+        previousValue: null,
+        trend: "TIDAK ADA PERBANDINGAN",
         rating: "TIDAK BERLAKU",
-        penjelasan: "Tidak ada liabilitas lancar — rasio tidak punya arti karena tidak ada yang harus ditutup.",
-        patokan: "Patokan praktis: 0,2× — kas menutup seperlima liabilitas lancar.",
+        explanation: "Tidak ada liabilitas lancar — rasio tidak punya arti karena tidak ada yang harus ditutup.",
+        benchmark: "Patokan praktis: 0,2× — kas menutup seperlima liabilitas lancar.",
       });
     }
 
     const modalKerja = asetLancar - liabilitasLancar;
     indikator.push({
-      nama: "Modal Kerja",
-      nilai: modalKerja,
-      satuan: "Rp",
-      display: formatNilaiIndikator(modalKerja, "Rp"),
+      name: "Modal Kerja",
+      unit: "Rp",
+      value: modalKerja,
+      displayValue: formatNilaiIndikator(modalKerja, "Rp"),
+      previousValue: null,
+      trend: "TIDAK ADA PERBANDINGAN",
       rating: modalKerja > 0 ? "BAIK" : "KURANG SEHAT",
-      penjelasan:
+      explanation:
         modalKerja > 0
           ? "Modal kerja positif — ada dana sendiri yang menutup kegiatan harian tanpa bergantung pada pinjaman."
           : "Modal kerja negatif — kegiatan harian dibiayai dari utang.",
-      patokan: "Patokan praktis: modal kerja di atas nol berarti aman untuk kegiatan harian.",
+      benchmark: "Patokan praktis: modal kerja di atas nol berarti aman untuk kegiatan harian.",
     });
 
     const adaYangKurangSehat = indikator.some((i) => i.rating === "KURANG SEHAT");
@@ -868,14 +878,25 @@ export const mockDb = {
         : "SEHAT";
 
     return {
-      tanggal: new Date().toISOString(),
-      verdict,
-      penjelasan: adaYangKurangSehat
+      date: tanggal,
+      startDate: tanggal,
+      endDate: tanggal,
+      comparisonStartDate: tanggal,
+      comparisonEndDate: tanggal,
+      overallVerdict: verdict,
+      overallExplanation: adaYangKurangSehat
         ? "Ada indikator yang berada di zona kurang sehat — bagian ini yang paling mendesak untuk dibenahi."
         : adaYangTidakTerukur
           ? "Tidak ada indikator yang bermasalah, tapi sebagian rasio tidak bisa diukur karena tidak ada liabilitas lancar untuk dibandingkan."
           : "Semua indikator yang dihitung berada di zona aman.",
-      indikator,
+      indicators: indikator,
+      dupont: {
+        returnOnEquity: 0,
+        netProfitMargin: 0,
+        assetTurnover: 0,
+        equityMultiplier: 0,
+        dominantDriver: "-",
+      },
     };
   },
 };

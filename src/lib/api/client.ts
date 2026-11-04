@@ -1,18 +1,27 @@
 import type {
   AkunSaldo,
+  ArApTurnover,
   AuditEntry,
   Biaya,
   BiayaParams,
+  CashConversionCycle,
   CheckoutPayload,
   CheckoutResult,
+  CompanyProfile,
+  Dupont,
   HasilImpor,
+  HealthIndicator,
+  HealthSummary,
   ImportResult,
   ImporPelangganBaris,
   ImporProdukBaris,
   ImporSaldoAwalBaris,
+  InventoryTurnover,
   JurnalEntry,
   JurnalParams,
+  KebijakanOperasional,
   LabaRugi,
+  LiquidityRatio,
   LoginResult,
   NeracaParams,
   PaymentMethod,
@@ -21,8 +30,11 @@ import type {
   PembelianInput,
   PenyesuaianStokInput,
   Product,
+  ProductPerformance,
+  ProductPerformanceRankings,
   ProfilPerusahaan,
-  RingkasanKesehatan,
+  ProfilToko,
+  ProfitabilityRatio,
   ReturInput,
   ReturPenjualan,
   ReturRiwayatParams,
@@ -30,12 +42,26 @@ import type {
   ShiftInfo,
   ShiftMutasiInput,
   ShiftRiwayat,
+  Solvency,
   TransaksiRiwayat,
   User,
+  WorkingCapital,
+  WorkingCapitalTurnover,
+  AgedInvoice,
+  AgingReport,
+  ApprovalRule,
+  CreateApprovalRuleRequest,
+  CreateFiscalPeriodRequest,
+  CreateSupplierRequest,
+  DailyMovementReport,
+  FiscalPeriod,
+  Reconciliation,
+  Supplier,
 } from "@/lib/api/types";
 import { mockDb, produkBaruId } from "@/lib/api/mock/db";
 import { useToko } from "@/lib/store/toko";
 import {
+  BUSINESS_ID,
   fileCsvPelangganDariBaris,
   fileCsvProdukDariBaris,
   fileCsvSaldoAwalDariBaris,
@@ -47,12 +73,32 @@ import {
   liveBiayaList,
   liveBuatUser,
   liveCheckout,
+  liveCompanyProfileGet,
+  liveCompanyProfilePut,
   liveCreateProduct,
+  liveFiscalPeriodClose,
+  liveFiscalPeriodCreate,
+  liveFiscalPeriodGetPendingClose,
+  liveFiscalPeriodList,
+  liveFiscalPeriodLock,
+  liveFiscalPeriodReopen,
+  liveFiscalPeriodReverseClosing,
+  liveKebijakanGet,
+  liveKebijakanPut,
+  liveSupplierCreate,
+  liveSupplierDeactivate,
+  liveSupplierList,
+  liveApprovalRuleCreate,
+  liveApprovalRuleDeactivate,
+  liveApprovalRuleList,
   liveDeleteProduct,
   liveHapusUser,
+  liveHealthSummary,
   liveImporPelanggan,
   liveImporProduk,
   liveImporSaldoAwal,
+  liveDailyMovement,
+  liveInventoryTurnover,
   liveJurnal,
   liveKonfirmasiDigital,
   liveLabaRugi,
@@ -62,23 +108,34 @@ import {
   livePenyesuaianStok,
   livePembelianBuat,
   livePembelianList,
+  liveProductPerformance,
+  liveProductPerformanceRankings,
   liveProducts,
-  liveProfilPerusahaan,
+  liveProfitability,
+  liveAging,
+  liveReconciliation,
   liveRetur,
   liveReturRiwayat,
-  liveRingkasanKesehatan,
   liveShiftAktif,
   liveShiftBuka,
   liveShiftMutasi,
   liveShiftRiwayat,
   liveShiftTutup,
-  liveSimpanProfilPerusahaan,
+  liveSolvency,
   liveTransaksiRiwayat,
   liveUbahUser,
   liveUnggahLogo,
   liveUpdateProduct,
   liveUsers,
+  urlLogoAbsolut,
   liveVoidTransaksi,
+  liveWorkingCapital,
+  liveWorkingCapitalTurnover,
+  liveCashConversionCycle,
+  liveCashRatio,
+  liveCurrentRatio,
+  liveArTurnover,
+  liveApTurnover,
 } from "@/lib/api/live";
 
 export const API_MODE = process.env.NEXT_PUBLIC_API_MODE ?? "mock";
@@ -285,8 +342,10 @@ export const api = {
 
   pengaturan: {
     profil: async (): Promise<ProfilPerusahaan> => {
-      if (API_MODE === "live") return liveProfilPerusahaan();
-      await delay(120);
+      if (API_MODE === "live") {
+        const profil = await liveCompanyProfileGet();
+        return { ...profil, logoUrl: urlLogoAbsolut(profil.logoUrl) };
+      }      await delay(120);
       const profil = useToko.getState().profil;
       return {
         nama: profil.nama,
@@ -299,7 +358,10 @@ export const api = {
       };
     },
     simpanProfil: async (input: ProfilPerusahaan): Promise<ProfilPerusahaan> => {
-      if (API_MODE === "live") return liveSimpanProfilPerusahaan(input);
+      if (API_MODE === "live") {
+        const profil = await liveCompanyProfilePut(input);
+        return { ...profil, logoUrl: urlLogoAbsolut(profil.logoUrl) };
+      }
       await delay(150);
       const store = useToko.getState();
       store.simpan({
@@ -328,14 +390,6 @@ export const api = {
     },
   },
 
-  analitik: {
-    ringkasanKesehatan: async (): Promise<RingkasanKesehatan> => {
-      if (API_MODE === "live") return liveRingkasanKesehatan();
-      await delay(150);
-      return structuredClone(mockDb.ringkasanKesehatan());
-    },
-  },
-
   akuntansi: {
     jurnal: async (params?: JurnalParams): Promise<JurnalEntry[]> => {
       if (API_MODE === "live") return liveJurnal(params);
@@ -351,6 +405,369 @@ export const api = {
       if (API_MODE === "live") return liveLabaRugi();
       await delay(120);
       return structuredClone(mockDb.labaRugi());
+    },
+    fiscalPeriods: {
+      list: async (): Promise<FiscalPeriod[]> => {
+        if (API_MODE === "live") return liveFiscalPeriodList();
+        await delay(120);
+        return [];
+      },
+      create: async (input: CreateFiscalPeriodRequest): Promise<FiscalPeriod> => {
+        if (API_MODE === "live") return liveFiscalPeriodCreate(input);
+        await delay(350);
+        return {
+          id: crypto.randomUUID(),
+          businessId: BUSINESS_ID,
+          name: input.name,
+          startDate: input.startDate,
+          endDate: input.endDate,
+          status: input.status ?? "OPEN",
+          version: 1,
+        };
+      },
+      close: async (id: string, actorId: string, idempotensiKunci: string): Promise<FiscalPeriod> => {
+        if (API_MODE === "live") return liveFiscalPeriodClose(id, actorId, idempotensiKunci);
+        await delay(350);
+        return {
+          id,
+          businessId: BUSINESS_ID,
+          name: "",
+          startDate: "",
+          endDate: "",
+          status: "CLOSED",
+          version: 1,
+        };
+      },
+      lock: async (id: string, actorId: string, actorLevel: string, reason: string, idempotensiKunci: string): Promise<FiscalPeriod> => {
+        if (API_MODE === "live") return liveFiscalPeriodLock(id, actorId, actorLevel, reason, idempotensiKunci);
+        await delay(350);
+        return {
+          id,
+          businessId: BUSINESS_ID,
+          name: "",
+          startDate: "",
+          endDate: "",
+          status: "LOCKED",
+          version: 1,
+        };
+      },
+      reopen: async (id: string, actorId: string, actorLevel: string, reason: string, idempotensiKunci: string): Promise<FiscalPeriod> => {
+        if (API_MODE === "live") return liveFiscalPeriodReopen(id, actorId, actorLevel, reason, idempotensiKunci);
+        await delay(350);
+        return {
+          id,
+          businessId: BUSINESS_ID,
+          name: "",
+          startDate: "",
+          endDate: "",
+          status: "OPEN",
+          version: 1,
+        };
+      },
+      reverseClosing: async (id: string, actorId: string, actorLevel: string, reason: string, idempotensiKunci: string): Promise<FiscalPeriod> => {
+        if (API_MODE === "live") return liveFiscalPeriodReverseClosing(id, actorId, actorLevel, reason, idempotensiKunci);
+        await delay(350);
+        return {
+          id,
+          businessId: BUSINESS_ID,
+          name: "",
+          startDate: "",
+          endDate: "",
+          status: "OPEN",
+          version: 1,
+        };
+      },
+      getPendingClose: async (): Promise<FiscalPeriod[]> => {
+        if (API_MODE === "live") return liveFiscalPeriodGetPendingClose();
+        await delay(120);
+        return [];
+      },
+    },
+    dailyMovement: async (date: string, accountCode: string): Promise<DailyMovementReport> => {
+      if (API_MODE === "live") return liveDailyMovement(date, accountCode);
+      await delay(120);
+      return {
+        date,
+        accountCode,
+        accountName: "-",
+        openingBalance: 0,
+        entries: [],
+        closingBalance: 0,
+        totalDebit: 0,
+        totalCredit: 0,
+      };
+    },
+  },
+
+  analytics: {
+    profitability: async (startDate: string, endDate: string): Promise<ProfitabilityRatio> => {
+      if (API_MODE === "live") return liveProfitability(startDate, endDate);
+      await delay(120);
+      return {
+        roe: 0, roa: 0, netProfitMargin: 0, totalNetIncome: 0,
+        totalEquity: 0, totalAssets: 0, totalRevenue: 0,
+        roeAssessment: { rating: "TIDAK BERLAKU", explanation: "Tidak ada data.", benchmark: "-" },
+        roaAssessment: { rating: "TIDAK BERLAKU", explanation: "Tidak ada data.", benchmark: "-" },
+        netProfitMarginAssessment: { rating: "TIDAK BERLAKU", explanation: "Tidak ada data.", benchmark: "-" },
+        description: "Tidak ada data.",
+      };
+    },
+    inventoryTurnover: async (startDate: string, endDate: string): Promise<InventoryTurnover> => {
+      if (API_MODE === "live") return liveInventoryTurnover(startDate, endDate);
+      await delay(120);
+      return {
+        turnoverRatio: 0, daysInInventory: 0, costOfGoodsSold: 0, averageInventory: 0,
+        assessment: { rating: "TIDAK BERLAKU", explanation: "Tidak ada data.", benchmark: "-" },
+        description: "Tidak ada data.",
+      };
+    },
+    arTurnover: async (startDate: string, endDate: string): Promise<ArApTurnover> => {
+      if (API_MODE === "live") return liveArTurnover(startDate, endDate);
+      await delay(120);
+      return {
+        turnoverRatio: 0, daysOutstanding: 0, totalBase: 0, averageBalance: 0,
+        assessment: { rating: "TIDAK BERLAKU", explanation: "Tidak ada data.", benchmark: "-" },
+        description: "Tidak ada data.",
+      };
+    },
+    apTurnover: async (startDate: string, endDate: string): Promise<ArApTurnover> => {
+      if (API_MODE === "live") return liveApTurnover(startDate, endDate);
+      await delay(120);
+      return {
+        turnoverRatio: 0, daysOutstanding: 0, totalBase: 0, averageBalance: 0,
+        assessment: { rating: "TIDAK BERLAKU", explanation: "Tidak ada data.", benchmark: "-" },
+        description: "Tidak ada data.",
+      };
+    },
+    workingCapital: async (date: string): Promise<WorkingCapital> => {
+      if (API_MODE === "live") return liveWorkingCapital(date);
+      await delay(120);
+      return {
+        currentAssets: 0, currentLiabilities: 0, workingCapital: 0, workingCapitalRatio: 0,
+        description: "Tidak ada data.", assessment: { rating: "TIDAK BERLAKU", explanation: "Tidak ada data.", benchmark: "-" },
+      };
+    },
+    workingCapitalTurnover: async (startDate: string, endDate: string): Promise<WorkingCapitalTurnover> => {
+      if (API_MODE === "live") return liveWorkingCapitalTurnover(startDate, endDate);
+      await delay(120);
+      return {
+        turnoverRatio: 0, daysTurnover: 0, totalRevenue: 0,
+        averageWorkingCapital: 0, openingWorkingCapital: 0, closingWorkingCapital: 0,
+        assessment: { rating: "TIDAK BERLAKU", explanation: "Tidak ada data.", benchmark: "-" },
+        description: "Tidak ada data.",
+      };
+    },
+    currentRatio: async (date: string): Promise<LiquidityRatio> => {
+      if (API_MODE === "live") return liveCurrentRatio(date);
+      await delay(120);
+      return {
+        ratio: 0, numerator: 0, denominator: 0, description: "Tidak ada data.",
+        assessment: { rating: "TIDAK BERLAKU", explanation: "Tidak ada data.", benchmark: "-" },
+      };
+    },
+    cashRatio: async (date: string): Promise<LiquidityRatio> => {
+      if (API_MODE === "live") return liveCashRatio(date);
+      await delay(120);
+      return {
+        ratio: 0, numerator: 0, denominator: 0, description: "Tidak ada data.",
+        assessment: { rating: "TIDAK BERLAKU", explanation: "Tidak ada data.", benchmark: "-" },
+      };
+    },
+    solvency: async (date: string): Promise<Solvency> => {
+      if (API_MODE === "live") return liveSolvency(date);
+      await delay(120);
+      return {
+        debtToAssets: 0, debtToEquity: 0, equityRatio: 0,
+        totalLiabilities: 0, totalAssets: 0, totalEquity: 0,
+        description: "Tidak ada data.", assessment: { rating: "TIDAK BERLAKU", explanation: "Tidak ada data.", benchmark: "-" },
+      };
+    },
+    cashConversionCycle: async (startDate: string, endDate: string): Promise<CashConversionCycle> => {
+      if (API_MODE === "live") return liveCashConversionCycle(startDate, endDate);
+      await delay(120);
+      return {
+        cashConversionCycleDays: 0, daysInventoryOutstanding: 0,
+        daysSalesOutstanding: 0, daysPayableOutstanding: 0,
+        assessment: { rating: "TIDAK BERLAKU", explanation: "Tidak ada data.", benchmark: "-" },
+        description: "Tidak ada data.",
+      };
+    },
+    healthSummary: async (date: string, startDate?: string, endDate?: string): Promise<HealthSummary> => {
+      if (API_MODE === "live") return liveHealthSummary(date, startDate, endDate);
+      await delay(120);
+      return structuredClone(mockDb.ringkasanKesehatan(date));
+    },
+    productPerformance: async (startDate: string, endDate: string): Promise<ProductPerformance[]> => {
+      if (API_MODE === "live") return liveProductPerformance(startDate, endDate);
+      await delay(120);
+      return [];
+    },
+    productPerformanceRankings: async (startDate: string, endDate: string, top = 10): Promise<ProductPerformanceRankings> => {
+      if (API_MODE === "live") return liveProductPerformanceRankings(startDate, endDate, top);
+      await delay(120);
+      return {
+        fastMoving: [], slowMoving: [], highMargin: [], topRevenue: [], topProfit: [],
+      };
+    },
+  },
+
+  aging: {
+    ar: async (asOfDate?: string): Promise<AgingReport> => {
+      if (API_MODE === "live") return liveAging("RECEIVABLE", asOfDate);
+      await delay(120);
+      return {
+        side: "RECEIVABLE", asOfDate: asOfDate ?? new Date().toISOString(),
+        outstandingTotal: 0, current: 0, days30: 0, days60: 0, days90: 0, over90: 0,
+        invoices: [],
+      };
+    },
+    ap: async (asOfDate?: string): Promise<AgingReport> => {
+      if (API_MODE === "live") return liveAging("PAYABLE", asOfDate);
+      await delay(120);
+      return {
+        side: "PAYABLE", asOfDate: asOfDate ?? new Date().toISOString(),
+        outstandingTotal: 0, current: 0, days30: 0, days60: 0, days90: 0, over90: 0,
+        invoices: [],
+      };
+    },
+    reconciliation: async (side: "RECEIVABLE" | "PAYABLE", accountCode: string, asOfDate?: string): Promise<Reconciliation> => {
+      if (API_MODE === "live") return liveReconciliation(side, accountCode, asOfDate);
+      await delay(120);
+      return {
+        side, accountCode,
+        invoiceCount: 0, invoicedTotal: 0, allocatedTotal: 0,
+        outstandingTotal: 0, ledgerBalance: 0, difference: 0,
+        isReconciled: true,
+      };
+    },
+  },
+
+  supplier: {
+    list: async (): Promise<Supplier[]> => {
+      if (API_MODE === "live") return liveSupplierList();
+      await delay(120);
+      return [];
+    },
+    create: async (input: CreateSupplierRequest): Promise<Supplier> => {
+      if (API_MODE === "live") return liveSupplierCreate(input);
+      await delay(350);
+      return {
+        id: crypto.randomUUID(),
+        businessId: BUSINESS_ID,
+        code: input.code,
+        name: input.name,
+        address: input.address ?? null,
+        phone: input.phone ?? null,
+        email: input.email ?? null,
+        taxNumber: input.taxNumber ?? null,
+        isActive: true,
+      };
+    },
+    deactivate: async (id: string): Promise<Supplier> => {
+      if (API_MODE === "live") return liveSupplierDeactivate(id);
+      await delay(350);
+      return {
+        id,
+        businessId: BUSINESS_ID,
+        code: "",
+        name: "",
+        address: null,
+        phone: null,
+        email: null,
+        taxNumber: null,
+        isActive: false,
+      };
+    },
+  },
+
+  approvalRules: {
+    list: async (): Promise<ApprovalRule[]> => {
+      if (API_MODE === "live") return liveApprovalRuleList();
+      await delay(120);
+      return [];
+    },
+    create: async (input: CreateApprovalRuleRequest): Promise<ApprovalRule> => {
+      if (API_MODE === "live") return liveApprovalRuleCreate(input);
+      await delay(350);
+      return {
+        id: crypto.randomUUID(),
+        businessId: BUSINESS_ID,
+        name: input.name ?? "",
+        transactionType: input.transactionType,
+        minimumAmount: input.minimumAmount,
+        requiredLevel: input.requiredLevel,
+        resolutionMode: input.resolutionMode ?? "HIGHEST_LEVEL",
+        isActive: true,
+        version: 1,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+    },
+    deactivate: async (id: string): Promise<ApprovalRule> => {
+      if (API_MODE === "live") return liveApprovalRuleDeactivate(id);
+      await delay(350);
+      return {
+        id,
+        businessId: BUSINESS_ID,
+        name: "",
+        transactionType: "",
+        minimumAmount: 0,
+        requiredLevel: 0,
+        resolutionMode: "",
+        isActive: false,
+        version: 1,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+    },
+  },
+
+  toko: {
+    profil: {
+      get: async (): Promise<CompanyProfile> => {
+        if (API_MODE === "live") return liveCompanyProfileGet();
+        await delay(120);
+        const p = useToko.getState().profil;
+        return {
+          nama: p.nama,
+          alamat: p.alamat,
+          telepon: p.telepon,
+          email: "",
+          website: "",
+          npwp: "",
+          logoUrl: "",
+        };
+      },
+      put: async (input: CompanyProfile): Promise<CompanyProfile> => {
+        if (API_MODE === "live") return liveCompanyProfilePut(input);
+        await delay(250);
+        const p = useToko.getState().profil;
+        const gabungan: ProfilToko = {
+          nama: input.nama,
+          alamat: input.alamat,
+          telepon: input.telepon,
+          mataUang: p.mataUang,
+          zonaWaktu: p.zonaWaktu,
+          footerStruk: p.footerStruk,
+          pajakPersen: p.pajakPersen,
+        };
+        useToko.getState().simpan(gabungan);
+        return input;
+      },
+    },
+    kebijakan: {
+      get: async (): Promise<KebijakanOperasional> => {
+        if (API_MODE === "live") return liveKebijakanGet();
+        await delay(120);
+        const k = useToko.getState().kebijakan;
+        return { izinkanKredit: k.izinkanKredit, saldoAwalShift: k.saldoAwalShift };
+      },
+      put: async (input: KebijakanOperasional): Promise<KebijakanOperasional> => {
+        if (API_MODE === "live") return liveKebijakanPut(input);
+        await delay(250);
+        useToko.getState().simpanKebijakan(input);
+        return input;
+      },
     },
   },
 

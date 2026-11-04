@@ -9,7 +9,7 @@ import { MoneyDisplay } from "@/components/money-display";
 import { PageHeader } from "@/components/page-header";
 import { StatusBadge } from "@/components/status-badge";
 import { usePembelian, usePembelianMutations } from "@/hooks/queries";
-import { useProducts } from "@/hooks/queries";
+import { useProducts, useSupplierList } from "@/hooks/queries";
 
 export default function PembelianPage() {
   const pembelian = usePembelian();
@@ -66,9 +66,11 @@ export default function PembelianPage() {
 
 function PembelianFormDialog({ onClose }: { onClose: () => void }) {
   const products = useProducts();
+  const suppliers = useSupplierList();
   const { buat } = usePembelianMutations();
 
-  const [pemasok, setPemasok] = useState("");
+  const [pemasokId, setPemasokId] = useState<string | null>(null);
+  const [pemasokNama, setPemasokNama] = useState("");
   const [metode, setMetode] = useState<PembelianMetode>("tunai");
   const [items, setItems] = useState<PembelianItem[]>([]);
   const [produkId, setProdukId] = useState("");
@@ -93,10 +95,10 @@ function PembelianFormDialog({ onClose }: { onClose: () => void }) {
   function submit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
-    if (!pemasok.trim()) return setError("Pemasok wajib diisi.");
+    if (!pemasokId) return setError("Pilih pemasok terlebih dahulu.");
     if (items.length === 0) return setError("Tambahkan minimal satu item.");
     buat.mutate(
-      { pemasok, items, metode },
+      { pemasok: pemasokNama, supplierId: pemasokId, items, metode },
       { onSuccess: onClose, onError: (err) => setError(String(err)) },
     );
   }
@@ -108,7 +110,17 @@ function PembelianFormDialog({ onClose }: { onClose: () => void }) {
         <form onSubmit={submit} className="mt-5 space-y-4">
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <FormField label="Pemasok">
-              <input className="input" value={pemasok} onChange={(e) => setPemasok(e.target.value)} placeholder="cth. Sumber Rejeki" autoFocus />
+              <select className="input" value={pemasokId ?? ""} onChange={(e) => {
+                const id = e.target.value;
+                const s = suppliers.data?.find((x) => x.id === id);
+                setPemasokId(id);
+                setPemasokNama(s?.name ?? "");
+              }}>
+                <option value="">Pilih pemasok...</option>
+                {(suppliers.data ?? []).map((s) => (
+                  <option key={s.id} value={s.id}>{s.name}</option>
+                ))}
+              </select>
             </FormField>
             <FormField label="Metode pembayaran">
               <select className="input" value={metode} onChange={(e) => setMetode(e.target.value as PembelianMetode)}>
