@@ -87,6 +87,71 @@ export function buildStrukHtml(toko: ProfilToko, d: DataStruk): string {
 }
 
 export function cetakStruk(toko: ProfilToko, d: DataStruk): void {
+  cetakHtml(buildStrukHtml(toko, d));
+}
+
+export type DataKuitansi = {
+  nomor: string;
+  waktu: string;
+  kasir: string;
+  shiftId: string;
+  pelanggan?: string;
+  nominal: number;
+  metode: "tunai" | "transfer";
+  sisaPiutang: number;
+};
+
+/**
+ * Kuitansi pelunasan piutang — bukan struk penjualan.
+ *
+ * Yang ditebus adalah faktur lama, jadi cetakannya menyebut nomor faktur
+ * yang dilunasi dan sisa piutang setelahnya, supaya pelanggan dan kasir
+ * sama-sama tahu kalau hutangnya sudah bersih atau masih tersisa.
+ */
+export function buildKuitansiHtml(toko: ProfilToko, d: DataKuitansi): string {
+  return `<!doctype html><html><head><meta charset="utf-8"/><title>Kuitansi ${esc(d.nomor)}</title>
+  <style>
+    body { font-family: "Courier New", monospace; font-size: 12px; margin: 0; padding: 12px; width: 300px; color: #000; }
+    h2 { margin: 0; font-size: 15px; text-align: center; }
+    .sub { text-align: center; font-size: 11px; margin-bottom: 8px; }
+    hr { border: none; border-top: 1px dashed #000; margin: 6px 0; }
+    table { width: 100%; border-collapse: collapse; }
+    td { vertical-align: top; padding: 1px 0; }
+    td.r { text-align: right; white-space: nowrap; }
+    small { font-size: 10px; color: #333; }
+    .c { text-align: center; }
+    .b { font-weight: bold; font-size: 14px; }
+    @media print { body { padding: 0; } }
+  </style></head><body>
+  <h2>${esc(toko.nama)}</h2>
+  <div class="sub">${esc(toko.alamat)}${toko.telepon ? `<br/>${esc(toko.telepon)}` : ""}</div>
+  <hr/>
+  <div class="c b">KUITANSI PIUTANG</div>
+  <hr/>
+  <table>
+    <tr><td>No. faktur</td><td class="r">${esc(d.nomor)}</td></tr>
+    <tr><td>Tanggal</td><td class="r">${new Date(d.waktu).toLocaleString("id-ID")}</td></tr>
+    ${d.pelanggan ? `<tr><td>Pelanggan</td><td class="r">${esc(d.pelanggan)}</td></tr>` : ""}
+    <tr><td>Kasir</td><td class="r">${esc(d.kasir)}</td></tr>
+    <tr><td>Shift</td><td class="r">${esc(d.shiftId)}</td></tr>
+  </table>
+  <hr/>
+  <table>
+    <tr><td>Penerimaan</td><td class="r b">${formatIDR(d.nominal)}</td></tr>
+    <tr><td>Metode</td><td class="r">${d.metode === "tunai" ? "Tunai" : "Transfer bank"}</td></tr>
+    <tr><td>Sisa piutang</td><td class="r">${formatIDR(d.sisaPiutang)}</td></tr>
+  </table>
+  <hr/>
+  <div class="c">Terima kasih, pembayaran telah diterima.</div>
+  <div class="c">${esc(toko.footerStruk)}</div>
+  </body></html>`;
+}
+
+export function cetakKuitansi(toko: ProfilToko, d: DataKuitansi): void {
+  cetakHtml(buildKuitansiHtml(toko, d));
+}
+
+function cetakHtml(html: string): void {
   const frame = document.createElement("iframe");
   frame.style.position = "fixed";
   frame.style.right = "0";
@@ -98,7 +163,7 @@ export function cetakStruk(toko: ProfilToko, d: DataStruk): void {
   const doc = frame.contentWindow?.document;
   if (!doc) return;
   doc.open();
-  doc.write(buildStrukHtml(toko, d));
+  doc.write(html);
   doc.close();
   frame.contentWindow?.focus();
   frame.contentWindow?.print();

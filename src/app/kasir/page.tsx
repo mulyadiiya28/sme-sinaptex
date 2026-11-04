@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { ArrowLeft, DoorOpen } from "lucide-react";
+import { ArrowLeft, DoorOpen, HandCoins } from "lucide-react";
 import { useProducts, useActiveShift } from "@/hooks/queries";
 import { useCart } from "@/lib/store/cart";
 import { useAuth } from "@/lib/store/auth";
@@ -11,6 +11,7 @@ import { Skeleton } from "@/components/skeleton";
 import { ProductCatalog } from "@/components/kasir/product-catalog";
 import { CartPanel } from "@/components/kasir/cart-panel";
 import { PaymentDialog } from "@/components/kasir/payment-dialog";
+import { PenerimaanPiutangDialog } from "@/components/kasir/penerimaan-piutang-dialog";
 import { ProfilSync } from "@/components/profil-sync";
 
 export default function KasirPage() {
@@ -29,6 +30,7 @@ function KasirScreen() {
   const reset = useCart((s) => s.reset);
   const lines = useCart((s) => s.lines);
   const [bayar, setBayar] = useState(false);
+  const [terimaPiutang, setTerimaPiutang] = useState(false);
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
@@ -40,7 +42,14 @@ function KasirScreen() {
         e.preventDefault();
         setBayar(true);
       }
-      if (e.key === "Escape") setBayar(false);
+      if (e.key === "F6") {
+        e.preventDefault();
+        setTerimaPiutang(true);
+      }
+      if (e.key === "Escape") {
+        setBayar(false);
+        setTerimaPiutang(false);
+      }
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -100,7 +109,17 @@ function KasirScreen() {
             </p>
           </div>
         </div>
-        {shiftMilikLain ? (
+        <div className="flex items-center gap-3">
+          <button
+            type="button"
+            onClick={() => setTerimaPiutang(true)}
+            className="btn-secondary inline-flex items-center gap-2 px-3 py-2 text-xs"
+            title="Terima pelunasan piutang (F6)"
+          >
+            <HandCoins className="size-4" aria-hidden />
+            Terima Piutang
+          </button>
+          {shiftMilikLain ? (
           <span
             className="rounded-full bg-amber-50 px-3 py-1.5 text-xs font-semibold text-amber-700"
             title="Shift ini dibuka oleh kasir lain. Transaksi tetap tercatat atas nama Anda."
@@ -112,6 +131,7 @@ function KasirScreen() {
             Shift aktif
           </span>
         )}
+        </div>
       </header>
 
       <div className="flex min-h-0 flex-1">
@@ -134,6 +154,14 @@ function KasirScreen() {
           kasir={operator}
           shiftId={shift.data.id}
           onClose={tutupDialog}
+        />
+      )}
+
+      {terimaPiutang && (
+        <PenerimaanPiutangDialog
+          kasir={operator}
+          shiftId={shift.data.id}
+          onClose={() => setTerimaPiutang(false)}
         />
       )}
     </div>
