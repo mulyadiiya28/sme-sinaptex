@@ -346,6 +346,19 @@ function PanelHutang() {
   const hutang = (pembelian.data ?? []).filter((p) => p.terbayar < p.total);
   const totalHutang = hutang.reduce((s, p) => s + (p.total - p.terbayar), 0);
 
+  // Hutang per pemasok: faktur lama (sebelum master pemasok) tidak punya
+  // supplierId, jadi dikelompokkan lewat namanya; kalau ada id, id yang dipakai
+  // supaya dua pemasok bernama mirip tidak tergabung.
+  const perPemasok = new Map<string, { kunci: string; nama: string; sisa: number; jumlah: number }>();
+  for (const p of hutang) {
+    const kunci = p.supplierId ?? `nama:${p.pemasok}`;
+    const isi = perPemasok.get(kunci) ?? { kunci, nama: p.pemasok, sisa: 0, jumlah: 0 };
+    isi.sisa += p.total - p.terbayar;
+    isi.jumlah += 1;
+    perPemasok.set(kunci, isi);
+  }
+  const ringkasanPemasok = [...perPemasok.values()].sort((a, b) => b.sisa - a.sisa);
+
   const columns: Column<Pembelian>[] = [
     { key: "nomor", header: "Nomor", render: (r) => <span className="font-semibold text-brand">{r.nomor}</span> },
     { key: "pemasok", header: "Pemasok", render: (r) => <span className="font-medium">{r.pemasok}</span> },
@@ -379,6 +392,25 @@ function PanelHutang() {
               <AgingKpi label="31–60 hari" value={aging.data.days60} tone="orange" />
               <AgingKpi label="61–90 hari" value={aging.data.days90} tone="rose" />
               <AgingKpi label="> 90 hari" value={aging.data.over90} tone="red" />
+            </div>
+          )}
+          {ringkasanPemasok.length > 0 && (
+            <div className="mb-4 rounded-xl border border-line/70 bg-slate-50/60 p-3">
+              <p className="text-xs font-semibold text-ink">Hutang per pemasok</p>
+              <ul className="mt-2 space-y-1.5">
+                {ringkasanPemasok.map((p) => (
+                  <li
+                    key={p.kunci}
+                    className="flex items-center justify-between gap-3 border-b border-line/50 pb-1.5 text-xs last:border-0 last:pb-0"
+                  >
+                    <span className="text-ink">
+                      {p.nama || "Tanpa nama"}
+                      <span className="ml-1.5 text-muted">({p.jumlah} faktur)</span>
+                    </span>
+                    <MoneyDisplay value={p.sisa} className="font-semibold text-rose-600 tabular-nums" />
+                  </li>
+                ))}
+              </ul>
             </div>
           )}
           <DataTable columns={columns} rows={hutang} rowKey={(r) => r.id} loading={pembelian.isLoading} empty="Tidak ada hutang ke pemasok." />
