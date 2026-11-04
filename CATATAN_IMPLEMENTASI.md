@@ -1,13 +1,13 @@
 # Catatan Implementasi Backend & Frontend
 
-> Status per **2026-10-31**. Dokumen ini menggantikan rencana bertahap yang
+> Status per **2026-11-04**. Dokumen ini menggantikan rencana bertahap yang
 > sudah usang (semua Phase 1–3 sudah ada di engine maupun di POS).
 
 ## Ringkasan Status
 
 ### Backend (acc-sinaptex, nested repo)
-**Status:** semua endpoint yang dibutuhkan POS sudah ada; build 0 warning, tes 1188 lulus
-(485 unit + 703 integration).
+**Status:** semua endpoint yang dibutuhkan POS sudah ada; build 0 warning, tes 1199 lulus
+(485 unit + 714 integration).
 
 - ✅ **Sudah ada:** Auth (JWT + refresh), Products (+import, deactivate), Customers (+import),
   Shifts, Sales, Purchases, Returns (sales & purchases), Journal, Expenses, Audit log,
@@ -20,14 +20,16 @@
 **Status:** mode live terpasang untuk seluruh alur operasional; `API_MODE` default masih `mock`.
 
 - ✅ **Terhubung ke engine:** Auth, Produk (CRUD + impor + penyesuaian stok), Pelanggan (+ impor),
-  Shift, Checkout, Riwayat penjualan, Retur, Void, Pembelian, Piutang/Hutang (pelunasan),
-  Konfirmasi QRIS, Biaya, Jurnal, Neraca saldo (saldo awal/debit/kredit/saldo berjalan),
-  Laba-rugi, User management, Audit log, Profil toko (company profile).
-- 🟡 **Belum dipakai frontend (endpoint-nya sudah ada):** Analytics (13 endpoint), Fiscal period
-  (close/lock/reopen), Approval rules + submit/approve transaksi, Cash transfer, Inter-branch
-  transfer, Loans, Payments (advance/refund), Purchase return, Supplier CRUD (hanya GET),
-  Email settings, Backup/restore, RBAC (roles/permissions/user-roles), QR & faktur PDF engine,
-  Cash-account movements, Branch/Warehouse management, Product unit.
+  Shift, Checkout, Riwayat penjualan, Retur, Void, Pembelian (+ master pemasok), Piutang/Hutang
+  (pelunasan, termasuk dari layar Kasir), Konfirmasi QRIS, Biaya, Jurnal, Neraca saldo (saldo
+  awal/debit/kredit/saldo berjalan), Laba-rugi, User management, Audit log, Profil toko (company
+  profile + logo), Kebijakan operasional, Periode fiskal, Aturan approval, Umur piutang/hutang +
+  rekonsiliasi, Analitik (kesehatan usaha, profitabilitas, perputaran, likuiditas, solvabilitas,
+  siklus kas, performa produk).
+- 🟡 **Belum dipakai frontend (endpoint-nya sudah ada):** Cash transfer, Inter-branch transfer,
+  Loans, Payments (advance/refund), Purchase return, Email settings, Backup/restore,
+  RBAC (roles/permissions/user-roles), QR & faktur PDF engine, Cash-account movements,
+  Branch/Warehouse management, Product unit.
 
 ## Hasil Audit Mock/Stub (2026-10-31)
 
@@ -85,9 +87,10 @@ Ditemukan dan **sudah diperbaiki**:
 
 Masih jadi gap (tercatat, belum dikerjakan):
 
-- Live: pembayaran campuran, overpayment (kembalian), dan penjualan kredit tanpa uang muka ditolak engine.
+- Live: pembayaran campuran dan overpayment (kembalian) ditolak engine.
 - Live: diskon dilebur ke `unitPrice` → riwayat/struk live tidak menampilkan diskon.
-- Live: pembelian mengirim `supplierId: null` → hutang belum tertelusur per pemasok.
+- Live: master pemasok hanya bisa dibuat/dinonaktifkan; kode & nama tidak bisa diubah (engine
+  sengaja `init`-only agar faktur lama tetap menunjuk nama yang benar).
 - Live: satu shift aktif per tenant (bukan per kasir).
 - Live: QRIS belum jadi konsep engine → konfirmasi digital hanya jalan bila engine punya
   pembayaran tertunda untuk penjualan itu.
@@ -96,6 +99,48 @@ Masih jadi gap (tercatat, belum dikerjakan):
   perputaran persediaan, penagihan piutang, siklus kas) hanya ada di live — mode mock sengaja
   tidak mengarangnya.
 - Mock: uang memakai `number` JS, pembulatan bisa berbeda dari engine.
+
+## Pembaruan 4 Nov 2026 (sinkronisasi `origin/main`)
+
+Repo POS dan engine sama-sama tertinggal dari `origin/main`; keduanya sudah di-merge (bukan
+reset), jadi pekerjaan lokal (identitas kasir, neraca saldo 4 kolom, logo, kesehatan usaha)
+tetap utuh dan bertemu fitur baru upstream.
+
+**Dari upstream (POS):** halaman master pemasok (`/supplier`), dropdown pemasok di form pembelian
+(`supplierId` wajib), halaman aturan approval, periode fiskal & kebijakan operasional di
+Pengaturan, analisis keuangan + gerakan harian di Laporan, umur piutang/hutang + rekonsiliasi di
+Keuangan, dan jalur **kredit penuh** (pembayaran 0) untuk kasir.
+
+**Dari upstream (engine):** `c6160ce` (cash batch pembayaran 0), `09b89e2` (kebijakan operasional
+per tenant + migrasi `AddOperationalPolicy`), `4e7533c` (validasi `productId`/`warehouseId` di
+penyesuaian stok).
+
+**Perbaikan yang dikerjakan saat merge:**
+
+1. **Pemetaan profil toko live salah di upstream** — engine mengirim `companyName`/`address`/
+   `taxNumber`, sedangkan kode upstream membaca `nama`/`alamat`/`npwp`, jadi seluruh profil
+   terbaca kosong. Sekarang `liveCompanyProfileGet/Put` memetakan lewat `BtProfil` + `petakanProfil`.
+2. **Mock supplier upstream hanya stub** — `list()` selalu `[]` padahal form pembelian mewajibkan
+   pemasok, sehingga pembelian **tidak bisa dibuat sama sekali di mode mock**. Sekarang mock punya
+   daftar pemasok in-memory (seed "Toko Grosir Sembako") + buat/nonaktifkan dengan validasi kode unik.
+3. **`liveSupplierList`/`livePembelianList` tidak memakai `includeInactive`** — pemasok yang
+   dinonaktifkan hilang dari master dan nama pada faktur lama jatuh ke GUID. Sekarang keduanya
+   memakai `?includeInactive=true`, dan dropdown pembelian menyaring yang aktif saja.
+4. **Ringkasan hutang per pemasok** ditambahkan di tab Hutang halaman Keuangan (dikelompokkan
+   lewat `supplierId`, fallback nama untuk faktur lama).
+
+**Fitur baru: penerimaan piutang dari layar Kasir.** Sebelumnya kasir tidak punya jalan menagih
+piutang (menu Keuangan owner-only) dan kasir tidak bisa membuka halaman itu. Sekarang ada tombol
+**Terima Piutang** (shortcut **F6**) di layar POS: daftar faktur bersisa piutang + pencarian,
+nominal (default = sisa), metode tunai/transfer, lalu kuitansi yang bisa dicetak. Engine tidak
+meminta approval terpisah untuk `POST /api/sales/{id}/payments`, jadi kasir level 2 boleh menagih.
+
+**Uji live 4 Nov 2026 (setelah merge):** buat pemasok → nonaktifkan → daftar default menyembunyikan
+yang nonaktif sementara `includeInactive=true` tetap menampilkannya → **pembelian 100% hutang**
+(`paymentAmount: 0`, `supplierId` terisi) diterima 201 (`PURCHASE-00002`) dan muncul di AP ageing
+Rp30.000 dengan `counterpartyId` = pemasok → kasir level 2 membuat **penjualan kredit penuh**
+(`paymentAmount: 0`, `SALE-00008`, outstanding Rp50.000) → kasir menagih Rp20.000 → sisa piutang
+Rp30.000 di AR ageing.
 
 ## Verifikasi
 

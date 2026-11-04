@@ -53,7 +53,8 @@ src/
     login/page.tsx       → login (no shell; auto-buka shift untuk role kasir)
     kasir/page.tsx       → full-screen POS, intentionally outside (app) group
     (app)/               → AppShell group + AuthGuard: dashboard (/), produk, riwayat, shift,
-                           pembelian, keuangan, akuntansi, laporan, pengaturan
+                           pembelian, supplier, keuangan, akuntansi, laporan,
+                           approval-rules, pengaturan
   components/            → shared UI (app-shell, sidebar, data-table, money-display,
                            status-badge, form-field, page-header, auth-guard) + kasir/ + produk/
   hooks/queries.ts       → ALL TanStack Query hooks (queries + mutation groups)
@@ -97,7 +98,11 @@ daftar jurnal (`GET /api/journal`), biaya (`GET/POST /api/expenses`), pelunasan 
 (`POST /api/sales/{id}/payments`), pelunasan hutang (`POST /api/purchases/{id}/payments`),
 penyesuaian stok (`POST /api/inventory/adjustments`), konfirmasi QRIS
 (`POST /api/sales/{id}/confirm-payment`), buat user kasir (`POST /api/users/direct`),
-daftar/ubah/hapus user (`GET/PUT/DELETE /api/users`), jejak audit (`GET /api/audit-log`).
+daftar/ubah/hapus user (`GET/PUT/DELETE /api/users`), jejak audit (`GET /api/audit-log`),
+master pemasok (`GET/POST /api/suppliers`, `POST /api/suppliers/{id}/deactivate`),
+kebijakan operasional (`GET/PUT /api/settings/operational-policy`), periode fiskal
+(`/api/fiscal-periods`), umur piutang/hutang + rekonsiliasi (`/api/reports/ar-ap/*`),
+analitik kesehatan & rasio (`/api/analytics/*`).
 
 Tidak ada lagi jalur 501: `engineBelumAda` sudah dihapus. Bila akun kas untuk kode akun yang dipakai
 checkout/pelunasan/biaya belum ada, POS membuatnya lewat `POST /api/cash-accounts`.
@@ -109,6 +114,14 @@ Perilaku live yang menyimpang dari mock:
   ditulis tanpa cash movement/settlement/allocation, piutang tetap terbuka.
 - `livePembelianBuat` mendukung `metode: "hutang"` (pembelian 100% hutang) sejak engine commit
   `c6160ce`: dokumen ditulis tanpa cash account, hutang tetap terbuka. Pembelian DP sebagian juga didukung.
+  Faktur **wajib** menunjuk master pemasok (`supplierId`), supaya hutang tertelusur per pemasok di
+  laporan AP ageing (`counterpartyId`).
+- Master pemasok sengaja hanya list/create/nonaktifkan (engine tidak menyediakan update kode/nama) —
+  menjaga integritas nama pemasok pada faktur lama. `liveSupplierList` memakai
+  `?includeInactive=true` supaya pemasok nonaktif tetap muncul di master dan namanya masih bisa
+  di-resolve pada faktur lama; dropdown pembelian menyaring yang aktif saja.
+- Kasir (authority level 2) boleh menerima pelunasan piutang langsung dari layar Kasir
+  (tombol "Terima Piutang", F6) — engine tidak meminta approval terpisah (`approvalRequired: false`).
 - `liveVoidTransaksi` memanggil void engine; bila engine menolak 409 (POSTED tidak boleh di-void),
   POS jatuh ke retur penuh (`liveRetur`).
 - `liveBuatUser`/`liveUbahUser` memakai `authorityLevel` engine (99 = pemilik, 2 = kasir); peran POS
@@ -243,8 +256,8 @@ Batasan yang masih ada:
 
 - Live: pembayaran campuran + overpayment (kembalian) ditolak engine; QRIS belum jadi konsep engine.
 - Live: diskon dilebur ke `unitPrice`, jadi riwayat/struk live tidak menampilkan diskon.
-- Live: pembelian belum memakai master supplier (`supplierId` dikirim `null`), jadi hutang belum
-  tertelusur per pemasok.
+- Live: master pemasok bisa dibuat & dinonaktifkan, tapi kode/nama tidak bisa diubah (engine sengaja
+  `init`-only). Faktur lama tanpa `supplierId` (sebelum master dipakai) dikelompokkan lewat namanya.
 - Live: satu shift aktif per tenant (bukan per kasir) — POS menandai "shift dibuka oleh X" kalau
   kasir yang login berbeda dengan pembuka shift.
 - Mock: uang memakai `number` JS, bukan decimal — pembulatan bisa berbeda dari engine.
