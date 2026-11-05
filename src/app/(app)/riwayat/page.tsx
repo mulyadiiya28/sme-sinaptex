@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Download, Eye, RotateCcw, Search, XCircle } from "lucide-react";
+import { Download, Eye, RotateCcw, Search, XCircle, CheckCircle2 } from "lucide-react";
 import type { ReturInput, ReturPenjualan, TransaksiRiwayat } from "@/lib/api/types";
 import { DataTable, type Column } from "@/components/data-table";
 import { FormField } from "@/components/form-field";
@@ -43,6 +43,7 @@ export default function RiwayatPage() {
   const [detail, setDetail] = useState<TransaksiRiwayat | null>(null);
   const [targetVoid, setTargetVoid] = useState<TransaksiRiwayat | null>(null);
   const [targetRetur, setTargetRetur] = useState<TransaksiRiwayat | null>(null);
+  const [targetKonfirmasi, setTargetKonfirmasi] = useState<TransaksiRiwayat | null>(null);
 
   const filtered = useMemo(() => {
     const q = keyword.trim().toLowerCase();
@@ -110,6 +111,16 @@ export default function RiwayatPage() {
         </button>
         {user?.role === "pemilik" && r.status !== "dibatalkan" && (
           <>
+            {r.status === "menunggu_pembayaran" && (r.pembayaran ?? []).some((p) => p.metode === "qris") && (
+              <button
+                type="button"
+                onClick={() => setTargetKonfirmasi(r)}
+                title="Konfirmasi pembayaran digital"
+                className="flex items-center gap-1 rounded-lg border border-line bg-white px-2.5 py-1.5 text-xs font-semibold text-amber-600 transition-colors hover:bg-amber-50"
+              >
+                <CheckCircle2 className="size-3.5" aria-hidden /> Konfirmasi
+              </button>
+            )}
             <button
               type="button"
               onClick={() => setTargetRetur(r)}
@@ -211,6 +222,9 @@ export default function RiwayatPage() {
         />
       )}
       {targetRetur && <ReturDialog t={targetRetur} onClose={() => setTargetRetur(null)} />}
+      {targetKonfirmasi && (
+        <KonfirmasiDigitalDialog t={targetKonfirmasi} onClose={() => setTargetKonfirmasi(null)} />
+      )}
     </div>
   );
 }
@@ -346,6 +360,63 @@ function DetailDialog({ t, onClose }: { t: TransaksiRiwayat; onClose: () => void
           </button>
           <button type="button" onClick={onClose} className="btn-primary flex-1">Tutup</button>
         </div>
+      </div>
+    </div>
+  );
+}
+
+function KonfirmasiDigitalDialog({ t, onClose }: { t: TransaksiRiwayat; onClose: () => void }) {
+  const { konfirmasiDigital } = useTransaksiMutations();
+  const user = useAuth((s) => s.user);
+  const [error, setError] = useState<string | null>(null);
+
+  const totalDigital =
+    (t.pembayaran ?? [])
+      .filter((p) => p.metode === "qris")
+      .reduce((s, p) => s + p.nominal, 0) || 0;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink/50 p-4 backdrop-blur-sm" onClick={onClose}>
+      <div className="panel w-full max-w-sm p-7" onClick={(e) => e.stopPropagation()}>
+        <h2 className="flex items-center gap-2 font-black text-brand">
+          <CheckCircle2 className="size-5 text-amber-500" aria-hidden /> Konfirmasi Pembayaran Digital
+        </h2>
+        <p className="mt-1 text-xs text-muted">
+          Konfirmasi bahwa dana digital untuk transaksi <span className="font-bold text-ink">{t.nomor}</span> sudah
+          diterima.
+        </p>
+
+        <div className="mt-4 flex items-center justify-between rounded-xl bg-amber-50 px-3 py-2.5 text-sm">
+          <span className="font-semibold text-amber-700">Total QRIS</span>
+          <MoneyDisplay value={totalDigital} className="font-black text-amber-700" />
+        </div>
+        <p className="mt-2 text-xs text-muted">
+          Setelah dikonfirmasi, dana berpindah dari penampung gateway ke rekening bank dan transaksi menjadi
+          &ldquo;Lunas&rdquo;.
+        </p>
+
+        <form
+          className="mt-4 space-y-3"
+          onSubmit={(e) => {
+            e.preventDefault();
+            setError(null);
+            if (!user) return setError("Sesi tidak ditemukan.");
+            konfirmasiDigital.mutate(
+              { nomor: t.nomor, user },
+              { onSuccess: () => onClose(), onError: (err) => setError(String(err)) },
+            );
+          }}
+        >
+          {error && <p className="rounded-xl bg-rose-50 px-3 py-2 text-xs text-rose-700">{error}</p>}
+          <div className="flex gap-2">
+            <button type="submit" disabled={konfirmasiDigital.isPending} className="btn-primary flex-1 disabled:opacity-40">
+              {konfirmasiDigital.isPending ? "Memproses..." : "Ya, Konfirmasi"}
+            </button>
+            <button type="button" onClick={onClose} className="btn-secondary">
+              Batal
+            </button>
+          </div>
+        </form>
       </div>
     </div>
   );
