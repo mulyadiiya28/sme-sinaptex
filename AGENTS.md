@@ -170,6 +170,15 @@ Perilaku live yang menyimpang dari mock:
   lupa menerjemahkan nomor.
 - `liveReturRiwayat` mengambil detail tiap retur (halaman dibatasi 20 baris) untuk mengisi item dan
   alasan; daftar retur dari engine hanya memuat angka.
+- Batch yang ditahan aturan persetujuan tampil di halaman **Persetujuan** (`/persetujuan`, owner):
+  antrean diambil dari `GET /api/transactions?status=SUBMITTED`, tiap kaki di-approve lewat
+  `POST /api/transactions/{id}/approve`, lalu batch di-post lewat `POST /api/cash-batches/{batchId}/post`.
+  Status penjualan yang masih `SUBMITTED` di Riwayat berstatus `menunggu_persetujuan`.
+- Konfirmasi QRIS dipicu dari Riwayat (tombol **Konfirmasi**, owner) saat transaksi berstatus
+  `menunggu_pembayaran` dan punya pembayaran `qris`. Di mock Confirmation memindahkan dana dari
+  `Penampung gateway` ke `Bank` dan menutup status jadi `lunas`. Di live rute engine
+  `POST /api/sales/{id}/confirm-payment` mencari kaki `CustomerPayment` lewat **BatchId transaksi
+  dokumen** — bukan `sale.BusinessTransactionId`, yang menunjuk baris dokumen itu sendiri.
 
 ## Conventions
 

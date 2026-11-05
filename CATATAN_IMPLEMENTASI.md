@@ -142,6 +142,42 @@ Rp30.000 dengan `counterpartyId` = pemasok → kasir level 2 membuat **penjualan
 (`paymentAmount: 0`, `SALE-00008`, outstanding Rp50.000) → kasir menagih Rp20.000 → sisa piutang
 Rp30.000 di AR ageing.
 
+## Pembaruan 5 Nov 2026 (sinkronisasi `origin/main` kedua)
+
+Repo POS dan engine sama-sama tertinggal 15 commit dari `origin/main`; keduanya sudah di-pull
+(ff-only, tanpa merge), jadi pekerjaan lokal tetap utuh.
+
+**Dari upstream (POS):** halaman **Persetujuan** (`/persetujuan`, owner) untuk menyelesaikan batch
+yang ditahan aturan persetujuan — antrean dari `GET /api/transactions?status=SUBMITTED`, approve
+tiap kaki, lalu `POST /api/cash-batches/{batchId}/post`. Status `menunggu_persetujuan` baru di
+`CheckoutResult`/`TransaksiRiwayat`. Plus: pencarian global, tombol notifikasi, panel kesehatan
+usaha, ringkasan hutang per pemasok, penerimaan piutang dari layar Kasir (F6), dan mock Movements
+Harian + periode fiskal + approval in-memory.
+
+**Dari upstream (engine):** `ea67af6` — `GET /api/transactions?status=&type=` untuk antrean
+persetujuan, dan pemilik boleh menyetujui transaksinya sendiri kalau transaksi itu **tidak**
+ber aturan (audit `APPROVAL_BYPASS`). Plus `GET /api/users` sekarang membawa `authorityLevel`, jadi
+peran pengguna dibaca dari engine dan bukan ditebak di POS.
+
+**Perbaikan yang dikerjakan di atas upstream:**
+
+1. **Engine — `confirm-payment` mencari kaki pembayaran dengan BatchId yang salah.** Rute
+   `POST /api/sales/{id}/confirm-payment` mencocokkan `t.BatchId == sale.BusinessTransactionId`,
+   padahal `BatchId` adalah GUID batch dan `sale.BusinessTransactionId` adalah id baris dokumen —
+   dua id berbeda, jadi lookup tidak pernah cocok dan endpoint selalu menjawab "no pending
+   payment". Sekarang kaki `CustomerPayment` dicari lewat BatchId baris dokumen.
+2. **POS — konfirmasi QRIS mock tidak bisa dipicu dari UI.** Mutation `konfirmasiDigital` dan
+   `mockDb.konfirmasiDigital` sudah ada, tapi tidak ada tombol yang memanggilnya, jadi dana QRIS
+   yang tertahan di `Penampung gateway` tidak pernah bisa dipindah ke `Bank`. Sekarang Riwayat punya
+   tombol **Konfirmasi** (owner) untuk transaksi berstatus `menunggu_pembayaran` dengan pembayaran
+   `qris`.
+
+**Uji kontrak (engine, `ConfirmPaymentApiTests` — 4 test):** penjualan kas yang tertahan →
+`confirm-payment` **menemukan** kaki pembayarannya (sebelum fix: 404 "no pending payment");
+penjualan kredit tanpa kaki pembayaran → 404 "no pending payment"; tanpa `Idempotency-Key` → 400;
+approve kedua kaki + post batch → penjualan ter-post (`SALE-…`, `approvalRequired: false`). Test
+pertama sudah dibuktikan menangkap bug: dengan lookup lama test itu gagal.
+
 ## Verifikasi
 
 - Backend: `dotnet build AccountingEngine.slnx` (0 warning) + `dotnet test` → **485 unit + 714 integration** lulus.

@@ -555,7 +555,10 @@ Alur utuh yang bisa diuji: buka shift → kasir (F2 cari / Enter tambah / F4 bay
 ### Caveat mock terverifikasi (bug, bukan fitur)
 
 - **Live mode** menolak pembayaran campuran (tunai + non-tunai) dan overpayment; QRIS belum jadi
-  konsep engine (konfirmasi digital = `engineBelumAda`).
+  konsep engine, jadi penjualan digital di live masuk sebagai movement bank langsung — tidak ada
+  status "menunggu konfirmasi" seperti di mock. Konfirmasi QRIS di live tetap tersedia lewat
+  `POST /api/sales/{id}/confirm-payment`, tetapi hanya berlaku untuk batch yang ditahan aturan
+  persetujuan (yang punya kaki pembayaran tertunda).
 
 ### Yang sudah diperbaiki pada mock (2026-10-28)
 
@@ -574,6 +577,21 @@ Alur utuh yang bisa diuji: buka shift → kasir (F2 cari / Enter tambah / F4 bay
   item yang diretur, diskon transaksi ikut di-proporsi, dan nominal refund sama dengan yang dibayar
   pelanggan (neto + pajak).
 - Kode mati `src/lib/api/calc.ts` dihapus.
+
+### Yang sudah diperbaiki pada live + engine (2026-11-05)
+
+- **Engine — `confirm-payment` mencari kaki pembayaran dengan BatchId yang salah.** Rute
+  `POST /api/sales/{id}/confirm-payment` mencocokkan `t.BatchId == sale.BusinessTransactionId`, padahal
+  `BatchId` adalah GUID batch dan `sale.BusinessTransactionId` adalah id baris dokumen — dua id berbeda,
+  jadi lookup tidak pernah cocok dan endpoint selalu menjawab "no pending payment". Sekarang kaki
+  `CustomerPayment` dicari lewat BatchId baris dokumen. Dipin dengan `ConfirmPaymentApiTests`
+  (4 test: kaki ketemu, kredit tanpa kaki → 404, tanpa idempotency key → 400, approve 2 kaki + post
+  batch → penjualan ter-post).
+- **POS — alur konfirmasi QRIS mock bisa dipicu dari UI.** Mutation `konfirmasiDigital` dan
+  `mockDb.konfirmasiDigital` sudah ada, tapi tidak ada tombol yang memanggilnya, jadi dana QRIS yang
+  tertahan di `Penampung gateway` tidak pernah bisa dipindahkan ke `Bank`. Sekarang Riwayat punya
+  tombol **Konfirmasi** (owner) untuk transaksi berstatus `menunggu_pembayaran` dengan pembayaran
+  `qris`, plus dialog konfirmasi.
 
 ### Cara menjalankan
 
