@@ -313,6 +313,8 @@ export type AuditEntry = {
   detail: string;
 };
 
+export type PkpStatus = "NON_PKP" | "PKP";
+
 export type ProfilToko = {
   nama: string;
   alamat: string;
@@ -325,6 +327,9 @@ export type ProfilToko = {
   zonaWaktu: string;
   footerStruk: string;
   pajakPersen?: number;
+  pkpStatus?: PkpStatus;
+  /** Tarif pajak efektif: 11 (PKP/PPN 11%) atau 0.5 (Non-PKP/PPh Final 0.5%) */
+  pajakTarifEfektif?: number;
 };
 
 /// <summary>Profil toko sesuai kontrak engine (`GET/PUT /api/settings/company-profile`).</summary>
