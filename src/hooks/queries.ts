@@ -6,6 +6,7 @@ import type {
   CheckoutPayload,
   CreateApprovalRuleRequest,
   CreateSupplierRequest,
+  Gudang,
   ImporPelangganBaris,
   ImporProdukBaris,
   ImporSaldoAwalBaris,
@@ -19,6 +20,9 @@ import type {
   ReturInput,
   ShiftBukaInput,
   ShiftMutasiInput,
+  StockAdjustmentInput,
+  StockOpnameInput,
+  StockTransferInput,
   Supplier,
   User,
 } from "@/lib/api/types";
@@ -528,6 +532,100 @@ export function useAsetTetapMutations() {
   });
 
   return { create, update, remove, hitungPenyusutan, postingPenyusutan, mutasi, laporan };
+}
+
+export function useInventarisRingkasan() {
+  return useQuery({ queryKey: ["inventaris-ringkasan"], queryFn: () => api.inventaris.ringkasan() });
+}
+
+export function useGudangList() {
+  return useQuery({ queryKey: ["gudang"], queryFn: () => api.inventaris.gudang() });
+}
+
+export function useStokGudang(gudangId?: string) {
+  return useQuery({
+    queryKey: ["inventaris-stok", gudangId ?? "semua"],
+    queryFn: () => api.inventaris.stok(gudangId),
+  });
+}
+
+export function useMutasiStok(productId: string, gudangId?: string) {
+  return useQuery({
+    queryKey: ["inventaris-mutasi", productId, gudangId ?? "semua"],
+    queryFn: () => api.inventaris.mutasi(productId, gudangId),
+    enabled: productId !== "",
+  });
+}
+
+export function useOpnameList(enabled = true) {
+  return useQuery({ queryKey: ["stock-opname"], queryFn: () => api.inventaris.opname(), enabled });
+}
+
+export function useStokRendah() {
+  return useQuery({ queryKey: ["inventaris-stok-rendah"], queryFn: () => api.inventaris.stokRendah() });
+}
+
+export function useInventarisMutations() {
+  const qc = useQueryClient();
+  const invalidate = () => {
+    qc.invalidateQueries({ queryKey: ["gudang"] });
+    qc.invalidateQueries({ queryKey: ["inventaris-stok"] });
+    qc.invalidateQueries({ queryKey: ["inventaris-ringkasan"] });
+    qc.invalidateQueries({ queryKey: ["inventaris-stok-rendah"] });
+    qc.invalidateQueries({ queryKey: ["inventaris-mutasi"] });
+    qc.invalidateQueries({ queryKey: ["stock-opname"] });
+    qc.invalidateQueries({ queryKey: ["products"] });
+    qc.invalidateQueries({ queryKey: ["jurnal"] });
+    qc.invalidateQueries({ queryKey: ["akun"] });
+    qc.invalidateQueries({ queryKey: ["laba-rugi"] });
+    qc.invalidateQueries({ queryKey: ["audit"] });
+  };
+
+  const buatGudang = useMutation({
+    mutationFn: (args: { input: Omit<Gudang, "id" | "createdAt" | "updatedAt">; user: User }) =>
+      api.inventaris.buatGudang(args.input, args.user),
+    onSuccess: invalidate,
+  });
+  const nonaktifkanGudang = useMutation({
+    mutationFn: (args: { id: string; user: User }) =>
+      api.inventaris.nonaktifkanGudang(args.id, args.user),
+    onSuccess: invalidate,
+  });
+  const penyesuaian = useMutation({
+    mutationFn: (args: { input: StockAdjustmentInput; user: User }) =>
+      api.inventaris.penyesuaian(args.input, args.user),
+    onSuccess: invalidate,
+  });
+  const transfer = useMutation({
+    mutationFn: (args: { input: StockTransferInput; user: User }) =>
+      api.inventaris.transfer(args.input, args.user),
+    onSuccess: invalidate,
+  });
+  const buatOpname = useMutation({
+    mutationFn: (args: { input: StockOpnameInput; user: User }) =>
+      api.inventaris.buatOpname(args.input, args.user),
+    onSuccess: invalidate,
+  });
+  const selesaikanOpname = useMutation({
+    mutationFn: (args: { id: string; user: User }) =>
+      api.inventaris.selesaikanOpname(args.id, args.user),
+    onSuccess: invalidate,
+  });
+  const batalkanOpname = useMutation({
+    mutationFn: (args: { id: string; user: User }) =>
+      api.inventaris.batalkanOpname(args.id, args.user),
+    onSuccess: invalidate,
+  });
+
+  return {
+    buatGudang,
+    nonaktifkanGudang,
+    penyesuaian,
+    transfer,
+    buatOpname,
+    selesaikanOpname,
+    batalkanOpname,
+  };
 }
 
 export function useTransaksiMutations() {

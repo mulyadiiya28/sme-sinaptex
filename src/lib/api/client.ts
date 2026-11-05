@@ -63,6 +63,15 @@ import type {
   PenyusutanItem,
   Reconciliation,
   Supplier,
+  Gudang,
+  InventorySummary,
+  InventoryValuation,
+  LowStockItem,
+  StockAdjustmentInput,
+  StockMovement,
+  StockOpname,
+  StockOpnameInput,
+  StockTransferInput,
 } from "@/lib/api/types";
 import { mockDb, produkBaruId } from "@/lib/api/mock/db";
 import { useToko } from "@/lib/store/toko";
@@ -108,6 +117,19 @@ import {
   livePostingPenyusutanBulanan,
   liveMutasiAset,
   liveLaporanAsetTetap,
+  liveDaftarGudang,
+  liveBuatGudang,
+  liveNonaktifkanGudang,
+  liveStokGudang,
+  liveRingkasanInventaris,
+  liveStokRendah,
+  liveMutasiStok,
+  livePenyesuaianStokGudang,
+  liveTransferStok,
+  liveDaftarOpname,
+  liveBuatOpname,
+  liveSelesaikanOpname,
+  liveBatalkanOpname,
   liveHapusUser,
   liveHealthSummary,
   liveImporPelanggan,
@@ -245,6 +267,7 @@ export const api = {
         throw new Error("Barcode sudah dipakai produk lain.");
       }
       mockDb.products[idx] = { ...p, id };
+      mockDb.setStokTotal(id, p.stok);
       return structuredClone(mockDb.products[idx]);
     },
     deleteProduct: async (id: string): Promise<void> => {
@@ -317,6 +340,74 @@ export const api = {
       if (API_MODE === "live") return livePelanggan();
       await delay(120);
       return mockDb.daftarPelanggan();
+    },
+  },
+
+  inventaris: {
+    gudang: async (): Promise<Gudang[]> => {
+      if (API_MODE === "live") return liveDaftarGudang();
+      await delay(120);
+      return structuredClone(mockDb.daftarGudang());
+    },
+    buatGudang: async (input: Omit<Gudang, "id" | "createdAt" | "updatedAt">, user: User): Promise<Gudang> => {
+      if (API_MODE === "live") return liveBuatGudang(input);
+      await delay(250);
+      return mockDb.buatGudang(input, user);
+    },
+    nonaktifkanGudang: async (id: string, user: User): Promise<void> => {
+      if (API_MODE === "live") return liveNonaktifkanGudang(id);
+      await delay(200);
+      mockDb.hapusGudang(id, user);
+    },
+    stok: async (gudangId?: string): Promise<InventoryValuation> => {
+      if (API_MODE === "live") return liveStokGudang(gudangId);
+      await delay(150);
+      return mockDb.nilaiPersediaan(gudangId);
+    },
+    ringkasan: async (): Promise<InventorySummary> => {
+      if (API_MODE === "live") return liveRingkasanInventaris();
+      await delay(150);
+      return mockDb.inventorySummary();
+    },
+    stokRendah: async (): Promise<LowStockItem[]> => {
+      if (API_MODE === "live") return liveStokRendah();
+      await delay(120);
+      return structuredClone(mockDb.lowStock());
+    },
+    mutasi: async (productId: string, gudangId?: string): Promise<StockMovement[]> => {
+      if (API_MODE === "live") return liveMutasiStok(productId, gudangId);
+      await delay(120);
+      return structuredClone(mockDb.riwayatMutasi(productId, gudangId));
+    },
+    penyesuaian: async (input: StockAdjustmentInput, user: User): Promise<StockMovement> => {
+      if (API_MODE === "live") return livePenyesuaianStokGudang(input, user);
+      await delay(300);
+      return mockDb.penyesuaianStokGudang(input, user);
+    },
+    transfer: async (input: StockTransferInput, user: User): Promise<{ keluar: StockMovement; masuk: StockMovement }> => {
+      if (API_MODE === "live") return liveTransferStok(input, user);
+      await delay(300);
+      return mockDb.transferStok(input, user);
+    },
+    opname: async (): Promise<StockOpname[]> => {
+      if (API_MODE === "live") return liveDaftarOpname();
+      await delay(120);
+      return structuredClone(mockDb.daftarOpname());
+    },
+    buatOpname: async (input: StockOpnameInput, user: User): Promise<StockOpname> => {
+      if (API_MODE === "live") return liveBuatOpname(input, user);
+      await delay(300);
+      return mockDb.buatOpname(input, user);
+    },
+    selesaikanOpname: async (id: string, user: User): Promise<StockOpname> => {
+      if (API_MODE === "live") return liveSelesaikanOpname(id, user);
+      await delay(350);
+      return mockDb.selesaikanOpname(id, user);
+    },
+    batalkanOpname: async (id: string, user: User): Promise<StockOpname> => {
+      if (API_MODE === "live") return liveBatalkanOpname(id, user);
+      await delay(200);
+      return mockDb.batalkanOpname(id, user);
     },
   },
 
@@ -853,10 +944,15 @@ export const api = {
 
       if (masukTunai > 0) mockDb.catatPenjualanTunai(masukTunai);
 
-      for (const l of payload.lines) {
-        const p = mockDb.products.find((x) => x.id === l.product.id);
-        if (p) p.stok = Math.max(0, p.stok - l.qty);
-      }
+      mockDb.catatPenjualanStok(
+        nomor,
+        payload.lines.map((l) => ({
+          productId: l.product.id,
+          qty: l.qty,
+          hargaBeli: l.product.hargaBeli,
+        })),
+        payload.kasir,
+      );
 
       return { nomor, total, kembalian, piutang: jadiPiutang ? sisa : 0, status };
     },

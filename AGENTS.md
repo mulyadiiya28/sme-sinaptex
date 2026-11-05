@@ -96,7 +96,9 @@ pembelian (`/api/purchases`), void (`POST /api/transactions/{id}/void`), retur
 impor saldo awal (`POST /api/accounts/opening-balances`, multipart), saldo akun + laba-rugi (dari `trial-balance`),
 daftar jurnal (`GET /api/journal`), biaya (`GET/POST /api/expenses`), pelunasan piutang
 (`POST /api/sales/{id}/payments`), pelunasan hutang (`POST /api/purchases/{id}/payments`),
-penyesuaian stok (`POST /api/inventory/adjustments`), konfirmasi QRIS
+penyesuaian stok (`POST /api/inventory/adjustments`), gudang (`GET/POST /api/warehouses`,
+`POST /api/warehouses/{id}/deactivate`), stok per gudang (`GET /api/inventory/stock?warehouseId=`),
+konfirmasi QRIS
 (`POST /api/sales/{id}/confirm-payment`), buat user kasir (`POST /api/users/direct`),
 daftar/ubah/hapus user (`GET/PUT/DELETE /api/users`), jejak audit (`GET /api/audit-log`),
 master pemasok (`GET/POST /api/suppliers`, `POST /api/suppliers/{id}/deactivate`),
@@ -106,8 +108,14 @@ analitik kesehatan & rasio (`/api/analytics/*`), dan persetujuan transaksi
 (`GET /api/transactions?status=SUBMITTED`, `POST /api/transactions/{id}/approve`,
 `POST /api/cash-batches/{batchId}/post`).
 
-Tidak ada lagi jalur 501: `engineBelumAda` sudah dihapus. Bila akun kas untuk kode akun yang dipakai
-checkout/pelunasan/biaya belum ada, POS membuatnya lewat `POST /api/cash-accounts`.
+Tidak ada lagi jalur 501 untuk alur yang sudah terhubung: `engineBelumAda` sudah dihapus. Bila akun kas
+untuk kode akun yang dipakai checkout/pelunasan/biaya belum ada, POS membuatnya lewat
+`POST /api/cash-accounts`.
+
+Pengecualian yang jujur: **modul Aset Tetap** dan sebagian **Inventaris** belum punya endpoint engine.
+`live.ts` melempar pesan eksplisit (status 501) untuk aset tetap, transfer stok, opname, dan kartu stok;
+yang sudah jalan di live adalah master gudang, stok per gudang, penyesuaian stok, dan ringkasan/nilai
+persediaan (nilai memakai harga beli master karena engine belum membuka harga rata-rata per gudang).
 
 Perilaku live yang menyimpang dari mock:
 
