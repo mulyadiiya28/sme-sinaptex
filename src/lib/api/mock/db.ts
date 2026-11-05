@@ -2,6 +2,8 @@ import type {
   AgedInvoice,
   AgingReport,
   ApprovalRule,
+  AsetTetap,
+  AsetTetapInput,
   Biaya,
   CreateApprovalRuleRequest,
   CreateFiscalPeriodRequest,
@@ -18,9 +20,12 @@ import type {
   JurnalBaris,
   JurnalEntry,
   LoginResult,
+  LaporanAsetTetap,
+  MutasiAset,
   Pelanggan,
   Pembelian,
   PembelianInput,
+  PenyusutanItem,
   Product,
   Reconciliation,
   ReturInput,
@@ -1223,6 +1228,177 @@ export const mockDb = {
         dominantDriver: "-",
       },
     };
+  },
+
+  // ===== ASET TETAP (FIXED ASSETS) =====
+  asetTetap: [] as AsetTetap[],
+
+  daftarAsetTetap(): AsetTetap[] {
+    return [...this.asetTetap].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  },
+
+  buatAsetTetap(input: AsetTetapInput, user: User): AsetTetap {
+    if (user.role !== "pemilik") throw new Error("Hanya pemilik yang boleh menambah aset tetap.");
+    if (this.asetTetap.some((a) => a.kode === input.kode)) throw new Error("Kode aset sudah dipakai.");
+    const now = new Date().toISOString();
+    const aset: AsetTetap = { ...input, id: `ast-${Date.now().toString(36)}`, createdAt: now, updatedAt: now };
+    this.asetTetap.unshift(aset);
+    return aset;
+  },
+
+  ubahAsetTetap(id: string, input: Partial<AsetTetapInput>, user: User): AsetTetap {
+    if (user.role !== "pemilik") throw new Error("Hanya pemilik yang boleh mengubah aset tetap.");
+    const idx = this.asetTetap.findIndex((a) => a.id === id);
+    if (idx === -1) throw new Error("Aset tidak ditemukan.");
+    if (input.kode && this.asetTetap.some((a) => a.kode === input.kode && a.id !== id)) throw new Error("Kode aset sudah dipakai.");
+    this.asetTetap[idx] = { ...this.asetTetap[idx], ...input, updatedAt: new Date().toISOString() };
+    return this.asetTetap[idx];
+  },
+
+  hapusAsetTetap(id: string, user: User): void {
+    if (user.role !== "pemilik") throw new Error("Hanya pemilik yang boleh menghapus aset tetap.");
+    const idx = this.asetTetap.findIndex((a) => a.id === id);
+    if (idx === -1) throw new Error("Aset tidak ditemukan.");
+    this.asetTetap.splice(idx, 1);
+  },
+
+  /**
+   * Menghitung penyusutan bulanan untuk semua aset aktif.
+   * Mengembalikan array item penyusutan per aset untuk periode tertentu (YYYY-MM).
+   */
+  hitungPenyusutanBulanan(periode: string): PenyusutanItem[] {
+    const [thn, bln] = periode.split("-").map(Number);
+    const hasil: PenyusutanItem[] = [];
+    for (const a of this.asetTetap.filter((a) => a.status === "aktif")) {
+      const tglPerolehan = new Date(a.tanggalPerolehan);
+      const thnPerolehan = tglPerolehan.getFullYear();
+      const blnPerolehan = tglPerolehan.getMonth() + 1;
+      // Jika aset diperoleh setelah periode ini, belum disusutkan
+      if (thnPerolehan > thn || (thnPerolehan === thn && blnPerolehan > bln)) continue;
+      // Umur ekonomis dalam bulan
+      const totalBulan = a.umurEkonomis;
+      // Bulan ke-berapa ini sejak perolehan
+      const bulanKe = (thn - thnPerolehan) * 12 + (bln - blnPerolehan) + 1;
+      if (bulanKe > totalBulan) continue; // Sudah habis disusutkan
+      const nilaiDisusutkan = a.nilaiPerolehan - a.nilaiResidu;
+      let penyusutanBulanIni = 0;
+      if (a.metodePenyusutan === "garis-lurus") {
+        penyusutanBulanIni = Math.round(nilaiDisusutkan / totalBulan);
+      } else if (a.metodePenyusutan === "menurun-ganda") {
+        // Double declining balance: rate = 2 / umur (per tahun), per bulan = rate/12
+        const rateTahun = 2 / (totalBulan / 12);
+        const rateBulan = rateTahun / 12;
+        const akumulasiSebelumnya = this.hitungAkumulasipenyusutanSampai(a.id, thn, bln - 1);
+        const nilaiBukuSebelumnya = a.nilaiPerolehan - akumulasiSebelumnya;
+        penyusutanBulanIni = Math.round(Math.min(nilaiBukuSebelumnya * rateBulan, nilaiBukuSebelumnya - a.nilaiResidu));
+      } else if (a.metodePenyusutan === "jumlah-tahun") {
+        // Sum of years digits: sisa umur / jumlah angka tahun * nilai disusutkan
+        const sisaTahun = Math.ceil((totalBulan - bulanKe + 1) / 12);
+        const totalTahun = Math.ceil(totalBulan / 12);
+        const sumYears = (totalTahun * (totalTahun + 1)) / 2;
+        penyusutanBulanIni = Math.round((sisaTahun / sumYears) * nilaiDisusutkan / 12);
+      }
+      const akumulasi = this.hitungAkumulasipenyusutanSampai(a.id, thn, bln - 1) + penyusutanBulanIni;
+      const nilaiBuku = a.nilaiPerolehan - akumulasi;
+      hasil.push({
+        asetId: a.id,
+        periode: `${thn}-${String(bln).padStart(2, "0")}`,
+        nilaiPenyusutan: penyusutanBulanIni,
+        akumulasiPenyusutan: akumulasi,
+        nilaiBuku: Math.max(nilaiBuku, a.nilaiResidu),
+      });
+    }
+    return hasil;
+  },
+
+  /** Helper: hitung akumulasi penyusutan sampai bulan tertentu (internal). */
+  hitungAkumulasipenyusutanSampai(asetId: string, thn: number, bln: number): number {
+    let total = 0;
+    const a = this.asetTetap.find((x) => x.id === asetId);
+    if (!a) return 0;
+    const tglPerolehan = new Date(a.tanggalPerolehan);
+    const thnPerolehan = tglPerolehan.getFullYear();
+    const blnPerolehan = tglPerolehan.getMonth() + 1;
+    const totalBulan = a.umurEkonomis;
+    const nilaiDisusutkan = a.nilaiPerolehan - a.nilaiResidu;
+    for (let y = thnPerolehan; y <= thn; y++) {
+      const mulaiBulan = y === thnPerolehan ? blnPerolehan : 1;
+      const akhirBulan = y === thn ? bln : 12;
+      for (let m = mulaiBulan; m <= akhirBulan; m++) {
+        const bulanKe = (y - thnPerolehan) * 12 + (m - blnPerolehan) + 1;
+        if (bulanKe > totalBulan) break;
+        if (a.metodePenyusutan === "garis-lurus") {
+          total += Math.round(nilaiDisusutkan / totalBulan);
+        } else if (a.metodePenyusutan === "menurun-ganda") {
+          const rateTahun = 2 / (totalBulan / 12);
+          const rateBulan = rateTahun / 12;
+          const akumSebelumnya = total;
+          const nilaiBukuSblm = a.nilaiPerolehan - akumSebelumnya;
+          total += Math.round(Math.min(nilaiBukuSblm * rateBulan, nilaiBukuSblm - a.nilaiResidu));
+        } else if (a.metodePenyusutan === "jumlah-tahun") {
+          const sisaTahun = Math.ceil((totalBulan - bulanKe + 1) / 12);
+          const totalTahun = Math.ceil(totalBulan / 12);
+          const sumYears = (totalTahun * (totalTahun + 1)) / 2;
+          total += Math.round((sisaTahun / sumYears) * nilaiDisusutkan / 12);
+        }
+      }
+    }
+    return Math.min(total, nilaiDisusutkan);
+  },
+
+  /** Posting jurnal penyusutan bulanan ke jurnal umum. */
+  postingPenyusutanBulanan(periode: string, user: User): { jurnalId: string; totalPenyusutan: number } {
+    if (user.role !== "pemilik") throw new Error("Hanya pemilik yang boleh posting penyusutan.");
+    const items = this.hitungPenyusutanBulanan(periode);
+    if (items.length === 0) throw new Error("Tidak ada aset yang disusutkan pada periode ini.");
+    const totalPenyusutan = items.reduce((s, i) => s + i.nilaiPenyusutan, 0);
+    // Buat jurnal: Debit Beban Penyusutan (per aset), Kredit Akumulasi Penyusutan (per aset)
+    const baris = items.flatMap((i) => {
+      const aset = this.asetTetap.find((a) => a.id === i.asetId)!;
+      return [
+        { akun: aset.akunBebanPenyusutan, debit: i.nilaiPenyusutan, kredit: 0 },
+        { akun: aset.akunPenyusutan, debit: 0, kredit: i.nilaiPenyusutan },
+      ];
+    });
+    const jurnal = buatJurnal(`Penyusutan bulanan ${periode}`, `PENYUSUTAN-${periode}`, baris);
+    const jurnalId = jurnal.id;
+    return { jurnalId, totalPenyusutan };
+  },
+
+  /** Mutasi aset (penjualan, pemindahan, penghapusan). */
+  mutasiAset(input: Omit<MutasiAset, "id" | "createdAt">, user: User): MutasiAset {
+    if (user.role !== "pemilik") throw new Error("Hanya pemilik yang boleh mutasi aset.");
+    const aset = this.asetTetap.find((a) => a.id === input.asetId);
+    if (!aset) throw new Error("Aset tidak ditemukan.");
+    const mutasi: MutasiAset = {
+      ...input,
+      id: `mut-${Date.now().toString(36)}`,
+      createdAt: new Date().toISOString(),
+    };
+    // Update status aset
+    if (input.jenis === "penjualan") aset.status = "dijual";
+    else if (input.jenis === "penghapusan") aset.status = "dihapuskan";
+    else if (input.jenis === "pemindahan") {
+      aset.lokasi = input.lokasiBaru ?? aset.lokasi;
+      aset.status = "dipindahkan";
+    }
+    aset.updatedAt = new Date().toISOString();
+    return mutasi;
+  },
+
+  /** Laporan aset tetap per periode. */
+  laporanAsetTetap(periode: string): LaporanAsetTetap[] {
+    const items = this.hitungPenyusutanBulanan(periode);
+    const map = new Map(items.map((i) => [i.asetId, i]));
+    return this.asetTetap.filter((a) => a.status === "aktif").map((a) => {
+      const p = map.get(a.id);
+      return {
+        aset: a,
+        penyusutanPeriode: p?.nilaiPenyusutan ?? 0,
+        akumulasiPenyusutan: p?.akumulasiPenyusutan ?? 0,
+        nilaiBuku: p?.nilaiBuku ?? a.nilaiPerolehan,
+      };
+    });
   },
 };
 

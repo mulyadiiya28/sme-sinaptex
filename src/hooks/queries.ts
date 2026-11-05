@@ -2,12 +2,14 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api/client";
 import type {
   ApprovalRule,
+  AsetTetapInput,
   CheckoutPayload,
   CreateApprovalRuleRequest,
   CreateSupplierRequest,
   ImporPelangganBaris,
   ImporProdukBaris,
   ImporSaldoAwalBaris,
+  MutasiAset,
   NeracaParams,
   PembelianInput,
   PenyesuaianStokInput,
@@ -476,6 +478,56 @@ export function useProductMutations() {
   });
 
   return { create, update, remove, penyesuaianStok };
+}
+
+export function useAsetTetapList() {
+  return useQuery({ queryKey: ["aset-tetap"], queryFn: () => api.master.daftarAsetTetap() });
+}
+
+export function useAsetTetapMutations() {
+  const qc = useQueryClient();
+  const invalidate = () => {
+    qc.invalidateQueries({ queryKey: ["aset-tetap"] });
+    qc.invalidateQueries({ queryKey: ["jurnal"] });
+    qc.invalidateQueries({ queryKey: ["akun"] });
+    qc.invalidateQueries({ queryKey: ["laba-rugi"] });
+    qc.invalidateQueries({ queryKey: ["audit"] });
+  };
+
+  const create = useMutation({
+    mutationFn: (args: { input: AsetTetapInput; user: User }) =>
+      api.master.buatAsetTetap(args.input, args.user),
+    onSuccess: invalidate,
+  });
+  const update = useMutation({
+    mutationFn: (args: { id: string; input: Partial<AsetTetapInput>; user: User }) =>
+      api.master.ubahAsetTetap(args.id, args.input, args.user),
+    onSuccess: invalidate,
+  });
+  const remove = useMutation({
+    mutationFn: (args: { id: string; user: User }) => api.master.hapusAsetTetap(args.id, args.user),
+    onSuccess: invalidate,
+  });
+  const hitungPenyusutan = useMutation({
+    mutationFn: (periode: string) => api.master.hitungPenyusutanBulanan(periode),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["aset-tetap", "penyusutan"] }),
+  });
+  const postingPenyusutan = useMutation({
+    mutationFn: (args: { periode: string; user: User }) =>
+      api.master.postingPenyusutanBulanan(args.periode, args.user),
+    onSuccess: invalidate,
+  });
+  const mutasi = useMutation({
+    mutationFn: (args: { input: Omit<MutasiAset, "id" | "createdAt">; user: User }) =>
+      api.master.mutasiAset(args.input, args.user),
+    onSuccess: invalidate,
+  });
+  const laporan = useMutation({
+    mutationFn: (periode: string) => api.master.laporanAsetTetap(periode),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["aset-tetap", "laporan"] }),
+  });
+
+  return { create, update, remove, hitungPenyusutan, postingPenyusutan, mutasi, laporan };
 }
 
 export function useTransaksiMutations() {

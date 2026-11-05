@@ -176,6 +176,59 @@ export type PenyesuaianStokInput = {
   alasan: string;
 };
 
+/// <summary>Aset tetap (fixed asset) — barang tidak lancar untuk operasional.</summary>
+export type AsetTetap = {
+  id: string;
+  kode: string;
+  nama: string;
+  kategori: string;
+  nilaiPerolehan: number;
+  nilaiResidu: number;
+  umurEkonomis: number; // bulan
+  metodePenyusutan: "garis-lurus" | "menurun-ganda" | "jumlah-tahun";
+  tanggalPerolehan: string; // ISO date
+  lokasi: string;
+  status: "aktif" | "dijual" | "dihapuskan" | "dipindahkan";
+  akunAset: string; // kode akun aset (mis. 1501 Mesin)
+  akunPenyusutan: string; // kode akun penyusutan (mis. 1511 Akum. Penyusutan Mesin)
+  akunBebanPenyusutan: string; // kode akun beban penyusutan (mis. 6911 Beban Penyusutan)
+  catatan?: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+/// <summary>Input untuk create/update aset tetap (tanpa id & timestamps).</summary>
+export type AsetTetapInput = Omit<AsetTetap, "id" | "createdAt" | "updatedAt">;
+
+/// <summary>Item penyusutan bulanan untuk satu aset.</summary>
+export type PenyusutanItem = {
+  asetId: string;
+  periode: string; // YYYY-MM
+  nilaiPenyusutan: number;
+  akumulasiPenyusutan: number;
+  nilaiBuku: number;
+};
+
+/// <summary>Mutasi aset tetap (pembelian, penjualan, pemindahan, penghapusan).</summary>
+export type MutasiAset = {
+  id: string;
+  asetId: string;
+  jenis: "pembelian" | "penjualan" | "pemindahan" | "penghapusan";
+  tanggal: string;
+  nilai: number; // untuk penjualan: harga jual; untuk pembelian: nilai perolehan
+  keterangan: string;
+  lokasiBaru?: string;
+  createdAt: string;
+};
+
+/// <summary>Laporan aset tetap per periode.</summary>
+export type LaporanAsetTetap = {
+  aset: AsetTetap;
+  penyusutanPeriode: number;
+  akumulasiPenyusutan: number;
+  nilaiBuku: number;
+};
+
 export type PembelianItem = {
   productId: string;
   nama: string;

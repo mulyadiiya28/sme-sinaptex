@@ -53,11 +53,16 @@ import type {
   AgedInvoice,
   AgingReport,
   ApprovalRule,
+  AsetTetap,
+  AsetTetapInput,
   CreateApprovalRuleRequest,
   CreateFiscalPeriodRequest,
   CreateSupplierRequest,
   DailyMovementReport,
   FiscalPeriod,
+  LaporanAsetTetap,
+  MutasiAset,
+  PenyusutanItem,
   Reconciliation,
   Supplier,
 } from "@/lib/api/types";
@@ -2137,4 +2142,164 @@ export async function liveSetujuiBatch(batchId: string, transaksiIds: string[]):
     method: "POST",
     idempotensiKunci: buatKunciIdempotensi(),
   });
+}
+
+// ===== ASET TETAP (FIXED ASSETS) =====
+
+type BtAsetTetap = {
+  id: string;
+  kode: string;
+  nama: string;
+  kategori: string;
+  nilaiPerolehan: number;
+  nilaiResidu: number;
+  umurEkonomis: number;
+  metodePenyusutan: "garis-lurus" | "menurun-ganda" | "jumlah-tahun";
+  tanggalPerolehan: string;
+  lokasi: string;
+  status: "aktif" | "dijual" | "dihapuskan" | "dipindahkan";
+  akunAset: string;
+  akunPenyusutan: string;
+  akunBebanPenyusutan: string;
+  catatan?: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+type BtPenyusutanItem = {
+  asetId: string;
+  periode: string;
+  nilaiPenyusutan: number;
+  akumulasiPenyusutan: number;
+  nilaiBuku: number;
+};
+
+type BtMutasiAset = {
+  id: string;
+  asetId: string;
+  jenis: "pembelian" | "penjualan" | "pemindahan" | "penghapusan";
+  tanggal: string;
+  nilai: number;
+  keterangan: string;
+  lokasiBaru?: string;
+  createdAt: string;
+};
+
+type BtLaporanAsetTetap = {
+  aset: BtAsetTetap;
+  penyusutanPeriode: number;
+  akumulasiPenyusutan: number;
+  nilaiBuku: number;
+};
+
+function petakanAsetTetap(p: BtAsetTetap): AsetTetap {
+  return {
+    id: p.id,
+    kode: p.kode,
+    nama: p.nama,
+    kategori: p.kategori,
+    nilaiPerolehan: p.nilaiPerolehan,
+    nilaiResidu: p.nilaiResidu,
+    umurEkonomis: p.umurEkonomis,
+    metodePenyusutan: p.metodePenyusutan,
+    tanggalPerolehan: p.tanggalPerolehan,
+    lokasi: p.lokasi,
+    status: p.status,
+    akunAset: p.akunAset,
+    akunPenyusutan: p.akunPenyusutan,
+    akunBebanPenyusutan: p.akunBebanPenyusutan,
+    catatan: p.catatan,
+    createdAt: p.createdAt,
+    updatedAt: p.updatedAt,
+  };
+}
+
+function petakanPenyusutanItem(p: BtPenyusutanItem): PenyusutanItem {
+  return {
+    asetId: p.asetId,
+    periode: p.periode,
+    nilaiPenyusutan: p.nilaiPenyusutan,
+    akumulasiPenyusutan: p.akumulasiPenyusutan,
+    nilaiBuku: p.nilaiBuku,
+  };
+}
+
+function petakanMutasiAset(p: BtMutasiAset): MutasiAset {
+  return {
+    id: p.id,
+    asetId: p.asetId,
+    jenis: p.jenis,
+    tanggal: p.tanggal,
+    nilai: p.nilai,
+    keterangan: p.keterangan,
+    lokasiBaru: p.lokasiBaru,
+    createdAt: p.createdAt,
+  };
+}
+
+function petakanLaporanAsetTetap(p: BtLaporanAsetTetap): LaporanAsetTetap {
+  return {
+    aset: petakanAsetTetap(p.aset),
+    penyusutanPeriode: p.penyusutanPeriode,
+    akumulasiPenyusutan: p.akumulasiPenyusutan,
+    nilaiBuku: p.nilaiBuku,
+  };
+}
+
+export async function liveDaftarAsetTetap(): Promise<AsetTetap[]> {
+  const data = await minta<BtAsetTetap[]>("/api/fixed-assets");
+  return data.map(petakanAsetTetap);
+}
+
+export async function liveBuatAsetTetap(input: AsetTetapInput, user: User): Promise<AsetTetap> {
+  const data = await minta<BtAsetTetap>("/api/fixed-assets", {
+    method: "POST",
+    idempotensiKunci: buatKunciIdempotensi(),
+    body: input,
+  });
+  return petakanAsetTetap(data);
+}
+
+export async function liveUbahAsetTetap(id: string, input: Partial<AsetTetapInput>, user: User): Promise<AsetTetap> {
+  const data = await minta<BtAsetTetap>(`/api/fixed-assets/${id}`, {
+    method: "PUT",
+    idempotensiKunci: buatKunciIdempotensi(),
+    body: input,
+  });
+  return petakanAsetTetap(data);
+}
+
+export async function liveHapusAsetTetap(id: string, user: User): Promise<void> {
+  await minta(`/api/fixed-assets/${id}`, {
+    method: "DELETE",
+    idempotensiKunci: buatKunciIdempotensi(),
+  });
+}
+
+export async function liveHitungPenyusutanBulanan(periode: string): Promise<PenyusutanItem[]> {
+  const data = await minta<BtPenyusutanItem[]>(`/api/fixed-assets/depreciation?periode=${periode}`);
+  return data.map(petakanPenyusutanItem);
+}
+
+export async function livePostingPenyusutanBulanan(periode: string, user: User): Promise<{ jurnalId: string; totalPenyusutan: number }> {
+  const data = await minta<{ jurnalId: string; totalPenyusutan: number }>(`/api/fixed-assets/depreciation/post`, {
+    method: "POST",
+    idempotensiKunci: buatKunciIdempotensi(),
+    body: { periode },
+  });
+  return data;
+}
+
+export async function liveMutasiAset(input: Omit<MutasiAset, "id" | "createdAt">, user: User): Promise<MutasiAset> {
+  const data = await minta<BtMutasiAset>("/api/fixed-assets/mutations", {
+    method: "POST",
+    idempotensiKunci: buatKunciIdempotensi(),
+    body: input,
+  });
+  return petakanMutasiAset(data);
+}
+
+export async function liveLaporanAsetTetap(periode: string): Promise<LaporanAsetTetap[]> {
+  const data = await minta<BtLaporanAsetTetap[]>(`/api/fixed-assets/report?periode=${periode}`);
+  return data.map(petakanLaporanAsetTetap);
 }

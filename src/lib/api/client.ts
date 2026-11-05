@@ -1,6 +1,8 @@
 import type {
   AkunSaldo,
   ArApTurnover,
+  AsetTetap,
+  AsetTetapInput,
   AuditEntry,
   Biaya,
   BiayaParams,
@@ -23,6 +25,8 @@ import type {
   LabaRugi,
   LiquidityRatio,
   LoginResult,
+  LaporanAsetTetap,
+  MutasiAset,
   NeracaParams,
   PaymentMethod,
   Pelanggan,
@@ -56,6 +60,7 @@ import type {
   CreateSupplierRequest,
   DailyMovementReport,
   FiscalPeriod,
+  PenyusutanItem,
   Reconciliation,
   Supplier,
 } from "@/lib/api/types";
@@ -95,6 +100,14 @@ import {
   livePersetujuanList,
   liveSetujuiBatch,
   liveDeleteProduct,
+  liveDaftarAsetTetap,
+  liveBuatAsetTetap,
+  liveUbahAsetTetap,
+  liveHapusAsetTetap,
+  liveHitungPenyusutanBulanan,
+  livePostingPenyusutanBulanan,
+  liveMutasiAset,
+  liveLaporanAsetTetap,
   liveHapusUser,
   liveHealthSummary,
   liveImporPelanggan,
@@ -238,6 +251,48 @@ export const api = {
       if (API_MODE === "live") return liveDeleteProduct(id);
       await delay(200);
       mockDb.products = mockDb.products.filter((x) => x.id !== id);
+    },
+
+    // Aset Tetap
+    daftarAsetTetap: async (): Promise<AsetTetap[]> => {
+      if (API_MODE === "live") return liveDaftarAsetTetap();
+      await delay(150);
+      return mockDb.daftarAsetTetap();
+    },
+    buatAsetTetap: async (input: AsetTetapInput, user: User): Promise<AsetTetap> => {
+      if (API_MODE === "live") return liveBuatAsetTetap(input, user);
+      await delay(250);
+      return mockDb.buatAsetTetap(input, user);
+    },
+    ubahAsetTetap: async (id: string, input: Partial<AsetTetapInput>, user: User): Promise<AsetTetap> => {
+      if (API_MODE === "live") return liveUbahAsetTetap(id, input, user);
+      await delay(250);
+      return mockDb.ubahAsetTetap(id, input, user);
+    },
+    hapusAsetTetap: async (id: string, user: User): Promise<void> => {
+      if (API_MODE === "live") return liveHapusAsetTetap(id, user);
+      await delay(200);
+      return mockDb.hapusAsetTetap(id, user);
+    },
+    hitungPenyusutanBulanan: async (periode: string): Promise<PenyusutanItem[]> => {
+      if (API_MODE === "live") return liveHitungPenyusutanBulanan(periode);
+      await delay(200);
+      return mockDb.hitungPenyusutanBulanan(periode);
+    },
+    postingPenyusutanBulanan: async (periode: string, user: User): Promise<{ jurnalId: string; totalPenyusutan: number }> => {
+      if (API_MODE === "live") return livePostingPenyusutanBulanan(periode, user);
+      await delay(350);
+      return mockDb.postingPenyusutanBulanan(periode, user);
+    },
+    mutasiAset: async (input: Omit<MutasiAset, "id" | "createdAt">, user: User): Promise<MutasiAset> => {
+      if (API_MODE === "live") return liveMutasiAset(input, user);
+      await delay(250);
+      return mockDb.mutasiAset(input, user);
+    },
+    laporanAsetTetap: async (periode: string): Promise<LaporanAsetTetap[]> => {
+      if (API_MODE === "live") return liveLaporanAsetTetap(periode);
+      await delay(200);
+      return mockDb.laporanAsetTetap(periode);
     },
 
     imporProduk: async (rows: ImporProdukBaris[], user: User): Promise<HasilImpor> => {
