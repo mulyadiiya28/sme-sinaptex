@@ -110,7 +110,7 @@ export default function PersetujuanPage() {
           }}
           className="btn-primary rounded-lg px-3 py-1.5 text-xs disabled:opacity-40"
         >
-          <CheckCheck className="size-3.5" aria-hidden /> Setujui &amp; Posting
+          <CheckCheck className="size-4" aria-hidden /> Setujui &amp; Posting
         </button>
       ),
     },

@@ -231,7 +231,7 @@ export function PaymentDialog({
                 }
                 className="btn-secondary rounded-lg px-3 py-2 text-xs"
               >
-                <Plus className="size-3.5" aria-hidden /> {m.label}
+                <Plus className="size-4" aria-hidden /> {m.label}
               </button>
             ))}
           </div>

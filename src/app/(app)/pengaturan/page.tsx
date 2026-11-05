@@ -828,7 +828,7 @@ function PanelFiscalPeriods() {
           onClick={() => setOpenCreate(true)}
           className="btn-primary px-3 py-1.5 text-xs"
         >
-          <Plus className="size-3.5" aria-hidden /> Tambah Periode
+          <Plus className="size-4" aria-hidden /> Tambah Periode
         </button>
       </div>
 

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Plus, Trash2 } from "lucide-react";
+import { Plus } from "lucide-react";
 import type { ApprovalRule, CreateApprovalRuleRequest } from "@/lib/api/types";
 import { DataTable, type Column } from "@/components/data-table";
 import { FormField } from "@/components/form-field";
@@ -72,7 +72,7 @@ export default function ApprovalRulesPage() {
           onClick={() => setOpenCreate(true)}
           className="btn-primary px-4 py-2 text-sm"
         >
-          <Plus className="size-3.5" aria-hidden /> Tambah Aturan
+          <Plus className="size-4" aria-hidden /> Tambah Aturan
         </button>
       </div>
 
