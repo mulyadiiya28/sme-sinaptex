@@ -2631,13 +2631,78 @@ export async function livePenyesuaianStokGudang(
 }
 
 export async function liveTransferStok(
-  _input: StockTransferInput,
-  _user: User,
+  input: StockTransferInput,
+  user: User,
 ): Promise<{ keluar: StockMovement; masuk: StockMovement }> {
-  throw new LiveApiError(
-    "Engine belum punya endpoint transfer stok antar gudang. Gunakan penyesuaian keluar di gudang asal dan masuk di gudang tujuan.",
-    501,
+  const idempotensiKunci = crypto.randomUUID();
+  const response = await minta<{
+    outMovementId: string;
+    inMovementId: string;
+    quantity: number;
+    unitCost: number;
+    totalCost: number;
+    outCostLayerId: string;
+    inCostLayerId: string;
+  }>(
+    "/api/inventory/transfers",
+    {
+      method: "POST",
+      body: {
+        transferDate: new Date().toISOString().slice(0, 10),
+        productId: input.productId,
+        fromWarehouseId: input.gudangAsalId,
+        toWarehouseId: input.gudangTujuanId,
+        quantity: input.qty,
+        movementType: "WAREHOUSE_TRANSFER_OUT",
+        costingMethod: "AVERAGE",
+        reason: input.catatan ?? null,
+      },
+      idempotensiKunci,
+    },
   );
+
+  const now = new Date().toISOString();
+
+  // Need to get product name and warehouse names for the StockMovement records
+  const [produk, gudangAsal, gudangTujuan] = await Promise.all([
+    minta<BtProduk>(`/api/products/${input.productId}`),
+    minta<BtGudang>(`/api/warehouses/${input.gudangAsalId}`),
+    minta<BtGudang>(`/api/warehouses/${input.gudangTujuanId}`),
+  ]);
+
+  const keluar: StockMovement = {
+    id: response.outMovementId,
+    productId: input.productId,
+    gudangId: input.gudangAsalId,
+    tipe: "keluar",
+    qty: -response.quantity,
+    qtySebelum: 0, // would need separate query to get actual before/after
+    qtySesudah: 0,
+    hargaSatuan: response.unitCost,
+    totalNilai: response.totalCost,
+    referensi: { jenis: "transfer", id: response.outMovementId, gudangAsal: input.gudangAsalId, gudangTujuan: input.gudangTujuanId },
+    keterangan: input.catatan ?? `Transfer ke ${gudangTujuan?.name ?? input.gudangTujuanId}`,
+    createdAt: now,
+    createdBy: user.id,
+  };
+
+  const masuk: StockMovement = {
+    id: response.inMovementId,
+    productId: input.productId,
+    gudangId: input.gudangTujuanId,
+    tipe: "masuk",
+    qty: response.quantity,
+    qtySebelum: 0,
+    qtySesudah: 0,
+    hargaSatuan: response.unitCost,
+    totalNilai: response.totalCost,
+    referensi: { jenis: "transfer", id: response.inMovementId, gudangAsal: input.gudangAsalId, gudangTujuan: input.gudangTujuanId },
+    keterangan: input.catatan ?? `Transfer dari ${gudangAsal?.name ?? input.gudangAsalId}`,
+    createdAt: now,
+    createdBy: user.id,
+  };
+
+  return { keluar, masuk };
 }
 
 export async function liveDaftarOpname(): Promise<StockOpname[]> {
