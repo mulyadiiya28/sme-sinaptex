@@ -91,6 +91,17 @@ export default function InventarisPage() {
     qty: 1,
     catatan: "",
   });
+  const stokAsalTransfer = useStokGudang(
+    transferForm.gudangAsalId || undefined,
+    openTransfer && transferForm.gudangAsalId !== "",
+  );
+  const qtyAsalTransfer = transferForm.productId
+    ? (stokAsalTransfer.data?.items.find((i) => i.productId === transferForm.productId)?.qty ?? 0)
+    : 0;
+  const gudangSama = transferForm.gudangAsalId !== "" && transferForm.gudangAsalId === transferForm.gudangTujuanId;
+  const cekStokSiap = !stokAsalTransfer.isPending && !stokAsalTransfer.isError;
+  const qtyMelebihi = cekStokSiap && transferForm.qty > qtyAsalTransfer;
+  const transferTidakValid = gudangSama || transferForm.qty < 1 || (transferForm.productId !== "" && qtyMelebihi);
 
   const [openGudang, setOpenGudang] = useState(false);
   const [formGudang, setFormGudang] = useState({
@@ -416,6 +427,8 @@ export default function InventarisPage() {
             <button
               type="button"
               className="btn-secondary mb-0.5"
+              disabled={gudangAktif.length < 2}
+              title={gudangAktif.length < 2 ? "Butuh minimal dua gudang aktif untuk transfer." : undefined}
               onClick={() => {
                 setTransferForm({
                   productId: "",
@@ -716,6 +729,7 @@ export default function InventarisPage() {
               className="mt-4 space-y-3"
               onSubmit={(e) => {
                 e.preventDefault();
+                if (transferTidakValid) return;
                 transfer.mutate(
                   { input: transferForm, user: user! },
                   { onSuccess: () => setOpenTransfer(false) },
@@ -779,6 +793,24 @@ export default function InventarisPage() {
                   required
                 />
               </FormField>
+              {gudangSama ? (
+                <p className="text-xs font-medium text-rose-600">Gudang asal dan tujuan tidak boleh sama.</p>
+              ) : null}
+              {!gudangSama && transferForm.gudangAsalId && transferForm.productId ? (
+                <p className={cn("text-xs", qtyMelebihi ? "font-medium text-rose-600" : "text-slate-500")}>
+                  {stokAsalTransfer.isPending ? (
+                    "Memuat stok gudang asal…"
+                  ) : stokAsalTransfer.isError ? (
+                    "Stok gudang asal tidak dapat dibaca — validasi qty dilewati."
+                  ) : (
+                    <>
+                      Stok tersedia di gudang asal:{" "}
+                      <span className="tabular-nums font-semibold">{qtyAsalTransfer}</span>
+                      {qtyMelebihi ? " — qty melebihi stok." : ""}
+                    </>
+                  )}
+                </p>
+              ) : null}
               <FormField label="Catatan">
                 <input
                   className="input"
@@ -790,7 +822,7 @@ export default function InventarisPage() {
                 <p className="rounded-xl bg-rose-50 px-3 py-2 text-xs text-rose-700">{String(transfer.error)}</p>
               ) : null}
               <div className="flex gap-2">
-                <button type="submit" className="btn-primary flex-1" disabled={transfer.isPending}>
+                <button type="submit" className="btn-primary flex-1" disabled={transfer.isPending || transferTidakValid}>
                   Transfer
                 </button>
                 <button type="button" className="btn-secondary" onClick={() => setOpenTransfer(false)}>

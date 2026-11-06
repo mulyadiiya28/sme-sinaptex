@@ -571,10 +571,11 @@ export function useGudangList() {
   return useQuery({ queryKey: ["gudang"], queryFn: () => api.inventaris.gudang() });
 }
 
-export function useStokGudang(gudangId?: string) {
+export function useStokGudang(gudangId?: string, enabled = true) {
   return useQuery({
     queryKey: ["inventaris-stok", gudangId ?? "semua"],
     queryFn: () => api.inventaris.stok(gudangId),
+    enabled,
   });
 }
 
