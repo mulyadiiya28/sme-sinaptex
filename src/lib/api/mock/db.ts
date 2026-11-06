@@ -2,6 +2,8 @@ import type {
   AgedInvoice,
   AgingReport,
   ApprovalRule,
+  AsetTetap,
+  AsetTetapInput,
   Biaya,
   CashAccount,
   CreateApprovalRuleRequest,
@@ -10,18 +12,26 @@ import type {
   DailyMovementEntry,
   DailyMovementReport,
   FiscalPeriod,
+  Gudang,
   HasilImpor,
   HealthIndicator,
   HealthSummary,
   ImporPelangganBaris,
   ImporProdukBaris,
   ImporSaldoAwalBaris,
+  InventorySummary,
+  InventoryValuation,
+  InventoryValuationItem,
   JurnalBaris,
   JurnalEntry,
   LoginResult,
+  LaporanAsetTetap,
+  LowStockItem,
+  MutasiAset,
   Pelanggan,
   Pembelian,
   PembelianInput,
+  PenyusutanItem,
   Product,
   Reconciliation,
   ReturInput,
@@ -31,11 +41,20 @@ import type {
   ShiftInfo,
   ShiftMutasiInput,
   ShiftRiwayat,
+  StockAdjustmentInput,
+  StockCard,
+  StockMovement,
+  StockMovementType,
+  StockOpname,
+  StockOpnameInput,
+  StockOpnameItem,
   Supplier,
   TransferKas,
   TransferKasInput,
   TransaksiRiwayat,
   User,
+  StockMovementRef,
+  StockTransferInput,
 } from "@/lib/api/types";
 import { formatNilaiIndikator } from "@/lib/format";
 
@@ -95,6 +114,8 @@ let pembelianCounter = 0;
 let biayaCounter = 0;
 let returCounter = 0;
 let transferCounter = 0;
+let mutasiCounter = 0;
+let opnameCounter = 0;
 
 function waktuSekarang(): string {
   return new Date().toISOString();
@@ -241,6 +262,40 @@ export const mockDb = {
     ]),
   ] as JurnalEntry[],
   kas: { tunai: KAS_TUNAI_AWAL, bank: KAS_BANK_AWAL },
+
+  // ===== INVENTARIS (INVENTORY) =====
+  gudang: [
+    {
+      id: "gudang-1",
+      kode: "GDG-UTAMA",
+      nama: "Gudang Utama",
+      alamat: "Jl. Merdeka No. 12",
+      isDefault: true,
+      isActive: true,
+      createdAt: "2024-01-01T00:00:00.000Z",
+      updatedAt: "2024-01-01T00:00:00.000Z",
+    },
+  ] as Gudang[],
+  stockCards: new Map<string, StockCard>(),
+  stockMovements: [] as StockMovement[],
+  stockOpnames: [] as StockOpname[],
+
+  /** Isi kartu stok awal dari stok produk untuk gudang default. */
+  initStockCards(): void {
+    const gudangDefaultId = this.gudangDefault().id;
+    for (const p of this.products) {
+      const key = `${p.id}-${gudangDefaultId}`;
+      if (!this.stockCards.has(key)) {
+        this.stockCards.set(key, {
+          productId: p.id,
+          gudangId: gudangDefaultId,
+          qty: p.stok,
+          hargaRataRata: p.hargaBeli,
+          lastUpdated: waktuSekarang(),
+        });
+      }
+    }
+  },
 
   sinkronKasDariJurnal(): void {
     let tunai = 0;
@@ -749,7 +804,19 @@ export const mockDb = {
 
     for (const item of t.items) {
       const p = this.products.find((x) => x.nama === item.nama);
-      if (p) p.stok += item.qty;
+      if (p) {
+        this.catatMutasi({
+          productId: p.id,
+          gudangId: this.gudangDefault().id,
+          tipe: "masuk",
+          qty: item.qty,
+          hargaSatuan: item.hargaBeli ?? p.hargaBeli,
+          referensi: { jenis: "penyesuaian", id: `VOID-${t.nomor}`, alasan: "pembatalan transaksi" },
+          keterangan: `Pembatalan transaksi ${t.nomor}`,
+          user,
+        });
+        this.sinkronStokProduk(p.id);
+      }
     }
 
     const baris: JurnalBaris[] = [];
@@ -798,7 +865,18 @@ export const mockDb = {
         : [{ akun: "Selisih stok", debit: nilai, kredit: 0 }, { akun: "Persediaan", debit: 0, kredit: nilai }];
     this.jurnal.unshift(buatJurnal(`Penyesuaian stok ${p.nama}`, `ADJ-${p.sku}`, baris));
 
-    p.stok = input.stokFisik;
+    this.catatMutasi({
+      productId: p.id,
+      gudangId: this.gudangDefault().id,
+      tipe: selisih > 0 ? "masuk" : "keluar",
+      qty: Math.abs(selisih),
+      hargaSatuan: p.hargaBeli,
+      referensi: { jenis: "penyesuaian", id: `ADJ-${p.sku}`, alasan: input.alasan || "lainnya" },
+      keterangan: input.alasan,
+      user,
+      izinkanNegatif: true,
+    });
+    this.sinkronStokProduk(p.id);
     this.audit(user, "penyesuaian_stok", `${p.nama}: ${lama} → ${input.stokFisik} (${input.alasan || "tanpa alasan"})`);
     return structuredClone(p);
   },
@@ -866,7 +944,19 @@ export const mockDb = {
       if (!asli) throw new Error(`Item ${r.nama} tidak ada di transaksi ${t.nomor}.`);
       if (r.qty <= 0 || r.qty > asli.qty) throw new Error(`Qty retur ${r.nama} harus 1–${asli.qty}.`);
       const p = this.products.find((x) => x.nama === r.nama);
-      if (p) p.stok += r.qty;
+      if (p) {
+        this.catatMutasi({
+          productId: p.id,
+          gudangId: this.gudangDefault().id,
+          tipe: "masuk",
+          qty: r.qty,
+          hargaSatuan: asli.hargaBeli ?? p.hargaBeli,
+          referensi: { jenis: "retur_penjualan", id: input.referensi, nomor: input.referensi },
+          keterangan: `Retur penjualan ${input.referensi}`,
+          user,
+        });
+        this.sinkronStokProduk(p.id);
+      }
       items.push({ nama: r.nama, qty: r.qty, hargaJual: asli.hargaJual });
       grossReturn += asli.hargaJual * r.qty;
       netReturn += asli.hargaJual * r.qty - asli.diskon;
@@ -953,8 +1043,18 @@ export const mockDb = {
     for (const item of input.items) {
       const p = this.products.find((x) => x.id === item.productId);
       if (p) {
-        p.stok += item.qty;
+        this.catatMutasi({
+          productId: p.id,
+          gudangId: this.gudangDefault().id,
+          tipe: "masuk",
+          qty: item.qty,
+          hargaSatuan: item.hargaBeli,
+          referensi: { jenis: "pembelian", id: pembelian.nomor, nomor: pembelian.nomor },
+          keterangan: `Pembelian dari ${input.pemasok}`,
+          user: { id: "system", nama: "Sistem", username: "system", role: "pemilik" },
+        });
         p.hargaBeli = item.hargaBeli;
+        this.sinkronStokProduk(p.id);
       }
     }
 
@@ -1311,7 +1411,706 @@ export const mockDb = {
       },
     };
   },
+
+  // ===== ASET TETAP (FIXED ASSETS) =====
+  asetTetap: [] as AsetTetap[],
+
+  daftarAsetTetap(): AsetTetap[] {
+    return [...this.asetTetap].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  },
+
+  buatAsetTetap(input: AsetTetapInput, user: User): AsetTetap {
+    if (user.role !== "pemilik") throw new Error("Hanya pemilik yang boleh menambah aset tetap.");
+    if (this.asetTetap.some((a) => a.kode === input.kode)) throw new Error("Kode aset sudah dipakai.");
+    const now = new Date().toISOString();
+    const aset: AsetTetap = { ...input, id: `ast-${Date.now().toString(36)}`, createdAt: now, updatedAt: now };
+    this.asetTetap.unshift(aset);
+    return aset;
+  },
+
+  ubahAsetTetap(id: string, input: Partial<AsetTetapInput>, user: User): AsetTetap {
+    if (user.role !== "pemilik") throw new Error("Hanya pemilik yang boleh mengubah aset tetap.");
+    const idx = this.asetTetap.findIndex((a) => a.id === id);
+    if (idx === -1) throw new Error("Aset tidak ditemukan.");
+    if (input.kode && this.asetTetap.some((a) => a.kode === input.kode && a.id !== id)) throw new Error("Kode aset sudah dipakai.");
+    this.asetTetap[idx] = { ...this.asetTetap[idx], ...input, updatedAt: new Date().toISOString() };
+    return this.asetTetap[idx];
+  },
+
+  hapusAsetTetap(id: string, user: User): void {
+    if (user.role !== "pemilik") throw new Error("Hanya pemilik yang boleh menghapus aset tetap.");
+    const idx = this.asetTetap.findIndex((a) => a.id === id);
+    if (idx === -1) throw new Error("Aset tidak ditemukan.");
+    this.asetTetap.splice(idx, 1);
+  },
+
+  /**
+   * Menghitung penyusutan bulanan untuk semua aset aktif.
+   * Mengembalikan array item penyusutan per aset untuk periode tertentu (YYYY-MM).
+   */
+  hitungPenyusutanBulanan(periode: string): PenyusutanItem[] {
+    const [thn, bln] = periode.split("-").map(Number);
+    const hasil: PenyusutanItem[] = [];
+    for (const a of this.asetTetap.filter((a) => a.status === "aktif")) {
+      const tglPerolehan = new Date(a.tanggalPerolehan);
+      const thnPerolehan = tglPerolehan.getFullYear();
+      const blnPerolehan = tglPerolehan.getMonth() + 1;
+      // Jika aset diperoleh setelah periode ini, belum disusutkan
+      if (thnPerolehan > thn || (thnPerolehan === thn && blnPerolehan > bln)) continue;
+      // Umur ekonomis dalam bulan
+      const totalBulan = a.umurEkonomis;
+      // Bulan ke-berapa ini sejak perolehan
+      const bulanKe = (thn - thnPerolehan) * 12 + (bln - blnPerolehan) + 1;
+      if (bulanKe > totalBulan) continue; // Sudah habis disusutkan
+      const nilaiDisusutkan = a.nilaiPerolehan - a.nilaiResidu;
+      let penyusutanBulanIni = 0;
+      if (a.metodePenyusutan === "garis-lurus") {
+        penyusutanBulanIni = Math.round(nilaiDisusutkan / totalBulan);
+      } else if (a.metodePenyusutan === "menurun-ganda") {
+        // Double declining balance: rate = 2 / umur (per tahun), per bulan = rate/12
+        const rateTahun = 2 / (totalBulan / 12);
+        const rateBulan = rateTahun / 12;
+        const akumulasiSebelumnya = this.hitungAkumulasipenyusutanSampai(a.id, thn, bln - 1);
+        const nilaiBukuSebelumnya = a.nilaiPerolehan - akumulasiSebelumnya;
+        penyusutanBulanIni = Math.round(Math.min(nilaiBukuSebelumnya * rateBulan, nilaiBukuSebelumnya - a.nilaiResidu));
+      } else if (a.metodePenyusutan === "jumlah-tahun") {
+        // Sum of years digits: sisa umur / jumlah angka tahun * nilai disusutkan
+        const sisaTahun = Math.ceil((totalBulan - bulanKe + 1) / 12);
+        const totalTahun = Math.ceil(totalBulan / 12);
+        const sumYears = (totalTahun * (totalTahun + 1)) / 2;
+        penyusutanBulanIni = Math.round((sisaTahun / sumYears) * nilaiDisusutkan / 12);
+      }
+      const akumulasi = this.hitungAkumulasipenyusutanSampai(a.id, thn, bln - 1) + penyusutanBulanIni;
+      const nilaiBuku = a.nilaiPerolehan - akumulasi;
+      hasil.push({
+        asetId: a.id,
+        periode: `${thn}-${String(bln).padStart(2, "0")}`,
+        nilaiPenyusutan: penyusutanBulanIni,
+        akumulasiPenyusutan: akumulasi,
+        nilaiBuku: Math.max(nilaiBuku, a.nilaiResidu),
+      });
+    }
+    return hasil;
+  },
+
+  /** Helper: hitung akumulasi penyusutan sampai bulan tertentu (internal). */
+  hitungAkumulasipenyusutanSampai(asetId: string, thn: number, bln: number): number {
+    let total = 0;
+    const a = this.asetTetap.find((x) => x.id === asetId);
+    if (!a) return 0;
+    const tglPerolehan = new Date(a.tanggalPerolehan);
+    const thnPerolehan = tglPerolehan.getFullYear();
+    const blnPerolehan = tglPerolehan.getMonth() + 1;
+    const totalBulan = a.umurEkonomis;
+    const nilaiDisusutkan = a.nilaiPerolehan - a.nilaiResidu;
+    for (let y = thnPerolehan; y <= thn; y++) {
+      const mulaiBulan = y === thnPerolehan ? blnPerolehan : 1;
+      const akhirBulan = y === thn ? bln : 12;
+      for (let m = mulaiBulan; m <= akhirBulan; m++) {
+        const bulanKe = (y - thnPerolehan) * 12 + (m - blnPerolehan) + 1;
+        if (bulanKe > totalBulan) break;
+        if (a.metodePenyusutan === "garis-lurus") {
+          total += Math.round(nilaiDisusutkan / totalBulan);
+        } else if (a.metodePenyusutan === "menurun-ganda") {
+          const rateTahun = 2 / (totalBulan / 12);
+          const rateBulan = rateTahun / 12;
+          const akumSebelumnya = total;
+          const nilaiBukuSblm = a.nilaiPerolehan - akumSebelumnya;
+          total += Math.round(Math.min(nilaiBukuSblm * rateBulan, nilaiBukuSblm - a.nilaiResidu));
+        } else if (a.metodePenyusutan === "jumlah-tahun") {
+          const sisaTahun = Math.ceil((totalBulan - bulanKe + 1) / 12);
+          const totalTahun = Math.ceil(totalBulan / 12);
+          const sumYears = (totalTahun * (totalTahun + 1)) / 2;
+          total += Math.round((sisaTahun / sumYears) * nilaiDisusutkan / 12);
+        }
+      }
+    }
+    return Math.min(total, nilaiDisusutkan);
+  },
+
+  /** Posting jurnal penyusutan bulanan ke jurnal umum. */
+  postingPenyusutanBulanan(periode: string, user: User): { jurnalId: string; totalPenyusutan: number } {
+    if (user.role !== "pemilik") throw new Error("Hanya pemilik yang boleh posting penyusutan.");
+    const items = this.hitungPenyusutanBulanan(periode);
+    if (items.length === 0) throw new Error("Tidak ada aset yang disusutkan pada periode ini.");
+    const totalPenyusutan = items.reduce((s, i) => s + i.nilaiPenyusutan, 0);
+    // Buat jurnal: Debit Beban Penyusutan (per aset), Kredit Akumulasi Penyusutan (per aset)
+    const baris = items.flatMap((i) => {
+      const aset = this.asetTetap.find((a) => a.id === i.asetId)!;
+      return [
+        { akun: aset.akunBebanPenyusutan, debit: i.nilaiPenyusutan, kredit: 0 },
+        { akun: aset.akunPenyusutan, debit: 0, kredit: i.nilaiPenyusutan },
+      ];
+    });
+    const jurnal = buatJurnal(`Penyusutan bulanan ${periode}`, `PENYUSUTAN-${periode}`, baris);
+    const jurnalId = jurnal.id;
+    return { jurnalId, totalPenyusutan };
+  },
+
+  /** Mutasi aset (penjualan, pemindahan, penghapusan). */
+  mutasiAset(input: Omit<MutasiAset, "id" | "createdAt">, user: User): MutasiAset {
+    if (user.role !== "pemilik") throw new Error("Hanya pemilik yang boleh mutasi aset.");
+    const aset = this.asetTetap.find((a) => a.id === input.asetId);
+    if (!aset) throw new Error("Aset tidak ditemukan.");
+    const mutasi: MutasiAset = {
+      ...input,
+      id: `mut-${Date.now().toString(36)}`,
+      createdAt: new Date().toISOString(),
+    };
+    // Update status aset
+    if (input.jenis === "penjualan") aset.status = "dijual";
+    else if (input.jenis === "penghapusan") aset.status = "dihapuskan";
+    else if (input.jenis === "pemindahan") {
+      aset.lokasi = input.lokasiBaru ?? aset.lokasi;
+      aset.status = "dipindahkan";
+    }
+    aset.updatedAt = new Date().toISOString();
+    return mutasi;
+  },
+
+  /** Laporan aset tetap per periode. */
+  laporanAsetTetap(periode: string): LaporanAsetTetap[] {
+    const items = this.hitungPenyusutanBulanan(periode);
+    const map = new Map(items.map((i) => [i.asetId, i]));
+    return this.asetTetap.filter((a) => a.status === "aktif").map((a) => {
+      const p = map.get(a.id);
+      return {
+        aset: a,
+        penyusutanPeriode: p?.nilaiPenyusutan ?? 0,
+        akumulasiPenyusutan: p?.akumulasiPenyusutan ?? 0,
+        nilaiBuku: p?.nilaiBuku ?? a.nilaiPerolehan,
+      };
+    });
+  },
+
+  // ===== INVENTARIS (INVENTORY) METHODS =====
+
+  /** Daftar gudang (termasuk yang nonaktif, untuk master). */
+  daftarGudang(): Gudang[] {
+    return structuredClone(this.gudang);
+  },
+
+  /** Buat gudang baru. */
+  buatGudang(input: Omit<Gudang, "id" | "createdAt" | "updatedAt">, user: User): Gudang {
+    if (user.role !== "pemilik") throw new Error("Hanya pemilik yang boleh menambah gudang.");
+    if (this.gudang.some((g) => g.kode === input.kode)) throw new Error("Kode gudang sudah dipakai.");
+    const now = waktuSekarang();
+    if (input.isDefault) {
+      this.gudang = this.gudang.map((g) => ({ ...g, isDefault: false }));
+    }
+    const gudang: Gudang = { ...input, id: `gdg-${Date.now().toString(36)}`, createdAt: now, updatedAt: now };
+    this.gudang.push(gudang);
+    return structuredClone(gudang);
+  },
+
+  /** Ubah gudang. */
+  ubahGudang(id: string, input: Partial<Omit<Gudang, "id" | "createdAt">>, user: User): Gudang {
+    if (user.role !== "pemilik") throw new Error("Hanya pemilik yang boleh mengubah gudang.");
+    const idx = this.gudang.findIndex((g) => g.id === id);
+    if (idx === -1) throw new Error("Gudang tidak ditemukan.");
+    if (input.kode && this.gudang.some((g) => g.kode === input.kode && g.id !== id)) throw new Error("Kode gudang sudah dipakai.");
+    if (input.isDefault) {
+      this.gudang = this.gudang.map((g) => ({ ...g, isDefault: g.id === id }));
+    }
+    this.gudang[idx] = { ...this.gudang[idx], ...input, updatedAt: waktuSekarang() };
+    return structuredClone(this.gudang[idx]);
+  },
+
+  /** Hapus gudang (nonaktifkan). */
+  hapusGudang(id: string, user: User): void {
+    if (user.role !== "pemilik") throw new Error("Hanya pemilik yang boleh menghapus gudang.");
+    const idx = this.gudang.findIndex((g) => g.id === id);
+    if (idx === -1) throw new Error("Gudang tidak ditemukan.");
+    if (this.gudang[idx].isDefault) throw new Error("Gudang default tidak boleh dinonaktifkan. Pilih gudang default lain dulu.");
+    this.gudang[idx] = { ...this.gudang[idx], isActive: false, updatedAt: waktuSekarang() };
+  },
+
+  /** Ambil stockCard (buat jika belum ada). */
+  getStockCard(productId: string, gudangId: string): StockCard {
+    const key = `${productId}-${gudangId}`;
+    let card = this.stockCards.get(key);
+    if (!card) {
+      const p = this.products.find((p) => p.id === productId);
+      if (!p) throw new Error("Produk tidak ditemukan.");
+      card = {
+        productId,
+        gudangId,
+        // Produk baru/seed belum punya kartu: stok awalnya dianggap berada di
+        // gudang default. Gudang lain selalu mulai dari nol supaya transfer
+        // tidak menggandakan stok.
+        qty:
+          this.getTotalStok(productId) === 0 && gudangId === this.gudangDefault().id
+            ? p.stok
+            : 0,
+        hargaRataRata: p.hargaBeli,
+        lastUpdated: waktuSekarang(),
+      };
+      this.stockCards.set(`${productId}-${gudangId}`, card);
+    }
+    return card;
+  },
+
+  /** Ambil stok produk di gudang tertentu. */
+  getStok(productId: string, gudangId: string): number {
+    return this.getStockCard(productId, gudangId).qty;
+  },
+
+  /** Ambil total stok produk di semua gudang. */
+  getTotalStok(productId: string): number {
+    let total = 0;
+    for (const card of this.stockCards.values()) {
+      if (card.productId === productId) total += card.qty;
+    }
+    return total;
+  },
+
+  /** Gudang default (fallback gudang pertama yang aktif). */
+  gudangDefault(): Gudang {
+    const g = this.gudang.find((x) => x.isActive && x.isDefault) ?? this.gudang.find((x) => x.isActive);
+    if (!g) throw new Error("Belum ada gudang aktif.");
+    return g;
+  },
+
+  /** Sinkronkan `products.stok` (total semua gudang) setelah mutasi. */
+  sinkronStokProduk(productId: string): void {
+    const p = this.products.find((x) => x.id === productId);
+    if (p) p.stok = this.getTotalStok(productId);
+  },
+
+  /**
+   * Set total stok produk ke angka tertentu (dipakai saat edit master produk).
+   * Selisihnya dibebankan ke gudang default tanpa membuat jurnal — ini koreksi
+   * master, bukan transaksi persediaan.
+   */
+  setStokTotal(productId: string, stok: number): void {
+    const p = this.products.find((x) => x.id === productId);
+    if (!p) return;
+    const gudangId = this.gudangDefault().id;
+    const card = this.getStockCard(productId, gudangId);
+    const totalLain = this.getTotalStok(productId) - card.qty;
+    card.qty = Math.max(0, stok - totalLain);
+    card.lastUpdated = waktuSekarang();
+    this.sinkronStokProduk(productId);
+  },
+
+  /**
+   * Catat pengurangan stok karena penjualan (dipanggil dari checkout).
+   * Dipisah dari `catatMutasi` supaya pemanggil tidak perlu objek User penuh.
+   */
+  catatPenjualanStok(
+    nomor: string,
+    items: Array<{ productId: string; qty: number; hargaBeli: number }>,
+    kasir: string,
+  ): void {
+    const gudangId = this.gudangDefault().id;
+    for (const item of items) {
+      const p = this.products.find((x) => x.id === item.productId);
+      if (!p) continue;
+      this.catatMutasi({
+        productId: p.id,
+        gudangId,
+        tipe: "keluar",
+        qty: item.qty,
+        hargaSatuan: item.hargaBeli,
+        referensi: { jenis: "penjualan", id: nomor, nomor },
+        user: { id: `kasir:${kasir}`, nama: kasir, username: kasir, role: "kasir" },
+        izinkanNegatif: true,
+      });
+      this.sinkronStokProduk(p.id);
+    }
+  },
+
+  /** Catat mutasi stok (internal). */
+  catatMutasi(input: {
+    productId: string;
+    gudangId: string;
+    tipe: StockMovementType;
+    qty: number;
+    hargaSatuan: number;
+    referensi: StockMovementRef;
+    keterangan?: string;
+    user: User;
+    izinkanNegatif?: boolean;
+  }): StockMovement {
+    const card = this.getStockCard(input.productId, input.gudangId);
+    const qtySebelum = card.qty;
+    const qty = input.tipe === "masuk" || input.tipe === "transfer_masuk" ? input.qty : -input.qty;
+    const qtySesudah = card.qty + qty;
+    if (qtySesudah < 0 && !input.izinkanNegatif) throw new Error("Stok tidak mencukupi untuk mutasi keluar.");
+
+    const p = this.products.find((p) => p.id === input.productId);
+    const hargaSatuan = input.hargaSatuan ?? (p?.hargaBeli ?? 0);
+    const totalNilai = input.qty * hargaSatuan;
+
+    // Rata-rata bergerak: masuk menimbang ulang harga, keluar memakai harga lama.
+    const masuk = input.tipe === "masuk" || input.tipe === "transfer_masuk";
+    if (masuk && qtySesudah > 0) {
+      card.hargaRataRata =
+        (qtySebelum * card.hargaRataRata + input.qty * hargaSatuan) / qtySesudah;
+    }
+    card.qty = qtySesudah;
+    card.lastUpdated = waktuSekarang();
+
+    const mutasi: StockMovement = {
+      id: `MOV-${String((mutasiCounter += 1)).padStart(6, "0")}`,
+      productId: input.productId,
+      gudangId: input.gudangId,
+      tipe: input.tipe,
+      qty: input.qty,
+      qtySebelum,
+      qtySesudah,
+      hargaSatuan,
+      totalNilai,
+      referensi: input.referensi,
+      keterangan: input.keterangan,
+      createdAt: waktuSekarang(),
+      createdBy: input.user.id,
+    };
+    this.stockMovements.unshift(mutasi);
+    return structuredClone(mutasi);
+  },
+
+  /** Stok masuk (pembelian, retur penjualan, penyesuaian +). */
+  stokMasuk(input: {
+    productId: string;
+    gudangId: string;
+    qty: number;
+    hargaSatuan: number;
+    referensi: StockMovementRef;
+    keterangan?: string;
+    user: User;
+  }): StockMovement {
+    return this.catatMutasi({ ...input, tipe: "masuk" });
+  },
+
+  /** Stok keluar (penjualan, retur pembelian, penyesuaian -). */
+  stokKeluar(input: {
+    productId: string;
+    gudangId: string;
+    qty: number;
+    hargaSatuan: number;
+    referensi: StockMovementRef;
+    keterangan?: string;
+    user: User;
+  }): StockMovement {
+    return this.catatMutasi({ ...input, tipe: "keluar" });
+  },
+
+  /** Transfer stok antar gudang. */
+  transferStok(input: StockTransferInput, user: User): { keluar: StockMovement; masuk: StockMovement } {
+    if (input.gudangAsalId === input.gudangTujuanId) throw new Error("Gudang asal dan tujuan tidak boleh sama.");
+    const p = this.products.find((p) => p.id === input.productId);
+    if (!p) throw new Error("Produk tidak ditemukan.");
+    const stokAsal = this.getStok(input.productId, input.gudangAsalId);
+    if (stokAsal < input.qty) throw new Error("Stok asal tidak mencukupi untuk transfer.");
+    const hargaSatuan = this.getStockCard(input.productId, input.gudangAsalId).hargaRataRata;
+
+    const keluar = this.catatMutasi({
+      productId: input.productId,
+      gudangId: input.gudangAsalId,
+      tipe: "transfer_keluar",
+      qty: input.qty,
+      hargaSatuan,
+      referensi: { jenis: "transfer", id: `TRF-${Date.now().toString(36)}`, gudangAsal: input.gudangAsalId, gudangTujuan: input.gudangTujuanId },
+      keterangan: input.catatan,
+      user,
+    });
+
+    const masuk = this.catatMutasi({
+      productId: input.productId,
+      gudangId: input.gudangTujuanId,
+      tipe: "transfer_masuk",
+      qty: input.qty,
+      hargaSatuan,
+      referensi: keluar.referensi,
+      keterangan: input.catatan,
+      user,
+    });
+
+    this.sinkronStokProduk(input.productId);
+    return { keluar, masuk };
+  },
+
+  /** Penyesuaian stok manual (di gudang tertentu). */
+  penyesuaianStokGudang(input: StockAdjustmentInput, user: User): StockMovement {
+    if (user.role !== "pemilik") throw new Error("Hanya pemilik yang boleh menyesuaikan stok.");
+    const card = this.getStockCard(input.productId, input.gudangId);
+    const selisih = input.stokFisik - card.qty;
+    if (selisih === 0) throw new Error("Stok fisik sama dengan stok sistem — tidak ada penyesuaian.");
+    if (input.stokFisik < 0) throw new Error("Stok fisik tidak boleh negatif.");
+
+    const p = this.products.find((p) => p.id === input.productId);
+    if (!p) throw new Error("Produk tidak ditemukan.");
+    const tipe = selisih > 0 ? "masuk" : "keluar";
+    const hargaSatuan = card.hargaRataRata;
+    const nilai = Math.abs(selisih) * hargaSatuan;
+
+    const mutasi = this.catatMutasi({
+      productId: input.productId,
+      gudangId: input.gudangId,
+      tipe,
+      qty: Math.abs(selisih),
+      hargaSatuan,
+      referensi: { jenis: "penyesuaian", id: `ADJ-${Date.now().toString(36)}`, alasan: input.alasan },
+      keterangan: input.catatan,
+      user,
+    });
+
+    if (nilai > 0) {
+      const baris: JurnalBaris[] =
+        selisih > 0
+          ? [
+              { akun: "Persediaan", debit: nilai, kredit: 0 },
+              { akun: "Selisih stok", debit: 0, kredit: nilai },
+            ]
+          : [
+              { akun: "Selisih stok", debit: nilai, kredit: 0 },
+              { akun: "Persediaan", debit: 0, kredit: nilai },
+            ];
+      this.jurnal.unshift(
+        buatJurnal(
+          `Penyesuaian stok ${p.nama} (${input.alasan})`,
+          mutasi.referensi.id,
+          baris,
+        ),
+      );
+    }
+
+    this.sinkronStokProduk(input.productId);
+    this.audit(
+      user,
+      "penyesuaian_stok",
+      `${p.nama} @ ${input.gudangId}: ${card.qty - selisih} → ${input.stokFisik} (${input.alasan})`,
+    );
+    return mutasi;
+  },
+
+  /** Riwayat mutasi stok per produk per gudang. */
+  riwayatMutasi(productId: string, gudangId?: string, limit = 100): StockMovement[] {
+    let arr = this.stockMovements.filter((m) => m.productId === productId);
+    if (gudangId) arr = arr.filter((m) => m.gudangId === gudangId);
+    return arr.slice(0, limit);
+  },
+
+  /** Buat opname stok. */
+  buatOpname(input: StockOpnameInput, user: User): StockOpname {
+    const gudang = this.gudang.find((g) => g.id === input.gudangId);
+    if (!gudang) throw new Error("Gudang tidak ditemukan.");
+    if (!gudang.isActive) throw new Error("Gudang sudah nonaktif.");
+    if (input.items.length === 0) throw new Error("Pilih minimal satu item untuk opname.");
+
+    const unik = new Set<string>();
+    const items: StockOpnameItem[] = [];
+    for (const item of input.items) {
+      if (item.qtyFisik < 0) throw new Error("Qty fisik tidak boleh negatif.");
+      if (unik.has(item.productId)) throw new Error("Produk yang sama tidak boleh muncul dua kali.");
+      unik.add(item.productId);
+      const p = this.products.find((p) => p.id === item.productId);
+      if (!p) throw new Error(`Produk ${item.productId} tidak ditemukan.`);
+      const card = this.getStockCard(item.productId, input.gudangId);
+      const qtySistem = card.qty;
+      const qtyFisik = item.qtyFisik;
+      const selisih = qtyFisik - qtySistem;
+      const hargaRataRata = this.getStockCard(item.productId, input.gudangId).hargaRataRata;
+      items.push({
+        productId: item.productId,
+        qtySistem,
+        qtyFisik,
+        selisih,
+        hargaRataRata,
+        nilaiSelisih: selisih * hargaRataRata,
+        keterangan: item.keterangan,
+      });
+    }
+
+    const opname: StockOpname = {
+      id: `OPN-${String((opnameCounter += 1)).padStart(4, "0")}`,
+      gudangId: input.gudangId,
+      tanggal: input.tanggal,
+      status: "draft",
+      items,
+      catatan: input.catatan,
+      createdAt: waktuSekarang(),
+      createdBy: user.id,
+      updatedAt: waktuSekarang(),
+    };
+    this.stockOpnames.unshift(opname);
+    return structuredClone(opname);
+  },
+
+  /** Selesaikan opname (posting penyesuaian). */
+  selesaikanOpname(id: string, user: User): StockOpname {
+    const opname = this.stockOpnames.find((o) => o.id === id);
+    if (!opname) throw new Error("Opname tidak ditemukan.");
+    if (opname.status !== "draft") throw new Error("Opname sudah diselesaikan atau dibatalkan.");
+
+    for (const item of opname.items) {
+      if (item.selisih !== 0) {
+        this.penyesuaianStokGudang(
+          {
+            productId: item.productId,
+            gudangId: opname.gudangId,
+            stokFisik: item.qtyFisik,
+            alasan: "opname",
+            catatan: item.keterangan,
+          },
+          user,
+        );
+      }
+    }
+
+    opname.status = "selesai";
+    opname.updatedAt = waktuSekarang();
+    return structuredClone(opname);
+  },
+
+  /** Batalkan opname. */
+  batalkanOpname(id: string, user: User): StockOpname {
+    const opname = this.stockOpnames.find((o) => o.id === id);
+    if (!opname) throw new Error("Opname tidak ditemukan.")
+    if (opname.status !== "draft") throw new Error("Hanya opname draft yang bisa dibatalkan.");
+    opname.status = "dibatalkan";
+    opname.updatedAt = waktuSekarang();
+    return structuredClone(opname);
+  },
+
+  /** Daftar opname. */
+  daftarOpname(gudangId?: string): StockOpname[] {
+    let arr = [...this.stockOpnames];
+    if (gudangId) arr = arr.filter((o) => o.gudangId === gudangId);
+    return arr.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  },
+
+  /** Detail opname. */
+  detailOpname(id: string): StockOpname | null {
+    return this.stockOpnames.find((o) => o.id === id) ?? null;
+  },
+
+  /** Nilai persediaan (inventory valuation). */
+  nilaiPersediaan(gudangId?: string): InventoryValuation {
+    this.initStockCards();
+    const items: InventoryValuationItem[] = [];
+    let totalQty = 0;
+    let totalNilai = 0;
+
+    for (const card of this.stockCards.values()) {
+      if (gudangId && card.gudangId !== gudangId) continue;
+      if (card.qty === 0) continue;
+
+      const p = this.products.find((p) => p.id === card.productId);
+      const g = this.gudang.find((g) => g.id === card.gudangId);
+      if (!p || !g) continue;
+
+      const totalNilaiItem = card.qty * card.hargaRataRata;
+      items.push({
+        productId: p.id,
+        productNama: p.nama,
+        sku: p.sku,
+        satuan: p.satuan,
+        gudangId: card.gudangId,
+        gudangNama: g.nama,
+        qty: card.qty,
+        hargaRataRata: card.hargaRataRata,
+        totalNilai: totalNilaiItem,
+      });
+      totalQty += card.qty;
+      totalNilai += totalNilaiItem;
+    }
+
+    const gudangNama = gudangId ? this.gudang.find((g) => g.id === gudangId)?.nama : "Semua Gudang";
+    return {
+      gudangId,
+      gudangNama,
+      totalProduk: items.length,
+      totalQty,
+      totalNilai,
+      items: items.sort((a, b) => b.totalNilai - a.totalNilai),
+    };
+  },
+
+  /** Produk dengan stok rendah. */
+  lowStock(): LowStockItem[] {
+    this.initStockCards();
+    const result: LowStockItem[] = [];
+    for (const card of this.stockCards.values()) {
+      if (card.qty === 0) continue;
+      const p = this.products.find((p) => p.id === card.productId);
+      const g = this.gudang.find((g) => g.id === card.gudangId);
+      if (!p || !g) continue;
+      if (card.qty <= p.stokMinimum) {
+        result.push({
+          productId: p.id,
+          productNama: p.nama,
+          sku: p.sku,
+          satuan: p.satuan,
+          gudangId: card.gudangId,
+          gudangNama: g.nama,
+          qty: card.qty,
+          stokMinimum: p.stokMinimum,
+          kekurangan: p.stokMinimum - card.qty,
+        });
+      }
+    }
+    return result.sort((a, b) => a.kekurangan - b.kekurangan);
+  },
+
+  /** Produk stok habis. */
+  outOfStock(): LowStockItem[] {
+    this.initStockCards();
+    const result: LowStockItem[] = [];
+    for (const card of this.stockCards.values()) {
+      if (card.qty > 0) continue;
+      const p = this.products.find((p) => p.id === card.productId);
+      const g = this.gudang.find((g) => g.id === card.gudangId);
+      if (!p || !g) continue;
+      result.push({
+        productId: p.id,
+        productNama: p.nama,
+        sku: p.sku,
+        satuan: p.satuan,
+        gudangId: card.gudangId,
+        gudangNama: g.nama,
+        qty: 0,
+        stokMinimum: p.stokMinimum,
+        kekurangan: p.stokMinimum,
+      });
+    }
+    return result;
+  },
+
+  /** Ringkasan inventaris untuk dashboard. */
+  inventorySummary(): InventorySummary {
+    const totalNilai = this.nilaiPersediaan().totalNilai;
+    const totalQty = this.nilaiPersediaan().totalQty;
+    const lowStock = this.lowStock();
+    const outOfStock = this.outOfStock();
+
+    const nilaiPerGudang: InventorySummary["nilaiPerGudang"] = [];
+    for (const gudang of this.gudang.filter((g) => g.isActive)) {
+      const val = this.nilaiPersediaan(gudang.id);
+      nilaiPerGudang.push({ gudangId: gudang.id, gudangNama: gudang.nama, totalQty: val.totalQty, totalNilai: val.totalNilai });
+    }
+
+    return {
+      totalProduk: this.products.filter((p) => p.status === "aktif").length,
+      totalGudang: this.gudang.filter((g) => g.isActive).length,
+      totalQty: this.nilaiPersediaan().totalQty,
+      totalNilai,
+      lowStockCount: lowStock.length,
+      outOfStockCount: outOfStock.length,
+      nilaiPerGudang,
+    };
+  },
+
+  /** Kartu stok (stock card / kardex) per produk per gudang. */
+  stockCard(productId: string, gudangId: string): { card: StockCard; movements: StockMovement[] } {
+    const card = this.getStockCard(productId, gudangId);
+    const movements = this.riwayatMutasi(productId, gudangId, 50);
+    return { card: structuredClone(card), movements: movements.map((m) => structuredClone(m)) };
+  },
 };
+
+mockDb.initStockCards();
 
 export function produkBaruId(): string {
   return `p${Date.now().toString(36)}`;

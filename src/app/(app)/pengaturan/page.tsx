@@ -315,6 +315,8 @@ type DraftProfil = CompanyProfile & {
   zonaWaktu: string;
   footerStruk: string;
   pajakPersen?: number;
+  pkpStatus?: "PKP" | "NON_PKP";
+  npwp?: string;
 };
 
 function PanelProfil() {
@@ -326,12 +328,13 @@ function PanelProfil() {
     telepon: profil.telepon,
     email: "",
     website: "",
-    npwp: "",
+    npwp: profil.npwp ?? "",
     logoUrl: "",
     mataUang: profil.mataUang,
     zonaWaktu: profil.zonaWaktu,
     footerStruk: profil.footerStruk,
     pajakPersen: profil.pajakPersen,
+    pkpStatus: profil.pkpStatus ?? "NON_PKP",
   });
   const [sukses, setSukses] = useState(false);
   const [mudah, setMudah] = useState(false);
@@ -400,6 +403,8 @@ function PanelProfil() {
         zonaWaktu: draft.zonaWaktu,
         footerStruk: draft.footerStruk,
         pajakPersen: draft.pajakPersen,
+        pkpStatus: draft.pkpStatus,
+        npwp: draft.npwp,
       });
       setSukses(true);
     } catch (err) {
@@ -487,7 +492,7 @@ function PanelProfil() {
           <FormField label="Website">
             <input className="input" value={draft.website} onChange={ubah("website")} placeholder="cth. https://toko.contoh.id" />
           </FormField>
-          <FormField label="NPWP">
+          <FormField label="NPWP" hint={draft.pkpStatus === "PKP" ? "Wajib diisi untuk PKP" : "Opsional"}>
             <input className="input" value={draft.npwp} onChange={ubah("npwp")} placeholder="cth. 01.234.567.8-910.000" />
           </FormField>
         </div>
@@ -497,17 +502,40 @@ function PanelProfil() {
         <FormField label="Zona waktu">
           <input className="input" value={draft.zonaWaktu} onChange={ubah("zonaWaktu")} placeholder="Asia/Jakarta" />
         </FormField>
-        <FormField label="Pajak transaksi (%)">
-          <input
-            type="number"
-            min={0}
-            max={100}
-            className="input text-right tabular-nums"
-            value={draft.pajakPersen ?? 0}
-            onChange={(e) => setDraft({ ...draft, pajakPersen: Number(e.target.value) })}
-            placeholder="0"
-          />
-        </FormField>
+
+        <div className="border-t border-line pt-3 space-y-3.5">
+          <p className="text-sm font-semibold text-brand">Pajak transaksi</p>
+
+          <FormField label="Status PKP" hint="Menentukan tarif pajak otomatis: PKP = PPN 11%, Non-PKP = PPh Final 0,5%">
+            <select className="input" value={draft.pkpStatus ?? "NON_PKP"} onChange={(e) => setDraft({ ...draft, pkpStatus: e.target.value as "PKP" | "NON_PKP" })}>
+              <option value="NON_PKP">Non-PKP (PPh Final 0,5% — omset ≤ 4,8 M/tahun)</option>
+              <option value="PKP">PKP (PPN 11% — sudah dikukuhkan)</option>
+            </select>
+          </FormField>
+
+          <FormField label="Tarif pajak efektif" hint="Otomatis mengikuti status PKP di atas">
+            <input
+              type="number"
+              className="input text-right tabular-nums bg-slate-50"
+              readOnly
+              value={draft.pkpStatus === "PKP" ? 11 : 0.5}
+            />
+          </FormField>
+
+          <FormField label="Override manual (%)" hint="Biasanya tidak perlu diubah. Kosongkan untuk pakai tarif otomatis.">
+            <input
+              type="number"
+              min={0}
+              max={100}
+              step={0.1}
+              className="input text-right tabular-nums"
+              value={draft.pajakPersen ?? 0}
+              onChange={(e) => setDraft({ ...draft, pajakPersen: Number(e.target.value) })}
+              placeholder="Kosong = pakai tarif otomatis"
+            />
+          </FormField>
+        </div>
+
         <FormField label="Catatan footer struk">
           <input className="input" value={draft.footerStruk} onChange={ubah("footerStruk")} />
         </FormField>
@@ -828,7 +856,7 @@ function PanelFiscalPeriods() {
           onClick={() => setOpenCreate(true)}
           className="btn-primary px-3 py-1.5 text-xs"
         >
-          <Plus className="size-3.5" aria-hidden /> Tambah Periode
+          <Plus className="size-4" aria-hidden /> Tambah Periode
         </button>
       </div>
 

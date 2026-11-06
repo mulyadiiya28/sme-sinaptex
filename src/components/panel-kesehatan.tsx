@@ -70,7 +70,7 @@ export function PanelKesehatan({ className }: { className?: string }) {
             onClick={() => void kesehatan.refetch()}
             className="inline-flex items-center gap-1.5 rounded-xl border border-amber-300 bg-white px-3 py-1.5 text-xs font-semibold text-amber-800 transition-colors hover:bg-amber-100"
           >
-            <RefreshCw className="size-3.5" aria-hidden />
+            <RefreshCw className="size-4" aria-hidden />
             Coba lagi
           </button>
         </div>

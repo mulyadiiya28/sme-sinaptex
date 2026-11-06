@@ -51,15 +51,15 @@ export function CartPanel({
                 type="button"
                 aria-label={`Hapus ${l.product.nama}`}
                 onClick={() => removeLine(l.product.id)}
-                className="text-muted transition-colors hover:text-rose-600"
+                className="flex items-center justify-center size-8 rounded-lg border border-line bg-white text-muted hover:bg-rose-50 hover:border-rose-200 hover:text-rose-600 transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-rose-500"
               >
-                <Trash2 className="size-4" aria-hidden />
+                <Trash2 className="size-4.5" aria-hidden />
               </button>
             </div>
             <div className="mt-2.5 flex items-center justify-between">
               <div className="flex items-center gap-1.5">
                 <QtyBtn aria="Kurangi" onClick={() => setQty(l.product.id, l.qty - 1)}>
-                  <Minus className="size-3.5" aria-hidden />
+                  <Minus className="size-4.5" aria-hidden />
                 </QtyBtn>
                 <input
                   type="number"
@@ -69,7 +69,7 @@ export function CartPanel({
                   className="w-12 rounded-lg border border-line py-1 text-center text-sm font-bold tabular-nums"
                 />
                 <QtyBtn aria="Tambah" onClick={() => setQty(l.product.id, l.qty + 1)}>
-                  <Plus className="size-3.5" aria-hidden />
+                  <Plus className="size-4.5" aria-hidden />
                 </QtyBtn>
               </div>
               <MoneyDisplay value={Math.max(0, l.product.hargaJual * l.qty - l.diskon)} className="font-bold text-brand" />
@@ -143,7 +143,12 @@ function QtyBtn({ aria, onClick, children }: { aria: string; onClick: () => void
       type="button"
       aria-label={aria}
       onClick={onClick}
-      className={cn("btn-secondary size-8 rounded-lg p-0")}
+      className={cn(
+        "flex items-center justify-center size-8 rounded-lg border border-line bg-white text-ink",
+        "hover:bg-brand/5 hover:border-brand hover:text-brand",
+        "active:bg-brand/10 transition-colors",
+        "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand",
+      )}
     >
       {children}
     </button>

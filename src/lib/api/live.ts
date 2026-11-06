@@ -56,13 +56,27 @@ import type {
   AgedInvoice,
   AgingReport,
   ApprovalRule,
+  AsetTetap,
+  AsetTetapInput,
   CreateApprovalRuleRequest,
   CreateFiscalPeriodRequest,
   CreateSupplierRequest,
   DailyMovementReport,
   FiscalPeriod,
+  LaporanAsetTetap,
+  MutasiAset,
+  PenyusutanItem,
   Reconciliation,
   Supplier,
+  Gudang,
+  InventorySummary,
+  InventoryValuation,
+  LowStockItem,
+  StockAdjustmentInput,
+  StockMovement,
+  StockOpname,
+  StockOpnameInput,
+  StockTransferInput,
 } from "@/lib/api/types";
 
 export const API_BASE_URL = (process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:5121").replace(/\/+$/, "");
@@ -465,7 +479,18 @@ type BtTransferKas = {
   description: string | null;
   approvalRequired?: boolean;
 };
-type BtGudang = { id: string; code: string; name: string; isDefault: boolean; isActive: boolean };
+type BtGudang = {
+  id: string;
+  code: string;
+  name: string;
+  address?: string | null;
+  isDefault: boolean;
+  isActive: boolean;
+  businessId?: string;
+  branchId?: string;
+  version?: number;
+  createdAt?: string;
+};
 type BtJurnalBaris = {
   accountCode: string;
   accountName: string | null;
@@ -2255,4 +2280,384 @@ export async function liveSetujuiBatch(batch: PersetujuanBatch): Promise<void> {
     method: "POST",
     idempotensiKunci: buatKunciIdempotensi(),
   });
+}
+
+// ===== ASET TETAP (FIXED ASSETS) =====
+
+type BtAsetTetap = {
+  id: string;
+  kode: string;
+  nama: string;
+  kategori: string;
+  nilaiPerolehan: number;
+  nilaiResidu: number;
+  umurEkonomis: number;
+  metodePenyusutan: "garis-lurus" | "menurun-ganda" | "jumlah-tahun";
+  tanggalPerolehan: string;
+  lokasi: string;
+  status: "aktif" | "dijual" | "dihapuskan" | "dipindahkan";
+  akunAset: string;
+  akunPenyusutan: string;
+  akunBebanPenyusutan: string;
+  catatan?: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+type BtPenyusutanItem = {
+  asetId: string;
+  periode: string;
+  nilaiPenyusutan: number;
+  akumulasiPenyusutan: number;
+  nilaiBuku: number;
+};
+
+type BtMutasiAset = {
+  id: string;
+  asetId: string;
+  jenis: "pembelian" | "penjualan" | "pemindahan" | "penghapusan";
+  tanggal: string;
+  nilai: number;
+  keterangan: string;
+  lokasiBaru?: string;
+  createdAt: string;
+};
+
+type BtLaporanAsetTetap = {
+  aset: BtAsetTetap;
+  penyusutanPeriode: number;
+  akumulasiPenyusutan: number;
+  nilaiBuku: number;
+};
+
+function petakanAsetTetap(p: BtAsetTetap): AsetTetap {
+  return {
+    id: p.id,
+    kode: p.kode,
+    nama: p.nama,
+    kategori: p.kategori,
+    nilaiPerolehan: p.nilaiPerolehan,
+    nilaiResidu: p.nilaiResidu,
+    umurEkonomis: p.umurEkonomis,
+    metodePenyusutan: p.metodePenyusutan,
+    tanggalPerolehan: p.tanggalPerolehan,
+    lokasi: p.lokasi,
+    status: p.status,
+    akunAset: p.akunAset,
+    akunPenyusutan: p.akunPenyusutan,
+    akunBebanPenyusutan: p.akunBebanPenyusutan,
+    catatan: p.catatan,
+    createdAt: p.createdAt,
+    updatedAt: p.updatedAt,
+  };
+}
+
+function petakanPenyusutanItem(p: BtPenyusutanItem): PenyusutanItem {
+  return {
+    asetId: p.asetId,
+    periode: p.periode,
+    nilaiPenyusutan: p.nilaiPenyusutan,
+    akumulasiPenyusutan: p.akumulasiPenyusutan,
+    nilaiBuku: p.nilaiBuku,
+  };
+}
+
+function petakanMutasiAset(p: BtMutasiAset): MutasiAset {
+  return {
+    id: p.id,
+    asetId: p.asetId,
+    jenis: p.jenis,
+    tanggal: p.tanggal,
+    nilai: p.nilai,
+    keterangan: p.keterangan,
+    lokasiBaru: p.lokasiBaru,
+    createdAt: p.createdAt,
+  };
+}
+
+function petakanLaporanAsetTetap(p: BtLaporanAsetTetap): LaporanAsetTetap {
+  return {
+    aset: petakanAsetTetap(p.aset),
+    penyusutanPeriode: p.penyusutanPeriode,
+    akumulasiPenyusutan: p.akumulasiPenyusutan,
+    nilaiBuku: p.nilaiBuku,
+  };
+}
+
+function asetTetapBelumAda(): never {
+  throw new LiveApiError(
+    "Modul Aset Tetap belum tersedia di engine: belum ada endpoint /api/fixed-assets. Jalankan POS dalam mode mock (NEXT_PUBLIC_API_MODE=mock) untuk memakai modul ini.",
+    501,
+  );
+}
+
+export async function liveDaftarAsetTetap(): Promise<AsetTetap[]> {
+  return asetTetapBelumAda();
+}
+
+export async function liveBuatAsetTetap(input: AsetTetapInput, user: User): Promise<AsetTetap> {
+  return asetTetapBelumAda();
+}
+
+export async function liveUbahAsetTetap(id: string, input: Partial<AsetTetapInput>, user: User): Promise<AsetTetap> {
+  return asetTetapBelumAda();
+}
+
+export async function liveHapusAsetTetap(id: string, user: User): Promise<void> {
+  return asetTetapBelumAda();
+}
+
+export async function liveHitungPenyusutanBulanan(periode: string): Promise<PenyusutanItem[]> {
+  return asetTetapBelumAda();
+}
+
+export async function livePostingPenyusutanBulanan(periode: string, user: User): Promise<{ jurnalId: string; totalPenyusutan: number }> {
+  return asetTetapBelumAda();
+}
+
+export async function liveMutasiAset(input: Omit<MutasiAset, "id" | "createdAt">, user: User): Promise<MutasiAset> {
+  return asetTetapBelumAda();
+}
+
+export async function liveLaporanAsetTetap(periode: string): Promise<LaporanAsetTetap[]> {
+  return asetTetapBelumAda();
+}
+
+// ===== INVENTARIS (INVENTORY) =====
+
+function petakanGudang(w: BtGudang): Gudang {
+  return {
+    id: w.id,
+    kode: w.code,
+    nama: w.name,
+    alamat: w.address ?? undefined,
+    isDefault: w.isDefault,
+    isActive: w.isActive,
+    createdAt: w.createdAt ?? "",
+    updatedAt: w.createdAt ?? "",
+  };
+}
+
+export async function liveDaftarGudang(): Promise<Gudang[]> {
+  const data = await minta<BtGudang[]>("/api/warehouses?includeInactive=true");
+  return data.map(petakanGudang);
+}
+
+export async function liveBuatGudang(
+  input: Omit<Gudang, "id" | "createdAt" | "updatedAt">,
+): Promise<Gudang> {
+  const data = await minta<BtGudang>("/api/warehouses", {
+    method: "POST",
+    body: {
+      code: input.kode,
+      name: input.nama,
+      address: input.alamat ?? null,
+      isDefault: input.isDefault,
+    },
+  });
+  return petakanGudang(data);
+}
+
+export async function liveNonaktifkanGudang(id: string): Promise<void> {
+  await minta(`/api/warehouses/${id}/deactivate`, { method: "POST" });
+}
+
+export async function liveStokGudang(gudangId?: string): Promise<InventoryValuation> {
+  const query = gudangId ? `?warehouseId=${encodeURIComponent(gudangId)}` : "";
+  const [stok, produk, gudang] = await Promise.all([
+    minta<BtStok>(`/api/inventory/stock${query}`),
+    minta<BtProduk[]>("/api/products"),
+    minta<BtGudang[]>("/api/warehouses?includeInactive=true"),
+  ]);
+  const petaProduk = new Map(produk.map((p) => [p.id, p]));
+  const petaGudang = new Map(gudang.map((g) => [g.id, g]));
+  const gudangNama = gudangId ? petaGudang.get(gudangId)?.name ?? gudangId : "Semua Gudang";
+
+  const items = stok.items
+    .filter((i) => i.quantity !== 0)
+    .map((i) => {
+      const p = petaProduk.get(i.productId);
+      // Engine belum memberi harga rata-rata di endpoint stok; harga beli
+      // master dipakai sebagai dasar nilai dan diberi label di UI.
+      const harga = p?.purchasePrice ?? 0;
+      return {
+        productId: i.productId,
+        productNama: p?.name ?? i.productId,
+        sku: p?.code ?? "",
+        satuan: p?.baseUnitId ?? "",
+        gudangId: gudangId ?? "",
+        gudangNama,
+        qty: i.quantity,
+        hargaRataRata: harga,
+        totalNilai: i.quantity * harga,
+      };
+    })
+    .sort((a, b) => b.totalNilai - a.totalNilai);
+
+  return {
+    gudangId,
+    gudangNama,
+    totalProduk: items.length,
+    totalQty: items.reduce((s, i) => s + i.qty, 0),
+    totalNilai: items.reduce((s, i) => s + i.totalNilai, 0),
+    items,
+  };
+}
+
+export async function liveRingkasanInventaris(): Promise<InventorySummary> {
+  const gudang = (await liveDaftarGudang()).filter((g) => g.isActive);
+  const total = await liveStokGudang();
+  const perGudang = await Promise.all(
+    gudang.map(async (g) => {
+      const nilai = await liveStokGudang(g.id);
+      return {
+        gudangId: g.id,
+        gudangNama: g.nama,
+        totalQty: nilai.totalQty,
+        totalNilai: nilai.totalNilai,
+      };
+    }),
+  );
+
+  const produk = await minta<BtProduk[]>("/api/products");
+  const stok = await minta<BtStok>("/api/inventory/stock");
+  const qtyMap = new Map(stok.items.map((i) => [i.productId, i.quantity]));
+  let lowStockCount = 0;
+  let outOfStockCount = 0;
+  for (const p of produk) {
+    const qty = qtyMap.get(p.id) ?? 0;
+    if (qty === 0) outOfStockCount += 1;
+    else if (p.minimumStock > 0 && qty <= p.minimumStock) lowStockCount += 1;
+  }
+
+  return {
+    totalProduk: produk.filter((p) => p.isActive).length,
+    totalGudang: gudang.length,
+    totalQty: total.totalQty,
+    totalNilai: total.totalNilai,
+    lowStockCount,
+    outOfStockCount,
+    nilaiPerGudang: perGudang,
+  };
+}
+
+export async function liveStokRendah(): Promise<LowStockItem[]> {
+  const [produk, stok, satuan] = await Promise.all([
+    minta<BtProduk[]>("/api/products"),
+    minta<BtStok>("/api/inventory/stock"),
+    minta<BtSatuan[]>("/api/units"),
+  ]);
+  const namaSatuan = new Map(satuan.map((u) => [u.id, u.name]));
+  const jumlahStok = new Map(stok.items.map((i) => [i.productId, i.quantity]));
+
+  return produk
+    .filter((p) => p.isActive)
+    .map((p) => {
+      const qty = jumlahStok.get(p.id) ?? 0;
+      return {
+        productId: p.id,
+        productNama: p.name,
+        sku: p.code,
+        satuan: namaSatuan.get(p.baseUnitId) ?? p.baseUnitId,
+        gudangId: "",
+        gudangNama: "Semua Gudang",
+        qty,
+        stokMinimum: p.minimumStock,
+        kekurangan: Math.max(0, p.minimumStock - qty),
+      };
+    })
+    .filter((r) => r.stokMinimum > 0 && r.qty > 0 && r.qty <= r.stokMinimum)
+    .sort((a, b) => b.kekurangan - a.kekurangan);
+}
+
+export async function liveMutasiStok(_productId: string, _gudangId?: string): Promise<StockMovement[]> {
+  throw new LiveApiError(
+    "Engine belum menyediakan endpoint riwayat mutasi stok (kartu stok).",
+    501,
+  );
+}
+
+export async function livePenyesuaianStokGudang(
+  input: StockAdjustmentInput,
+  user: User,
+): Promise<StockMovement> {
+  const [stok, produk] = await Promise.all([
+    minta<BtStok>(`/api/inventory/stock?warehouseId=${encodeURIComponent(input.gudangId)}`),
+    minta<BtProduk[]>("/api/products"),
+  ]);
+  const target = produk.find((p) => p.id === input.productId);
+  if (!target) throw new LiveApiError("Produk tidak ditemukan.", 404);
+
+  const qtySebelum = stok.items.find((i) => i.productId === input.productId)?.quantity ?? 0;
+  const selisih = input.stokFisik - qtySebelum;
+  if (selisih === 0) {
+    throw new LiveApiError("Stok fisik sama dengan stok sistem — tidak ada penyesuaian.", 400);
+  }
+
+  const masuk = selisih > 0;
+  const hasil = await minta<{ movementId: string; quantity: number; unitCost: number; totalCost: number }>(
+    "/api/inventory/adjustments",
+    {
+      method: "POST",
+      idempotensiKunci: buatKunciIdempotensi(),
+      body: {
+        productId: input.productId,
+        warehouseId: input.gudangId,
+        direction: masuk ? "IN" : "OUT",
+        quantity: Math.abs(selisih),
+        movementType: masuk ? "STOCK_ADJUSTMENT_IN" : "STOCK_ADJUSTMENT_OUT",
+        costingMethod: "AVERAGE",
+        ...(masuk ? { unitCost: target.purchasePrice } : {}),
+        reason: input.catatan || input.alasan,
+      },
+    },
+  );
+
+  return {
+    id: hasil.movementId,
+    productId: input.productId,
+    gudangId: input.gudangId,
+    tipe: masuk ? "masuk" : "keluar",
+    qty: Math.abs(selisih),
+    qtySebelum,
+    qtySesudah: input.stokFisik,
+    hargaSatuan: hasil.unitCost,
+    totalNilai: hasil.totalCost,
+    referensi: { jenis: "penyesuaian", id: hasil.movementId, alasan: input.alasan },
+    keterangan: input.catatan,
+    createdAt: new Date().toISOString(),
+    createdBy: user.id,
+  };
+}
+
+export async function liveTransferStok(
+  _input: StockTransferInput,
+  _user: User,
+): Promise<{ keluar: StockMovement; masuk: StockMovement }> {
+  throw new LiveApiError(
+    "Engine belum punya endpoint transfer stok antar gudang. Gunakan penyesuaian keluar di gudang asal dan masuk di gudang tujuan.",
+    501,
+  );
+}
+
+export async function liveDaftarOpname(): Promise<StockOpname[]> {
+  throw new LiveApiError("Engine belum menyediakan endpoint opname stok.", 501);
+}
+
+export async function liveBuatOpname(
+  _input: StockOpnameInput,
+  _user: User,
+): Promise<StockOpname> {
+  throw new LiveApiError(
+    "Engine belum menyediakan endpoint opname stok. Gunakan penyesuaian stok per produk.",
+    501,
+  );
+}
+
+export async function liveSelesaikanOpname(_id: string, _user: User): Promise<StockOpname> {
+  throw new LiveApiError("Engine belum menyediakan endpoint opname stok.", 501);
+}
+
+export async function liveBatalkanOpname(_id: string, _user: User): Promise<StockOpname> {
+  throw new LiveApiError("Engine belum menyediakan endpoint opname stok.", 501);
 }

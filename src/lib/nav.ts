@@ -1,6 +1,7 @@
 import {
   BarChart3,
   BookText,
+  Building2,
   Calculator,
   ClipboardCheck,
   ClipboardList,
@@ -12,6 +13,7 @@ import {
   Timer,
   Truck,
   Wallet,
+  Warehouse,
 } from "lucide-react";
 import type { Role } from "@/lib/api/types";
 
@@ -34,6 +36,8 @@ export const NAV_GROUPS: NavGroup[] = [
     title: "Produk & Persediaan",
     items: [
       { href: "/produk", label: "Produk", icon: Package, roles: ["pemilik"] },
+      { href: "/inventaris", label: "Inventaris", icon: Warehouse, roles: ["pemilik"] },
+      { href: "/aset-tetap", label: "Aset Tetap", icon: Building2, roles: ["pemilik"] },
       { href: "/pembelian", label: "Pembelian", icon: ClipboardList, roles: ["pemilik"] },
       { href: "/supplier", label: "Pemasok", icon: Truck, roles: ["pemilik"] },
     ],

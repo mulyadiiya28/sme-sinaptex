@@ -132,18 +132,18 @@ export function GlobalSearch() {
                   >
                     <span className="flex size-7 shrink-0 items-center justify-center rounded-lg bg-brand/10 text-brand">
                       {h.jenis === "produk" ? (
-                        <Package className="size-3.5" aria-hidden />
+                        <Package className="size-4" aria-hidden />
                       ) : h.jenis === "transaksi" ? (
-                        <ReceiptText className="size-3.5" aria-hidden />
+                        <ReceiptText className="size-4" aria-hidden />
                       ) : (
-                        <Menu className="size-3.5" aria-hidden />
+                        <Menu className="size-4" aria-hidden />
                       )}
                     </span>
                     <span className="min-w-0 flex-1">
                       <span className="block truncate text-sm font-semibold text-ink">{h.judul}</span>
                       <span className="block truncate text-[11px] text-muted">{h.detail}</span>
                     </span>
-                    <CornerDownLeft className="size-3.5 shrink-0 text-muted/60" aria-hidden />
+                    <CornerDownLeft className="size-4 shrink-0 text-muted/60" aria-hidden />
                   </button>
                 </li>
               ))}

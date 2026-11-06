@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Plus, Trash2, Edit3, Filter } from "lucide-react";
+import { Plus } from "lucide-react";
 import type { CreateSupplierRequest, Supplier } from "@/lib/api/types";
 import { DataTable, type Column } from "@/components/data-table";
 import { FormField } from "@/components/form-field";
@@ -77,7 +77,7 @@ export default function SupplierPage() {
           onClick={() => setOpenCreate(true)}
           className="btn-primary px-4 py-2 text-sm"
         >
-          <Plus className="size-3.5" aria-hidden /> Tambah Pemasok
+          <Plus className="size-4" aria-hidden /> Tambah Pemasok
         </button>
       </div>
 

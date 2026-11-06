@@ -157,7 +157,7 @@ function PembelianFormDialog({ onClose }: { onClose: () => void }) {
               </FormField>
             </div>
             <button type="button" onClick={tambahItem} className="btn-secondary mt-2 w-full rounded-lg py-2 text-xs">
-              <Plus className="size-3.5" aria-hidden /> Tambah ke faktur
+              <Plus className="size-4" aria-hidden /> Tambah ke faktur
             </button>
           </div>
 
@@ -169,8 +169,13 @@ function PembelianFormDialog({ onClose }: { onClose: () => void }) {
                     <td className="py-2">{i.nama}<span className="block text-xs text-muted">{i.qty} × <MoneyDisplay value={i.hargaBeli} /></span></td>
                     <td className="py-2 text-right"><MoneyDisplay value={i.qty * i.hargaBeli} /></td>
                     <td className="w-8 py-2 text-right">
-                      <button type="button" aria-label="Hapus item" onClick={() => setItems((v) => v.filter((_, x) => x !== idx))} className="text-muted hover:text-rose-600">
-                        <Trash2 className="size-3.5" aria-hidden />
+                      <button
+                        type="button"
+                        aria-label="Hapus item"
+                        onClick={() => setItems((v) => v.filter((_, x) => x !== idx))}
+                        className="flex items-center justify-center size-8 rounded-lg border border-line bg-white text-muted hover:bg-rose-50 hover:border-rose-200 hover:text-rose-600 transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-rose-500"
+                      >
+                        <Trash2 className="size-4.5" aria-hidden />
                       </button>
                     </td>
                   </tr>

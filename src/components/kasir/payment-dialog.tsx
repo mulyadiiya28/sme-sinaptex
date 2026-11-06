@@ -2,7 +2,7 @@
 
 import { useMemo, useRef, useState } from "react";
 import { BadgePercent, CheckCircle2, Clock3, Plus, ReceiptText, XCircle } from "lucide-react";
-import type { CheckoutResult, PaymentMethod } from "@/lib/api/types";
+import type { CheckoutResult, PaymentMethod, ProfilToko } from "@/lib/api/types";
 import { MoneyDisplay } from "@/components/money-display";
 import { StatusBadge } from "@/components/status-badge";
 import { pajakNominal, totalTransaksi, useCart } from "@/lib/store/cart";
@@ -30,6 +30,13 @@ const STATUS_LABEL = {
   dibayar_sebagian: "Dibayar sebagian (piutang)",
 } as const;
 
+function hitungPajakEfektif(profil: ProfilToko): number {
+  // Manual override > 0 dipakai dulu
+  if (profil.pajakPersen && profil.pajakPersen > 0) return profil.pajakPersen;
+  // Kalau tidak, pakai tarif otomatis berdasarkan PKP status
+  return profil.pkpStatus === "PKP" ? 11 : 0.5;
+}
+
 export function PaymentDialog({
   kasir,
   shiftId,
@@ -40,7 +47,8 @@ export function PaymentDialog({
   onClose: (resetCart: boolean) => void;
 }) {
   const cart = useCart();
-  const pajakPersen = useToko((s) => s.profil.pajakPersen ?? 0);
+  const profil = useToko((s) => s.profil);
+  const pajakPersen = hitungPajakEfektif(profil);
   const izinkanKredit = useToko((s) => s.kebijakan.izinkanKredit);
   const [sukses, setSukses] = useState<CheckoutResult | null>(null);
   const kunciIdempotensi = useRef<string>(
@@ -231,7 +239,7 @@ export function PaymentDialog({
                 }
                 className="btn-secondary rounded-lg px-3 py-2 text-xs"
               >
-                <Plus className="size-3.5" aria-hidden /> {m.label}
+                <Plus className="size-4" aria-hidden /> {m.label}
               </button>
             ))}
           </div>

@@ -7,9 +7,165 @@ export type Product = {
   kategori: string;
   hargaBeli: number;
   hargaJual: number;
-  stok: number;
+  stok: number; // total stok semua gudang (legacy compatibility)
   stokMinimum: number;
   status: "aktif" | "nonaktif";
+};
+
+/// <summary>Gudang / lokasi penyimpanan.</summary>
+export type Gudang = {
+  id: string;
+  kode: string;
+  nama: string;
+  alamat?: string;
+  isDefault: boolean;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+};
+
+/// <summary>Kartu stok per produk per gudang.</summary>
+export type StockCard = {
+  productId: string;
+  gudangId: string;
+  qty: number;
+  hargaRataRata: number; // moving average cost
+  lastUpdated: string;
+};
+
+/// <summary>Jenis mutasi stok.</summary>
+export type StockMovementType =
+  | "masuk" // pembelian, retur penjualan, penyesuaian +
+  | "keluar" // penjualan, retur pembelian, penyesuaian -
+  | "transfer_keluar" // transfer antar gudang (keluar)
+  | "transfer_masuk"; // transfer antar gudang (masuk)
+
+/// <summary>Referensi transaksi untuk mutasi stok.</summary>
+export type StockMovementRef =
+  | { jenis: "pembelian"; id: string; nomor: string }
+  | { jenis: "penjualan"; id: string; nomor: string }
+  | { jenis: "retur_penjualan"; id: string; nomor: string }
+  | { jenis: "retur_pembelian"; id: string; nomor: string }
+  | { jenis: "penyesuaian"; id: string; alasan: string }
+  | { jenis: "transfer"; id: string; gudangAsal: string; gudangTujuan: string }
+  | { jenis: "opname"; id: string };
+
+/// <summary>Mutasi stok (stock movement / kardex).</summary>
+export type StockMovement = {
+  id: string;
+  productId: string;
+  gudangId: string;
+  tipe: StockMovementType;
+  qty: number; // positif untuk masuk, negatif untuk keluar
+  qtySebelum: number;
+  qtySesudah: number;
+  hargaSatuan: number; // harga rata-rata saat mutasi
+  totalNilai: number; // qty * hargaSatuan
+  referensi: StockMovementRef;
+  keterangan?: string;
+  createdAt: string;
+  createdBy: string; // user id
+};
+
+/// <summary>Input untuk penyesuaian stok manual (di gudang tertentu).</summary>
+export type StockAdjustmentInput = {
+  productId: string;
+  gudangId: string;
+  stokFisik: number;
+  alasan: "rusak" | "hilang" | "kedaluwarsa" | "opname" | "lainnya";
+  catatan?: string;
+};
+
+/// <summary>Input untuk transfer stok antar gudang.</summary>
+export type StockTransferInput = {
+  productId: string;
+  gudangAsalId: string;
+  gudangTujuanId: string;
+  qty: number;
+  catatan?: string;
+};
+
+/// <summary>Opname stok (stock taking).</summary>
+export type StockOpname = {
+  id: string;
+  gudangId: string;
+  tanggal: string;
+  status: "draft" | "selesai" | "dibatalkan";
+  items: StockOpnameItem[];
+  catatan?: string;
+  createdAt: string;
+  createdBy: string;
+  updatedAt: string;
+};
+
+/// <summary>Item dalam opname stok.</summary>
+export type StockOpnameItem = {
+  productId: string;
+  qtySistem: number;
+  qtyFisik: number;
+  selisih: number; // qtyFisik - qtySistem
+  hargaRataRata: number;
+  nilaiSelisih: number; // selisih * hargaRataRata
+  keterangan?: string;
+};
+
+/// <summary>Input untuk membuat opname stok.</summary>
+export type StockOpnameInput = {
+  gudangId: string;
+  tanggal: string;
+  items: Array<{
+    productId: string;
+    qtyFisik: number;
+    keterangan?: string;
+  }>;
+  catatan?: string;
+};
+
+/// <summary>Nilai persediaan per gudang / total.</summary>
+export type InventoryValuation = {
+  gudangId?: string; // undefined = total semua gudang
+  gudangNama?: string;
+  totalProduk: number;
+  totalQty: number;
+  totalNilai: number; // qty * hargaRataRata
+  items: InventoryValuationItem[];
+};
+
+/// <summary>Item detail nilai persediaan.</summary>
+export type InventoryValuationItem = {
+  productId: string;
+  productNama: string;
+  sku: string;
+  satuan: string;
+  gudangId: string;
+  gudangNama: string;
+  qty: number;
+  hargaRataRata: number;
+  totalNilai: number;
+};
+
+/// <summary>Produk dengan stok rendah (di bawah minimum).</summary>
+export type LowStockItem = {
+  productId: string;
+  productNama: string;
+  sku: string;
+  satuan: string;
+  gudangId: string;
+  gudangNama: string;
+  qty: number;
+  stokMinimum: number;
+  kekurangan: number; // stokMinimum - qty
+};
+
+/// <summary>Ringkasan inventaris untuk dashboard.</summary>
+export type InventorySummary = {
+  totalProduk: number;
+  totalGudang: number;
+  totalQty: number;
+  totalNilai: number;
+  lowStockCount: number;
+  outOfStockCount: number;
+  nilaiPerGudang: Array<{ gudangId: string; gudangNama: string; totalQty: number; totalNilai: number }>;
 };
 
 export type CartLine = {
@@ -176,6 +332,59 @@ export type PenyesuaianStokInput = {
   alasan: string;
 };
 
+/// <summary>Aset tetap (fixed asset) — barang tidak lancar untuk operasional.</summary>
+export type AsetTetap = {
+  id: string;
+  kode: string;
+  nama: string;
+  kategori: string;
+  nilaiPerolehan: number;
+  nilaiResidu: number;
+  umurEkonomis: number; // bulan
+  metodePenyusutan: "garis-lurus" | "menurun-ganda" | "jumlah-tahun";
+  tanggalPerolehan: string; // ISO date
+  lokasi: string;
+  status: "aktif" | "dijual" | "dihapuskan" | "dipindahkan";
+  akunAset: string; // kode akun aset (mis. 1501 Mesin)
+  akunPenyusutan: string; // kode akun penyusutan (mis. 1511 Akum. Penyusutan Mesin)
+  akunBebanPenyusutan: string; // kode akun beban penyusutan (mis. 6911 Beban Penyusutan)
+  catatan?: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+/// <summary>Input untuk create/update aset tetap (tanpa id & timestamps).</summary>
+export type AsetTetapInput = Omit<AsetTetap, "id" | "createdAt" | "updatedAt">;
+
+/// <summary>Item penyusutan bulanan untuk satu aset.</summary>
+export type PenyusutanItem = {
+  asetId: string;
+  periode: string; // YYYY-MM
+  nilaiPenyusutan: number;
+  akumulasiPenyusutan: number;
+  nilaiBuku: number;
+};
+
+/// <summary>Mutasi aset tetap (pembelian, penjualan, pemindahan, penghapusan).</summary>
+export type MutasiAset = {
+  id: string;
+  asetId: string;
+  jenis: "pembelian" | "penjualan" | "pemindahan" | "penghapusan";
+  tanggal: string;
+  nilai: number; // untuk penjualan: harga jual; untuk pembelian: nilai perolehan
+  keterangan: string;
+  lokasiBaru?: string;
+  createdAt: string;
+};
+
+/// <summary>Laporan aset tetap per periode.</summary>
+export type LaporanAsetTetap = {
+  aset: AsetTetap;
+  penyusutanPeriode: number;
+  akumulasiPenyusutan: number;
+  nilaiBuku: number;
+};
+
 export type PembelianItem = {
   productId: string;
   nama: string;
@@ -313,6 +522,8 @@ export type AuditEntry = {
   detail: string;
 };
 
+export type PkpStatus = "NON_PKP" | "PKP";
+
 export type ProfilToko = {
   nama: string;
   alamat: string;
@@ -325,6 +536,9 @@ export type ProfilToko = {
   zonaWaktu: string;
   footerStruk: string;
   pajakPersen?: number;
+  pkpStatus?: PkpStatus;
+  /** Tarif pajak efektif: 11 (PKP/PPN 11%) atau 0.5 (Non-PKP/PPh Final 0.5%) */
+  pajakTarifEfektif?: number;
 };
 
 /// <summary>Profil toko sesuai kontrak engine (`GET/PUT /api/settings/company-profile`).</summary>

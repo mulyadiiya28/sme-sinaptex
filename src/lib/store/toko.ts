@@ -12,6 +12,8 @@ const DEFAULT: ProfilToko = {
   zonaWaktu: "Asia/Jakarta",
   footerStruk: "Terima kasih atas kunjungan Anda",
   pajakPersen: 0,
+  pkpStatus: "NON_PKP",
+  npwp: "",
 };
 
 type TokoState = {
