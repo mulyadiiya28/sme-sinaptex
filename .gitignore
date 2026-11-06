@@ -21,6 +21,9 @@ npm-cache/
 env.download
 *.download
 
+# Service worker di-generate Serwist setiap build (build ID berubah tiap build)
+public/sw.js
+
 # Rust build artifacts
 src-tauri/target/
 
