@@ -1,8 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { ReceiptText, Wallet } from "lucide-react";
-import type { AgedInvoice, AgingReport, Biaya, Pembelian, Reconciliation, TransaksiRiwayat } from "@/lib/api/types";
+import { ArrowLeftRight, ReceiptText, Wallet } from "lucide-react";
+import type { AgedInvoice, AgingReport, Biaya, Pembelian, Reconciliation, TransferKas, TransaksiRiwayat } from "@/lib/api/types";
 import { DataTable, type Column } from "@/components/data-table";
 import { FormField } from "@/components/form-field";
 import { KpiCard } from "@/components/kpi-card";
@@ -12,17 +12,22 @@ import { KpiSkeleton, TableSkeleton } from "@/components/skeleton";
 import { StatusBadge } from "@/components/status-badge";
 import { useAuth } from "@/lib/store/auth";
 import { api } from "@/lib/api/client";
+import { KODE_AKUN } from "@/lib/api/live";
+import { formatIDR } from "@/lib/format";
 import {
   useActiveShift,
   useArAging,
   useApAging,
   useBiaya,
   useBiayaMutations,
+  useCashAccounts,
   usePembayaranMutations,
   usePembelian,
   useReconciliation,
   useRiwayatTransaksi,
   useTransaksiMutations,
+  useTransferKas,
+  useTransferKasMutations,
 } from "@/hooks/queries";
 import { cn } from "@/lib/utils";
 
@@ -110,7 +115,7 @@ function PanelKas() {
           />
           <KpiCard label="Total piutang" value={<MoneyDisplay value={totalPiutang} />} hint="Penjualan kredit belum lunas" tone="violet" />
           <KpiCard label="Total hutang" value={<MoneyDisplay value={totalHutang} />} hint="Kepada pemasok" tone="rose" />
-          <KpiCard label="Biaya tercatat" value={<MoneyDisplay value={(biaya.data ?? []).reduce((s, b) => s + b.nominal, 0)} />} hint={`Bulan ini · transfer ${new Intl.NumberFormat("id-ID").format(biayaTransfer)}`} tone="navy" />
+          <KpiCard label="Biaya tercatat" value={<MoneyDisplay value={(biaya.data ?? []).reduce((s, b) => s + b.nominal, 0)} />} hint={`Total tercatat · transfer ${formatIDR(biayaTransfer)}`} tone="navy" />
         </div>
       )}
 
@@ -155,6 +160,8 @@ function PanelKas() {
         )}
       </div>
 
+      <PanelTransferKas />
+
       <div className="panel mt-4 p-5 text-sm text-muted">
         <p className="font-bold text-brand">Rekonsiliasi</p>
         <p className="mt-1">
@@ -195,6 +202,156 @@ function PanelKas() {
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+function PanelTransferKas() {
+  const akun = useCashAccounts();
+  const riwayat = useTransferKas();
+  const { buat } = useTransferKasMutations();
+  const user = useAuth((s) => s.user);
+  const [dari, setDari] = useState("");
+  const [ke, setKe] = useState("");
+  const [nominal, setNominal] = useState(0);
+  const [keterangan, setKeterangan] = useState("");
+  const [sukses, setSukses] = useState<string | null>(null);
+
+  const rekening = (akun.data ?? []).filter((a) => a.aktif);
+  const akunDari = dari || rekening[0]?.id || "";
+  const akunKe = ke || rekening.find((a) => a.id !== akunDari)?.id || "";
+  const asal = rekening.find((a) => a.id === akunDari);
+  const valid =
+    Boolean(user) &&
+    Boolean(akunDari) &&
+    Boolean(akunKe) &&
+    akunDari !== akunKe &&
+    nominal > 0 &&
+    (!asal || nominal <= asal.saldo);
+
+  const columns: Column<TransferKas>[] = [
+    {
+      key: "waktu",
+      header: "Waktu",
+      render: (r) => (
+        <span className="text-muted">
+          {new Date(r.waktu).toLocaleString("id-ID", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })}
+        </span>
+      ),
+    },
+    { key: "rute", header: "Rute", render: (r) => <span className="font-medium">{r.dariNama} → {r.keNama}</span> },
+    { key: "keterangan", header: "Keterangan", render: (r) => <span className="text-muted">{r.keterangan || "—"}</span> },
+    { key: "nominal", header: "Nominal", align: "right", render: (r) => <MoneyDisplay value={r.nominal} className="font-semibold" /> },
+    {
+      key: "status",
+      header: "Status",
+      align: "center",
+      render: (r) => (
+        <StatusBadge
+          label={r.menungguPersetujuan ? "Menunggu persetujuan" : "Tercatat"}
+          tone={r.menungguPersetujuan ? "warning" : "success"}
+        />
+      ),
+    },
+  ];
+
+  return (
+    <div className="panel mt-4 p-5">
+      <div className="flex items-center gap-2">
+        <ArrowLeftRight className="size-4 text-brand" aria-hidden />
+        <p className="font-bold text-brand">Transfer kas antar-rekening</p>
+      </div>
+      <p className="mt-1 text-xs text-muted">
+        Memindahkan dana antar akun kas (mis. setor tunai ke bank). Bukan pendapatan atau biaya — jurnal hanya memindahkan saldo.
+      </p>
+
+      <form
+        className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5 lg:items-end"
+        onSubmit={(e) => {
+          e.preventDefault();
+          setSukses(null);
+          if (!user || !valid) return;
+          buat.mutate(
+            {
+              input: {
+                dariAkunId: akunDari,
+                keAkunId: akunKe,
+                nominal,
+                keterangan: keterangan.trim() || undefined,
+              },
+              user,
+            },
+            {
+              onSuccess: (t) => {
+                setSukses(
+                  t.menungguPersetujuan
+                    ? `Transfer ${t.id} menunggu persetujuan pemilik — dana belum berpindah.`
+                    : `Transfer ${t.id} tercatat: ${t.dariNama} → ${t.keNama}.`,
+                );
+                setNominal(0);
+                setKeterangan("");
+              },
+            },
+          );
+        }}
+      >
+        <FormField label="Dari">
+          <select className="input" value={akunDari} onChange={(e) => setDari(e.target.value)}>
+            {rekening.map((a) => (
+              <option key={a.id} value={a.id}>
+                {a.nama} · {formatIDR(a.saldo)}
+              </option>
+            ))}
+          </select>
+        </FormField>
+        <FormField label="Ke">
+          <select className="input" value={akunKe} onChange={(e) => setKe(e.target.value)}>
+            {rekening.map((a) => (
+              <option key={a.id} value={a.id}>
+                {a.nama} · {formatIDR(a.saldo)}
+              </option>
+            ))}
+          </select>
+        </FormField>
+        <FormField label="Nominal (Rp)">
+          <input
+            type="number"
+            min={0}
+            className="input text-right tabular-nums"
+            value={nominal || ""}
+            onChange={(e) => setNominal(Number(e.target.value))}
+          />
+        </FormField>
+        <FormField label="Keterangan">
+          <input
+            className="input"
+            value={keterangan}
+            onChange={(e) => setKeterangan(e.target.value)}
+            placeholder="cth. setor tunai ke bank"
+          />
+        </FormField>
+        <button type="submit" disabled={!valid || buat.isPending} className="btn-primary disabled:opacity-40">
+          {buat.isPending ? "Memproses..." : "Transfer"}
+        </button>
+      </form>
+
+      {nominal > 0 && asal && nominal > asal.saldo && (
+        <p className="mt-2 text-xs font-semibold text-rose-600">Nominal melebihi saldo {asal.nama}.</p>
+      )}
+      {sukses && <p className="mt-2 rounded-xl bg-emerald-50 px-3 py-2 text-xs text-emerald-700">{sukses}</p>}
+      {buat.isError && (
+        <p className="mt-2 rounded-xl bg-rose-50 px-3 py-2 text-xs text-rose-700">{String(buat.error)}</p>
+      )}
+
+      <div className="mt-4">
+        <DataTable
+          columns={columns}
+          rows={riwayat.data ?? []}
+          rowKey={(r) => r.id}
+          loading={riwayat.isLoading}
+          empty="Belum ada transfer kas."
+        />
+      </div>
     </div>
   );
 }
@@ -268,7 +425,7 @@ function PanelPiutang() {
   const { bayarPiutang } = usePembayaranMutations();
   const [target, setTarget] = useState<TransaksiRiwayat | null>(null);
   const aging = useArAging();
-  const reconciliation = useReconciliation("RECEIVABLE", "1200");
+  const reconciliation = useReconciliation("RECEIVABLE", KODE_AKUN.piutang);
   const daftar = (riwayat.data ?? []).filter((t) => t.status !== "dibatalkan" && t.piutang > 0);
   const totalPiutang = daftar.reduce((s, t) => s + t.piutang, 0);
 
@@ -314,7 +471,7 @@ function PanelPiutang() {
       )}
       {reconciliation.data && reconciliation.data.difference !== 0 && (
         <div className="mt-3 rounded-xl bg-rose-50 px-3 py-2 text-xs text-rose-700">
-          Peringatan: selisih piutang {new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR" }).format(Math.abs(reconciliation.data.difference))} antara daftar faktur dan saldo akun 1200.
+          Peringatan: selisih piutang {formatIDR(Math.abs(reconciliation.data.difference))} antara daftar faktur dan saldo akun {KODE_AKUN.piutang}.
         </div>
       )}
       {target && (
@@ -335,12 +492,20 @@ function PanelPiutang() {
   );
 }
 
+const TONE_NILAI: Record<string, string> = {
+  emerald: "text-emerald-600",
+  amber: "text-amber-600",
+  orange: "text-orange-600",
+  rose: "text-rose-600",
+  red: "text-red-600",
+};
+
 function AgingKpi({ label, value, tone }: { label: string; value: number; tone: string }) {
   return (
     <div className="rounded-xl bg-white p-3 border border-line">
       <div className="flex items-center justify-between">
         <span className="text-xs text-muted">{label}</span>
-        <MoneyDisplay value={value} className="font-bold tabular-nums" />
+        <MoneyDisplay value={value} className={`font-bold tabular-nums ${TONE_NILAI[tone] ?? ""}`} />
       </div>
     </div>
   );
@@ -351,7 +516,7 @@ function PanelHutang() {
   const { bayarHutang } = usePembayaranMutations();
   const [target, setTarget] = useState<Pembelian | null>(null);
   const aging = useApAging();
-  const reconciliation = useReconciliation("PAYABLE", "2101");
+  const reconciliation = useReconciliation("PAYABLE", KODE_AKUN.hutang);
   const hutang = (pembelian.data ?? []).filter((p) => p.terbayar < p.total);
   const totalHutang = hutang.reduce((s, p) => s + (p.total - p.terbayar), 0);
 
@@ -427,7 +592,7 @@ function PanelHutang() {
       )}
       {reconciliation.data && reconciliation.data.difference !== 0 && (
         <div className="mt-3 rounded-xl bg-rose-50 px-3 py-2 text-xs text-rose-700">
-          Peringatan: selisih hutang {new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR" }).format(Math.abs(reconciliation.data.difference))} antara daftar faktur dan saldo akun 2101.
+          Peringatan: selisih hutang {formatIDR(Math.abs(reconciliation.data.difference))} antara daftar faktur dan saldo akun {KODE_AKUN.hutang}.
         </div>
       )}
       {target && (

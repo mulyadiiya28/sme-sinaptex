@@ -15,6 +15,7 @@ const TIPE_LABEL: Record<string, string> = {
   CUSTOMER_PAYMENT: "Pembayaran pelanggan",
   PURCHASE: "Pembelian",
   SUPPLIER_PAYMENT: "Pembayaran pemasok",
+  CASH_TRANSFER: "Transfer kas",
 };
 
 function tanggalTampil(nilai: string): string {

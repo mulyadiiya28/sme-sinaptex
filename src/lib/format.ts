@@ -7,6 +7,15 @@ export function formatIDR(value: number): string {
   }).format(value);
 }
 
+/** Tanggal kalender lokal (YYYY-MM-DD). `toISOString()` berbasis UTC, jadi
+ * transaksi pukul 00.00–06.59 WIB akan terbaca sebagai hari sebelumnya. */
+export function tanggalLokal(nilai: string | Date = new Date()): string {
+  const d = typeof nilai === "string" ? new Date(nilai) : nilai;
+  if (Number.isNaN(d.getTime())) return "";
+  const p = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+}
+
 /**
  * Menulis nilai indikator kesehatan dengan satuan yang sama seperti engine:
  * "723,50×", "Rp 2.890.000,00", "-1,87%", "40,56 hari".

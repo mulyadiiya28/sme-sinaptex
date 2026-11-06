@@ -10,6 +10,7 @@ import { KpiSkeleton, Skeleton } from "@/components/skeleton";
 import { StatusBadge } from "@/components/status-badge";
 import { useActiveShift, useProducts, useRiwayatTransaksi } from "@/hooks/queries";
 import type { TransaksiRiwayat } from "@/lib/api/types";
+import { tanggalLokal } from "@/lib/format";
 
 export default function DashboardPage() {
   const products = useProducts();
@@ -20,10 +21,10 @@ export default function DashboardPage() {
     return <DashboardSkeleton />;
   }
 
-  const hari = new Date().toISOString().slice(0, 10);
+  const hari = tanggalLokal();
   const semua = riwayat.data ?? [];
   const transaksi = semua.filter((t) => t.status !== "dibatalkan");
-  const hariIni = transaksi.filter((t) => t.waktu.slice(0, 10) === hari);
+  const hariIni = transaksi.filter((t) => tanggalLokal(t.waktu) === hari);
   const omzetHariIni = hariIni.reduce((s, t) => s + t.total, 0);
   const menipis = (products.data ?? []).filter((p) => p.stok <= p.stokMinimum);
   const piutangHariIni = hariIni.reduce((s, t) => s + t.piutang, 0);

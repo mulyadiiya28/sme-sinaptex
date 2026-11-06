@@ -94,7 +94,8 @@ pembelian (`/api/purchases`), void (`POST /api/transactions/{id}/void`), retur
 (`POST /api/sale-returns` + riwayat `GET /api/sale-returns`), impor produk
 (`POST /api/products/import`, multipart), impor pelanggan (`POST /api/customers/import`, multipart),
 impor saldo awal (`POST /api/accounts/opening-balances`, multipart), saldo akun + laba-rugi (dari `trial-balance`),
-daftar jurnal (`GET /api/journal`), biaya (`GET/POST /api/expenses`), pelunasan piutang
+daftar jurnal (`GET /api/journal`), biaya (`GET/POST /api/expenses`), daftar akun kas + transfer
+antar-rekening (`GET /api/cash-accounts`, `GET/POST /api/cash-transfers`), pelunasan piutang
 (`POST /api/sales/{id}/payments`), pelunasan hutang (`POST /api/purchases/{id}/payments`),
 penyesuaian stok (`POST /api/inventory/adjustments`), konfirmasi QRIS
 (`POST /api/sales/{id}/confirm-payment`), buat user kasir (`POST /api/users/direct`),
@@ -258,8 +259,8 @@ Perilaku live yang menyimpang dari mock:
 
 ## Caveat yang diketahui
 
-Sudah diperbaiki (2026-10-28) dan tidak boleh dianggap bug lagi — detail di `knowledge.md`
-("Yang sudah diperbaiki pada mock"): idempotensi mock, jurnal overpay tidak seimbang, akumulasi
+Sudah diperbaiki (2026-10-28) dan tidak boleh dianggap bug lagi — detail di
+`docs/rencana-desain-ui-ux.md` ("Yang sudah diperbaiki pada mock"): idempotensi mock, jurnal overpay tidak seimbang, akumulasi
 `penjualanTunai`, role check pemilik di mock, reversal void (pajak + QRIS + piutang + snapshot HPP),
 retur proporsional, dan penghapusan `src/lib/api/calc.ts`.
 
@@ -273,11 +274,89 @@ Batasan yang masih ada:
   kasir yang login berbeda dengan pembuka shift.
 - Mock: uang memakai `number` JS, bukan decimal — pembulatan bisa berbeda dari engine.
 
+## Quick Reference (Ringkasan Cepat)
+
+### Perintah Utama
+```bash
+npm install && npm run dev          # dev server :3000
+npm run build                       # static export → out/
+npx tauri dev / npx tauri build     # desktop dev / installer
+npx tsc --noEmit                    # typecheck (no lint/test)
+```
+
+```bash
+cd backend
+dotnet build AccountingEngine.slnx
+dotnet test
+dotnet run --project src/AccountingEngine.Api/AccountingEngine.Api   # :5121
+dotnet ef database update -p src/AccountingEngine.Infrastructure -s src/AccountingEngine.Api
+python ../tools/bootstrap-backend.py
+```
+
+### Peta Kode Singkat
+```
+src/app/           layout, login, kasir (full-screen), (app)/ grup → dashboard, produk, riwayat, shift, pembelian, supplier, keuangan, akuntansi, laporan, approval-rules, pengaturan
+src/components/    shared UI + kasir/ + produk/
+src/hooks/queries.ts   SEMUA TanStack Query hooks
+src/lib/api/       types.ts (kontrak), client.ts (facade + switch), live.ts (HTTP engine), mock/db.ts (engine mock)
+src/lib/store/     auth.ts, toko.ts (persist), cart.ts (no persist)
+src/lib/           csv, format, nav, struk, utils (cn)
+src-tauri/         Rust shell minimal
+backend/           nested git repo (Accounting Engine .NET 10)
+tools/             bootstrap-backend.py
+```
+
+### Aturan Lapisan (Wajib)
+- Semua akses data lewat `api.*` (`src/lib/api/client.ts`) — **komponen tidak pernah panggil `mock/db.ts` atau `live.ts` langsung**
+- `live.ts` = satu-satunya tempat HTTP/JWT/refresh/idempotensi
+- `backend/` = nested git repo (perubahan engine tidak ikut commit POS)
+- Logika bisnis (stok, saldo, jurnal) milik engine; mock `db.ts` berperan sebagai engine
+
+### Konvensi Kunci
+- TS strict, `type` over `interface`, named export, `@/*` → `src/*`
+- `"use client"` hanya butuh hooks/state/browser API
+- `className?` + `cn()` (join sederhana)
+- Utility: `panel`, `btn-primary`, `btn-secondary`, `btn-accent`, `input`, `label` (lihat `DESIGN.md`)
+- Uang: `<MoneyDisplay>` / `formatIDR()` + `tabular-nums`
+- Tabel: `<DataTable<T> loading skeletonRows />` — bukan teks "Memuat..."
+- Loading: skeleton components (`src/components/skeleton.tsx`)
+- Validasi: Zod hanya `product-form-dialog.tsx`; sisanya hand-roll + pesan ID
+- Dialog: overlay buatan sendiri, ikon `aria-hidden`, tombol ikon wajib `aria-label`
+- React Query key: array string pendek (`["products"]`, `["transaksi"]`, `["shift"]`, …)
+- Zustand: 1 store/concern, persist `auth` & `toko` saja
+
+### Domain Rules Ringkas
+- Kasir **tidak transaksi sebelum shift buka** (panel pemblokir)
+- Shift **tidak auto-open** login; nama kasir = user login; shift catat `cashierUserId`
+- Checkout bawa `idempotensiKunci` → `Idempotency-Key`
+- Alokasi: tunai > sisa = kembalian; transfer/QRIS ≤ sisa; kekurangan → piutang hanya bila `izinkanKredit`
+- Status bayar ≠ status transaksi: `lunas | menunggu_pembayaran | dibayar_sebagian | dibatalkan`
+- Void/retur/penyesuaian/konfirmasi/impor = owner only; jurnal pembalik
+- Saldo dari jurnal; tidak input manual (kecuali impor saldo awal)
+- Retur proporsional (neto + pajak + diskon), refund = yang dibayar pelanggan
+
+### Gotcha Mode Live
+- Engine pakai **id** dokumen; POS simpan nomor → terjemahkan dulu (`cariPenjualanByNomor`)
+- Engine tolak campuran & overpayment; `kembalian`=0; bayar 0 (kredit penuh) **diizinkan**
+- Diskon dilebur ke `unitPrice` → riwayat/struk live tanpa diskon
+- `piutang` dari aging `side=RECEIVABLE`; `terbayar` pembelian dari `side=PAYABLE` (bukan `payableAmount`)
+- Void 409 (POSTED) → fallback retur penuh
+- Master pemasok: list/create/nonaktifkan saja; list pakai `?includeInactive=true`
+- Satu shift aktif per tenant (bukan per kasir)
+- Impor produk live all-or-nothing, `satuan` harus ada master unit, no stok awal
+- Profil toko sync `/api/settings/company-profile`; field POS di localStorage
+- Logo upload ke engine (mock tolak)
+- QRIS bukan konsep engine; konfirmasi hanya untuk batch tertahan approval
+- Batch tertahan approval: `/persetujuan` → `GET /api/transactions?status=SUBMITTED` → approve → `POST /api/cash-batches/{batchId}/post`
+
+### Verifikasi
+- Frontend: `npx tsc --noEmit` bersih + `npm run build` sukses (15 halaman statis)
+- Backend: `dotnet build` 0 warning + `dotnet test` 485 unit + 714 integration lulus
+- Mock: alur manual `/kasir` (buka shift → checkout → riwayat → tutup shift)
+
 ## Docs
 
-- `knowledge.md` — blueprint penuh, kontrak endpoint C#, catatan status implementasi + log perbaikan
-  (referensi terbaik).
-- `DESIGN.md` — token design system (utility yang disebut di sana sebagian belum ada di `globals.css`).
-- `INIT_STATUS.md` — snapshot status inisialisasi dan cara menjalankan (sebagian usang).
-- `README.md` — setup, fitur, caveat mode mock.
-- `backend/README.md`, `backend/AGENTS.md`, `backend/knowledge.md` — spesifikasi & aturan engine (repo terpisah).
+- `README.md` — setup, fitur, arsitektur singkat, konvensi, domain rules, gotcha live, verifikasi
+- `DESIGN.md` — token design system (`@theme` 42 baris) + tabel "Utility yang TIDAK ada"
+- `docs/rencana-desain-ui-ux.md` — arsip historis: blueprint desain, kontrak endpoint usulan vs aktual, log perbaikan
+- `backend/README.md`, `backend/AGENTS.md`, `backend/knowledge.md` — spesifikasi & aturan engine (repo terpisah)

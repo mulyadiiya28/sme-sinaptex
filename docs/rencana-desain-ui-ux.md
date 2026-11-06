@@ -1,5 +1,9 @@
 # Rencana Desain UI/UX Lengkap — POS-Sinaptex
 
+> **Arsip historis.** Dokumen ini disimpan sebagai catatan rencana desain, kontrak endpoint usulan vs
+> aktual, dan log perbaikan. Status implementasi terkini ada di `AGENTS.md` dan `knowledge.md`;
+> beberapa bagian (mis. daftar endpoint "belum ada") sudah usang.
+
 Product Design Blueprint · Desktop POS & Administrasi · UMKM · Akuntansi Otomatis
 
 POS-Sinaptex dirancang sebagai satu aplikasi operasional toko UMKM yang mengintegrasikan kasir, persediaan, pembayaran, keuangan, dan akuntansi otomatis. Pemilik toko tidak perlu memahami jurnal debit-kredit untuk menjalankan transaksi sehari-hari, tetapi tetap dapat melihat laporan keuangan yang tersusun berdasarkan transaksi sebenarnya.

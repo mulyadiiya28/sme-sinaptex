@@ -1,92 +1,163 @@
 # POS-Sinaptex — Frontend
 
-Smart Retail Operations & Accounting untuk toko UMKM: kasir, persediaan, keuangan, dan akuntansi otomatis. Dokumen rencana desain/knowledge utama ada di [`knowledge.md`](./knowledge.md).
+Smart Retail Operations & Accounting untuk toko UMKM: kasir, persediaan, keuangan, dan akuntansi otomatis.
 
-- **Stack**: Next.js (App Router) · TypeScript · Tailwind CSS 4 · TanStack Query · Zustand · Zod · Serwist (PWA)
-- **Mode produksi**: build statis (`next build` → `out/`) yang dibungkus Tauri menjadi `POS-Sinaptex.exe` — komputer toko tanpa Node.js/terminal; engine backend C# (ASP.NET Core, .NET 10) berjalan sebagai aplikasi terpisah dan menyediakan REST API + JWT.
-- **Saat ini**: data default memakai **mock** (`src/lib/api/mock/`); engine C# sudah terpasang di `backend/` dan mode `live` (`NEXT_PUBLIC_API_MODE=live`) menyambung sebagian besar alur kasir ke engine sungguhan.
+- **Stack**: Next.js 15 (App Router, static export) · TypeScript · Tailwind CSS v4 · TanStack Query · Zustand · Zod · Serwist (PWA)
+- **Produksi**: build statis (`npm run build` → `out/`) dibungkus Tauri 2 → `POS-Sinaptex.exe` (Windows installer NSIS + MSI). Komputer toko tidak perlu Node.js/terminal.
+- **Backend**: Accounting Engine (C# / .NET 10, ASP.NET Core + EF Core/SQLite) di repo nested `backend/` — REST API + JWT, dijalankan terpisah di server toko (Mode A: LAN).
+- **Mode data**: `mock` (default, in-memory, reset tiap reload) | `live` (HTTP ke engine via `NEXT_PUBLIC_API_MODE=live`).
+
+---
 
 ## Menjalankan
 
 ```bash
+# Frontend
 npm install
-npm run dev     # http://localhost:3000 — layar kasir di /kasir
-npm run build   # verifikasi build statis → out/
-npx tauri dev   # aplikasi desktop (menjalankan npm run dev otomatis)
-npx tauri build # installer Windows (nsis + msi)
-npx tsc --noEmit # typecheck — repo ini tanpa lint/test tooling
+npm run dev        # http://localhost:3000 — kasir di /kasir
+npm run build      # static export → out/ (wajib sebelum Tauri build)
+npx tauri dev      # desktop dev (menjalankan npm run dev otomatis)
+npx tauri build    # installer Windows
+npx tsc --noEmit   # typecheck (repo ini tanpa lint/test runner)
 ```
 
-## Backend — engine Accounting Engine (C# / .NET 10)
-
-Engine berada di repo nested `backend/` (repo git terpisah, diabaikan repo POS lewat `/backend/`).
-
 ```bash
+# Backend (Accounting Engine) — dari folder backend/
 cd backend
 dotnet build AccountingEngine.slnx
 dotnet ef database update -p src/AccountingEngine.Infrastructure -s src/AccountingEngine.Api
 dotnet run --project src/AccountingEngine.Api/AccountingEngine.Api   # http://localhost:5121
 ```
 
-Langkah pertama setelah migrate: buat tenant, pengguna pemilik, RBAC, akun kas, dan periode fiskal berjalan.
-
+Bootstrap pertama kali (idempoten):
 ```bash
+# dari root repo POS
 pip install bcrypt
-python tools/bootstrap-backend.py        # dari root repo POS
-```
-
-Script bersifat idempoten — baris yang sudah ada dilewati. Default: tenant `toko-utama`, akun `pemilik` / `pemilik123` (level 99 = owner di engine), akun kas `1121` (tunai, default) + `1111` (bank).
-
-Seed chart of accounts (37 akun SAK EMKM, level 3 = postable) lewat API:
-
-```bash
+python tools/bootstrap-backend.py
 curl -X POST http://localhost:5121/api/accounts/seed -H "X-Business-Id: toko-utama"
 ```
+Default: tenant `toko-utama`, user `pemilik`/`pemilik123` (level 99 = owner), akun kas `1121` (tunai, default) + `1111` (bank).
 
-Mode POS memakai engine:
-
+Mode live:
 ```bash
-cp .env.example .env.local      # set NEXT_PUBLIC_API_MODE=live
+cp .env.example .env.local   # set NEXT_PUBLIC_API_MODE=live, base URL engine, tenant id, kode akun
 npm run dev
 ```
 
-Lihat `.env.example` untuk base URL engine, id tenant, dan kode akun. Kode akun wajib level 3 — jurnal hanya boleh menyebut akun postable (`1121`, `1111`, `1200`, `1300`, `2101`, `4000`, `5000`, `2402`, `6900`).
+---
 
-> Mode live sudah menyambung: login/JWT, produk, satuan, pelanggan, shift, kasir (batch penjualan), pembelian (batch pembelian), void/retur + riwayat retur, impor produk (CSV/XLSX), neraca saldo, laba-rugi, daftar jurnal, biaya operasional. Alur yang engine-nya belum punya endpoint (impor pelanggan, penyesuaian stok, pelunasan piutang/hutang, audit log, daftar pengguna) menampilkan pesan eksplisit — bukan data palsu. Rinciannya di `knowledge.md` § Kontrak API.
+## Fitur Utama (MVP + P1)
 
-## Fokus MVP (Tahap 2)
+| Area | Fitur |
+|------|-------|
+| **Kasir** | Katalog produk (cari/barcode/keyboard), keranjang, diskon item & transaksi, pelanggan, pembayaran tunai/transfer/QRIS/campuran, kembalian, piutang, idempotensi, cetak struk |
+| **Shift** | Buka shift (saldo awal dari pengaturan), kas masuk/keluar, tutup shift (selisih fisik vs sistem), riwayat shift |
+| **Produk** | CRUD (Zod validasi), kategori, satuan, harga beli/jual, stok min, impor CSV/XLSX (mock: per baris; live: all-or-nothing), penyesuaian stok (owner) |
+| **Pembelian** | Faktur pembelian (pemasok wajib), item, metode tunai/bank/hutang, stok & hargaBeli ter-update otomatis, jurnal otomatis |
+| **Keuangan** | 4 tab: Kas & Bank (rekonsiliasi), Biaya (catat + tabel), Piutang (pelunasan), Hutang (pelunasan ke pemasok) |
+| **Akuntansi** | Neraca saldo (Saldo awal \| Debit \| Kredit \| Saldo berjalan), Jurnal otomatis expandable, Buku besar, Laba-rugi |
+| **Laporan** | Omzet & rata-rata, penjualan per hari, nilai persediaan, analisis keuangan (12 endpoint engine), gerakan harian, ekspor CSV |
+| **Pengaturan** | Profil toko (sync ke engine), logo (unggah ke engine), kebijakan operasional, periode fiscal, aturan approval, master pemasok, pengguna & audit log |
+| **Auth & Akses** | Login (demo: `pemilik`/`pemilik123`, `kasir`/`kasir123`), role `pemilik` (full) & `kasir` (Kasir/Riwayat/Shift), sidebar & route guard per role, JWT access token (memory) + refresh token |
 
-- **Kasir** interaktif: pencarian/barcode, keranjang, diskon, pelanggan — butuh **shift aktif** (ditolak bila belum dibuka).
-- **Pembayaran** tunggal/campuran: tunai/transfer/QRIS, kembalian, sisa→piutang, status hasil (lunas/menunggu/dibayar sebagian).
-- **Produk & Stok** CRUD dengan validasi Zod.
-- **Shift kasir**: buka shift (saldo awal), kas masuk/keluar, tutup shift (uang fisik vs sistem → selisih), riwayat shift.
-- **Riwayat transaksi**: tabel + pencarian + dialog detail rinci (item, diskon, kembalian, piutang, status).
-- **Dashboard**: KPI & daftar transaksi terhitung dari data mock nyata (omzet hari ini, kas tunai shift, stok menipis, piutang).
-
-## Tahap 3 (P1)
-
-- **Pembelian**: faktur pembelian (pemasok, item, metode tunai/bank/hutang) — stok bertambah, `hargaBeli` produk ter-update, jurnal otomatis, kas/bank berkurang atau hutang bertambah.
-- **Keuangan**: 4 tab — Kas & Bank (rekonsiliasi), Biaya (catat + tabel), Piutang (pelunasan), Hutang (pelunasan ke pemasok).
-- **Akuntansi**: neraca saldo dengan indikator keseimbangan debit=kredit, jurnal otomatis expandable, laba-rugi (pendapatan − HPP − biaya).
-- **Laporan**: omzet & rata-rata per transaksi, penjualan per hari, nilai persediaan (stok × harga beli).
-- **Login & hak akses**: halaman login (demo: `pemilik/pemilik123`, `kasir/kasir123`); role `pemilik` = akses penuh, `kasir` = Kasir/Riwayat/Shift; menu sidebar & akses halaman difilter per role; logout di topbar; audit log sesi di Pengaturan > Keamanan.
-- **Pengaturan**: profil toko (nama, alamat, telepon, mata uang, zona waktu, footer struk) — dipakai topbar.
-- **Void transaksi**: pemilik dapat membatalkan transaksi dari Riwayat — stok kembali, jurnal reversal, status `dibatalkan`, tercatat di audit log.
-- **Penyesuaian stok**: pemilik dapat mengganti stok sistem dengan stok fisik (opname/rusak/hilang) — jurnal akun "Selisih stok" otomatis.
-- **Idempotensi**: setiap sesi dialog pembayaran membawa kunci unik (`Idempotency-Key`); engine live dan mock sama-sama menolak pengiriman ulang dengan kunci yang sama.
+---
 
 ## PWA (Serwist)
 
-Build statis juga bisa dipakai sebagai **PWA installable** (jalur kedua selain Tauri):
+Build statis juga installable sebagai PWA (jalur kedua selain Tauri):
+- Service worker: precache semua aset + `navigateFallback: "/index.html"`; runtime cache `NetworkFirst` untuk `/api/**` (max 24 jam)
+- Manifest: `src/app/manifest.ts` → `/manifest.webmanifest`; ikon placeholder di `public/`
+- SW dinonaktifkan saat `next dev`; aktif hanya di build produksi
+- Catatan: di Tauri (WebView2) registrasi SW bisa ditolak — tidak fatal
 
-- Service worker (`public/sw.js`, hasil bundel `src/sw.ts`): precache semua aset + fallback navigasi ke `index.html` — aplikasi tetap terbuka walau jaringan/LAN ke engine terputus.
-- GET ke `**/api/**` memakai strategi NetworkFirst (fallback cache maksimal 24 jam). POST (checkout, bayar, dsb.) **tidak** di-cache — tetap butuh engine hidup.
-- Installable: manifest (`src/app/manifest.ts`) + ikon placeholder di `public/`. Serve `out/` via HTTPS/localhost lalu "Install app" dari browser.
-- SW dinonaktifkan saat `next dev`; aktif hanya di build produksi.
-- Catatan: dalam Tauri, registrasi SW bisa ditolak WebView — tidak fatal, Tauri tetap jalur utama produksi.
+---
 
-Data mock tersimpan in-memory (`src/lib/api/mock/db.ts`) dan reset saat refresh — disengaja.
+## Arsitektur Singkat
 
-### Caveat mock yang diketahui (bukan fitur)
+```
+src/
+  app/                    # Next.js App Router
+    layout.tsx            # root layout + providers
+    login/page.tsx        # login tanpa shell
+    kasir/page.tsx        # POS full-screen (di luar grup (app))
+    (app)/                # AppShell + AuthGuard: dashboard, produk, riwayat, shift, pembelian, supplier, keuangan, akuntansi, laporan, approval-rules, pengaturan
+  components/             # shared UI + kasir/ + produk/
+  hooks/queries.ts        # SEMUA TanStack Query hooks
+  lib/
+    api/types.ts          # domain types (kontrak C#)
+    api/client.ts         # facade api.*, switch mock|live
+    api/live.ts           # HTTP ke engine + mapping DTO
+    api/mock/db.ts        # in-memory mock engine
+    store/                # zustand: auth, toko, cart
+    csv.ts, format.ts, nav.ts, struk.ts, utils.ts
+  sw.ts                   # Serwist config
+src-tauri/                # Rust shell minimal
+backend/                  # nested git repo (Accounting Engine .NET 10)
+tools/bootstrap-backend.py
+```
 
-- Di mode live, engine menolak pembayaran campuran (tunai + non-tunai) dan overpayment; QRIS belum jadi konsep engine.
+**Aturan lapisan**: Semua akses data lewat `api.*` (`src/lib/api/client.ts`). Komponen **tidak pernah** memanggil `mock/db.ts` atau `live.ts` langsung. HTTP/JWT/refresh/idempotensi hanya di `live.ts`.
+
+---
+
+## Konvensi Penting
+
+- TypeScript strict, `type` over `interface`, named export
+- Path alias `@/*` → `src/*`
+- `"use client"` hanya bila butuh hooks/state/browser API
+- `className?: string` + `cn()` (join sederhana, tanpa clsx)
+- Utility Tailwind yang ada: `panel`, `btn-primary`, `btn-secondary`, `btn-accent`, `input`, `label` (lihat `DESIGN.md`)
+- Uang: `<MoneyDisplay value={...} />` / `formatIDR()` + `tabular-nums`
+- Tabel: `<DataTable<T> ... loading skeletonRows />`
+- Loading: skeleton components (`src/components/skeleton.tsx`)
+- Validasi: Zod hanya di `product-form-dialog.tsx`; sisanya hand-roll + pesan ID
+- Dialog: overlay buatan sendiri, ikon `lucide-react` + `aria-hidden`, tombol ikon wajib `aria-label`
+- React Query key: array string pendek (`["products"]`, `["transaksi"]`, `["shift"]`, …)
+- Zustand: 1 store per concern, persist hanya `auth` & `toko`
+
+---
+
+## Domain Rules Ringkas
+
+- Kasir **tidak bisa transaksi sebelum shift dibuka** (panel pemblokir + link Buka Shift)
+- Shift **tidak auto-open** saat login; nama kasir di layar/struk = user login; shift catat `cashierUserId` (pembuka)
+- Checkout bawa `idempotensiKunci` (`crypto.randomUUID()`) → `Idempotency-Key`
+- Alokasi: tunai boleh > sisa (kembalian); transfer/QRIS tidak boleh > sisa; kekurangan → piutang hanya bila `izinkanKredit`
+- Status bayar terpisah dari status transaksi: `lunas | menunggu_pembayaran | dibayar_sebagian | dibatalkan`
+- Void/retur/penyesuaian stok/konfirmasi digital/impor = owner only; jurnal pembalik, bukan hapus
+- Saldo selalu dari jurnal; tidak ada input saldo manual (kecuali impor saldo awal)
+- Retur proporsional (neto + pajak + porsi diskon), refund = yang dibayar pelanggan
+
+---
+
+## Gotcha Mode Live
+
+- Engine pakai **id** dokumen; POS simpan nomor (`SALE-00001`) → terjemahkan dulu (`cariPenjualanByNomor`)
+- Engine tolak pembayaran campuran & overpayment; `kembalian` selalu 0; bayar 0 (kredit penuh) diizinkan
+- Diskon dilebur ke `unitPrice` → riwayat/struk live tanpa diskon
+- `piutang` dari `/api/reports/ar-ap/aging?side=RECEIVABLE`; `terbayar` pembelian dari `side=PAYABLE` (jangan pakai `payableAmount` — itu bruto)
+- Void engine 409 (POSTED) → POS fallback ke retur penuh
+- Master pemasok: list/create/nonaktifkan saja (tanpa update kode/nama); list pakai `?includeInactive=true`
+- Satu shift aktif per tenant (bukan per kasir)
+- Impor produk live all-or-nothing, `satuan` harus ada di master unit, stok awal tidak diimpor
+- Profil toko sync ke `/api/settings/company-profile`; field POS (`mataUang`, `zonaWaktu`, `footerStruk`, `pajakPersen`) di localStorage
+- Logo diunggah ke engine (mock menolak)
+- QRIS bukan konsep engine; konfirmasi lewat `POST /api/sales/{id}/confirm-payment` hanya untuk batch tertahan approval
+- Batch tertahan approval: `/persetujuan` → `GET /api/transactions?status=SUBMITTED` → approve per kaki → `POST /api/cash-batches/{batchId}/post`
+
+---
+
+## Verifikasi
+
+- Frontend: `npx tsc --noEmit` bersih + `npm run build` sukses (15 halaman statis)
+- Backend: `dotnet build AccountingEngine.slnx` (0 warning) + `dotnet test` (485 unit + 714 integration lulus)
+- Mock: alur manual `/kasir` (buka shift → checkout → riwayat → tutup shift)
+
+---
+
+## Dokumentasi
+
+- `AGENTS.md` — **Aturan proyek lengkap** (sumber utama untuk agen/AI)
+- `DESIGN.md` — Token design system & utility yang benar-benar ada
+- `docs/rencana-desain-ui-ux.md` — Arsip historis: blueprint desain, kontrak endpoint usulan vs aktual, log perbaikan
+- `backend/README.md`, `backend/AGENTS.md`, `backend/knowledge.md` — Spesifikasi engine (repo terpisah)

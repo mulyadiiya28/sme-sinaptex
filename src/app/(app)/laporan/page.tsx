@@ -42,7 +42,8 @@ import { MoneyDisplay } from "@/components/money-display";
 import { PageHeader } from "@/components/page-header";
 import { KpiSkeleton, TableSkeleton } from "@/components/skeleton";
 import { api } from "@/lib/api/client";
-import { API_BASE_URL, BUSINESS_ID } from "@/lib/api/live";
+import { KODE_AKUN } from "@/lib/api/live";
+import { tanggalLokal } from "@/lib/format";
 import {
   useAkun,
   useArTurnover,
@@ -108,20 +109,20 @@ export default function LaporanPage() {
   const productPerformance = useProductPerformance(dari, sampai);
   const productRankings = useProductPerformanceRankings(dari, sampai);
   const [dmDate, setDmDate] = useState("");
-  const [dmAccount, setDmAccount] = useState("1121");
+  const [dmAccount, setDmAccount] = useState(KODE_AKUN.kas);
   const dailyMovement = useDailyMovement(dmDate, dmAccount);
 
   // Tanggal diisi setelah mount, bukan saat render, supaya server dan klien
   // merender nilai yang sama (hindari hydration mismatch pada tanggal).
   useEffect(() => {
-    setDmDate(new Date().toISOString().slice(0, 10));
+    setDmDate(tanggalLokal());
   }, []);
 
   const transaksi = useMemo(() => {
     const semua = riwayat.data ?? [];
     return semua.filter((t) => {
       if (t.status === "dibatalkan") return false;
-      const hari = t.waktu.slice(0, 10);
+      const hari = tanggalLokal(t.waktu);
       if (dari && hari < dari) return false;
       if (sampai && hari > sampai) return false;
       return true;
@@ -215,11 +216,8 @@ export default function LaporanPage() {
       alert("Pilih rentang tanggal Dari dan Sampai sebelum mengekspor.");
       return;
     }
-    const url = `${API_BASE_URL}/api/reports/trial-balance/export?fromDate=${dari}&toDate=${sampai}&format=csv`;
     try {
-      const res = await fetch(url, { headers: { "X-Business-Id": BUSINESS_ID } });
-      if (!res.ok) throw new Error("Gagal mengekspor neraca saldo.");
-      const blob = await res.blob();
+      const blob = await api.akuntansi.eksporNeracaSaldo(dari, sampai);
       const a = document.createElement("a");
       a.href = URL.createObjectURL(blob);
       a.download = `neraca-saldo-${dari}-${sampai}.csv`;

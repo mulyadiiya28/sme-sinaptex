@@ -665,6 +665,35 @@ export type Supplier = {
 };
 
 /// <summary>Request membuat supplier baru (POST /api/suppliers).</summary>
+export type CashAccount = {
+  id: string;
+  nama: string;
+  kode: string;
+  saldo: number;
+  bawaan: boolean;
+  aktif: boolean;
+};
+
+/** Satu transfer dana antar akun kas (bukan pendapatan/biaya). */
+export type TransferKas = {
+  id: string;
+  waktu: string;
+  dariAkunId: string;
+  dariNama: string;
+  keAkunId: string;
+  keNama: string;
+  nominal: number;
+  keterangan?: string;
+  menungguPersetujuan: boolean;
+};
+
+export type TransferKasInput = {
+  dariAkunId: string;
+  keAkunId: string;
+  nominal: number;
+  keterangan?: string;
+};
+
 export type CreateSupplierRequest = {
   code: string;
   name: string;

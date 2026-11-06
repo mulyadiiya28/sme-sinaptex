@@ -16,3 +16,16 @@ Thumbs.db
 # Arsip unduhan backend & cache npm lokal
 *.zip
 npm-cache/
+
+# Rust build artifacts
+src-tauri/target/
+
+# Debug scripts
+check_models*.py
+connection_report.json
+model_check_output.txt
+nul
+
+# Agent/temp folders
+.agents/
+.freebuff/

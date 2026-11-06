@@ -5,6 +5,7 @@ import type {
   ArApTurnover,
   Biaya,
   BiayaParams,
+  CashAccount,
   CashConversionCycle,
   CheckoutPayload,
   CheckoutResult,
@@ -47,6 +48,8 @@ import type {
   ShiftRiwayat,
   Solvency,
   TransaksiRiwayat,
+  TransferKas,
+  TransferKasInput,
   User,
   WorkingCapital,
   WorkingCapitalTurnover,
@@ -77,6 +80,8 @@ const KODE = {
   pajak: process.env.NEXT_PUBLIC_ENGINE_PAJAK ?? "2402",
   biaya: process.env.NEXT_PUBLIC_ENGINE_BIAYA ?? "6900",
 };
+
+export const KODE_AKUN = KODE;
 
 export class LiveApiError extends Error {
   readonly status: number;
@@ -194,6 +199,30 @@ async function minta<T>(path: string, opsi: OpsiLive = {}, bolehUlang = true): P
 
   const teks = await response.text();
   return (teks ? (JSON.parse(teks) as T) : (undefined as T));
+}
+
+async function ambilBerkas(path: string, bolehUlang = true): Promise<Blob> {
+  const state = useAuth.getState();
+  const response = await fetch(`${API_BASE_URL}${path}`, {
+    headers: headerLive(),
+    cache: "no-store",
+  });
+
+  if (response.status === 401 && bolehUlang && state.refreshToken && state.user) {
+    const sesiBaru = await perbaruiSesi(state.refreshToken);
+    if (sesiBaru) {
+      state.setSession({
+        user: state.user,
+        accessToken: sesiBaru.accessToken,
+        refreshToken: sesiBaru.refreshToken,
+        kedaluwarsa: sesiBaru.kedaluwarsa,
+      });
+      return ambilBerkas(path, false);
+    }
+  }
+
+  if (!response.ok) throw await jadiError(response);
+  return response.blob();
 }
 
 async function kirimForm(
@@ -425,6 +454,16 @@ type BtAkunKas = {
   accountCode: string;
   isDefault: boolean;
   isActive: boolean;
+  balance?: number;
+};
+type BtTransferKas = {
+  id: string;
+  transferDate: string;
+  fromCashAccountId: string;
+  toCashAccountId: string;
+  amount: number;
+  description: string | null;
+  approvalRequired?: boolean;
 };
 type BtGudang = { id: string; code: string; name: string; isDefault: boolean; isActive: boolean };
 type BtJurnalBaris = {
@@ -455,7 +494,9 @@ function kodeAkunDari(accountCode: string): string {
 function rentangDaftar(): string {
   const sampai = new Date();
   const dari = new Date(sampai.getTime() - 365 * 24 * 60 * 60 * 1000);
-  const iso = (nilai: Date) => nilai.toISOString().slice(0, 10);
+  // Tanggal lokal, bukan UTC: transaksi 00.00–06.59 WIB jatuh ke hari sebelumnya bila toISOString dipakai.
+  const iso = (nilai: Date) =>
+    `${nilai.getFullYear()}-${String(nilai.getMonth() + 1).padStart(2, "0")}-${String(nilai.getDate()).padStart(2, "0")}`;
   return `from=${iso(dari)}&to=${iso(sampai)}`;
 }
 
@@ -893,6 +934,11 @@ export async function liveAkun(params: NeracaParams = {}): Promise<AkunSaldo[]> 
   }));
 }
 
+export async function liveNeracaSaldoExport(dari: string, sampai: string): Promise<Blob> {
+  const query = new URLSearchParams({ fromDate: dari, toDate: sampai, format: "csv" });
+  return ambilBerkas(`/api/reports/trial-balance/export?${query.toString()}`);
+}
+
 export async function liveLabaRugi(): Promise<LabaRugi> {
   const neraca = await minta<BtNeraca>(
     `/api/reports/trial-balance?fromDate=1900-01-01&toDate=2999-12-31`,
@@ -1156,6 +1202,61 @@ async function akunKasDefault(kodeAkun: string): Promise<string> {
     },
   });
   return dibuat.id;
+}
+
+export async function liveCashAccounts(): Promise<CashAccount[]> {
+  const daftar = await minta<BtAkunKas[]>("/api/cash-accounts?includeInactive=true");
+  return daftar.map((a) => ({
+    id: a.id,
+    nama: a.name,
+    kode: a.accountCode,
+    saldo: a.balance ?? 0,
+    bawaan: a.isDefault,
+    aktif: a.isActive,
+  }));
+}
+
+function petakanTransferKas(
+  t: BtTransferKas,
+  namaAkun: Map<string, string>,
+): TransferKas {
+  return {
+    id: t.id,
+    waktu: t.transferDate,
+    dariAkunId: t.fromCashAccountId,
+    dariNama: namaAkun.get(t.fromCashAccountId) ?? t.fromCashAccountId,
+    keAkunId: t.toCashAccountId,
+    keNama: namaAkun.get(t.toCashAccountId) ?? t.toCashAccountId,
+    nominal: t.amount,
+    keterangan: t.description ?? undefined,
+    menungguPersetujuan: Boolean(t.approvalRequired),
+  };
+}
+
+export async function liveTransferKasList(): Promise<TransferKas[]> {
+  const [akun, daftar] = await Promise.all([
+    liveCashAccounts(),
+    minta<BtTransferKas[]>("/api/cash-transfers"),
+  ]);
+  const namaAkun = new Map(akun.map((a) => [a.id, a.nama]));
+  return daftar.map((t) => petakanTransferKas(t, namaAkun));
+}
+
+export async function liveTransferKasCreate(input: TransferKasInput, user: User): Promise<TransferKas> {
+  const hasil = await minta<BtTransferKas>("/api/cash-transfers", {
+    method: "POST",
+    idempotensiKunci: buatKunciIdempotensi(),
+    body: {
+      fromCashAccountId: input.dariAkunId,
+      toCashAccountId: input.keAkunId,
+      amount: input.nominal,
+      requestedBy: user.id || user.username,
+      description: input.keterangan?.trim() || null,
+    },
+  });
+  const akun = await liveCashAccounts();
+  const namaAkun = new Map(akun.map((a) => [a.id, a.nama]));
+  return petakanTransferKas(hasil, namaAkun);
 }
 
 function ringkasAlokasi(payload: CheckoutPayload): {
@@ -2060,9 +2161,9 @@ type BtApprovalTransaksi = {
   } | null;
 };
 
-/// Jenis transaksi yang ditulis oleh batch kas. Jenis lain (retur, transfer,
-/// pinjaman) punya alur persetujuannya sendiri dan tidak diposting lewat
-/// `/api/cash-batches/{id}/post`.
+/// Jenis transaksi yang ditulis oleh batch kas dan diposting lewat
+/// `/api/cash-batches/{id}/post`. Transfer kas punya alur sendiri
+/// (`/api/cash-transfers/{id}/post`) dan ditangani terpisah.
 const TIPE_BATCH_KAS = new Set([
   "SALE",
   "PURCHASE",
@@ -2079,7 +2180,11 @@ export async function livePersetujuanList(): Promise<PersetujuanBatch[]> {
   ]);
   const namaPengguna = new Map(pengguna.map((u) => [u.id, u.fullName ?? u.username]));
 
-  const relevan = rows.filter((r) => r.batchId && TIPE_BATCH_KAS.has(r.transactionType));
+  const relevan = rows.filter((r) =>
+    r.transactionType === "CASH_TRANSFER"
+      ? true
+      : Boolean(r.batchId) && TIPE_BATCH_KAS.has(r.transactionType),
+  );
 
   // Nominal dan langkah persetujuan hanya ada di snapshot approval, bukan di
   // daftar transaksi, jadi tiap kaki dibaca detailnya.
@@ -2095,7 +2200,9 @@ export async function livePersetujuanList(): Promise<PersetujuanBatch[]> {
 
   const peta = new Map<string, PersetujuanBatch>();
   for (const { r, approval } of detail) {
-    const batchId = r.batchId!;
+    // Transfer kas tidak lahir dari cash batch; transaksinya sendiri yang
+    // menjadi kunci kelompok sekaligus target posting.
+    const batchId = r.batchId ?? r.id;
     const baris: PersetujuanTransaksi = {
       id: r.id,
       batchId,
@@ -2127,13 +2234,24 @@ export async function livePersetujuanList(): Promise<PersetujuanBatch[]> {
   return [...peta.values()].sort((a, b) => b.tanggal.localeCompare(a.tanggal));
 }
 
-export async function liveSetujuiBatch(batchId: string, transaksiIds: string[]): Promise<void> {
-  // Engine menilai tiap kaki batch sendiri-sendiri; semuanya harus APPROVED
-  // sebelum batch boleh diposting. Posting memindahkan stok, kas, dan jurnal.
-  for (const id of transaksiIds) {
-    await minta(`/api/transactions/${id}/approve`, { method: "POST" });
+export async function liveSetujuiBatch(batch: PersetujuanBatch): Promise<void> {
+  // Engine menilai tiap kaki sendiri-sendiri; semuanya harus APPROVED sebelum
+  // dokumen boleh diposting.
+  for (const t of batch.transaksi) {
+    await minta(`/api/transactions/${t.id}/approve`, { method: "POST" });
   }
-  await minta(`/api/cash-batches/${batchId}/post`, {
+
+  const transfer = batch.transaksi.find((t) => t.tipe === "CASH_TRANSFER");
+  if (transfer) {
+    // Transfer tidak punya cash batch; rute postingnya memakai id transaksi.
+    await minta(`/api/cash-transfers/${transfer.id}/post`, {
+      method: "POST",
+      idempotensiKunci: buatKunciIdempotensi(),
+    });
+    return;
+  }
+
+  await minta(`/api/cash-batches/${batch.batchId}/post`, {
     method: "POST",
     idempotensiKunci: buatKunciIdempotensi(),
   });

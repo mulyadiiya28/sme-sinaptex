@@ -13,6 +13,7 @@ import { useRiwayatRetur, useRiwayatTransaksi, useTransaksiMutations } from "@/h
 import { useCariAwal } from "@/hooks/use-cari-awal";
 import { useAuth } from "@/lib/store/auth";
 import { useToko } from "@/lib/store/toko";
+import { tanggalLokal } from "@/lib/format";
 import { cetakStruk } from "@/lib/struk";
 import { cn } from "@/lib/utils";
 
@@ -48,7 +49,7 @@ export default function RiwayatPage() {
   const filtered = useMemo(() => {
     const q = keyword.trim().toLowerCase();
     return (riwayat.data ?? []).filter((t) => {
-      const hari = t.waktu.slice(0, 10);
+      const hari = tanggalLokal(t.waktu);
       if (dari && hari < dari) return false;
       if (sampai && hari > sampai) return false;
       return (
@@ -430,13 +431,31 @@ function ReturDialog({ t, onClose }: { t: TransaksiRiwayat; onClose: () => void 
   const [metodeRefund, setMetodeRefund] = useState<"tunai" | "transfer">("tunai");
   const [error, setError] = useState<string | null>(null);
 
-  const items = t.items
-    .map((i) => ({ nama: i.nama, qty: qty[i.nama] ?? 0 }))
+  const baris = useMemo(() => {
+    const unik = new Map<string, { nama: string; hargaJual: number; qty: number }>();
+    for (const i of t.items) {
+      const ada = unik.get(i.nama);
+      if (ada) ada.qty += i.qty;
+      else unik.set(i.nama, { nama: i.nama, hargaJual: i.hargaJual, qty: i.qty });
+    }
+    return [...unik.values()];
+  }, [t.items]);
+
+  const items = baris
+    .map((i) => ({ nama: i.nama, qty: Math.min(Math.max(0, Math.floor(qty[i.nama] ?? 0)), i.qty) }))
     .filter((i) => i.qty > 0);
-  const total = items.reduce((s, it) => {
-    const asli = t.items.find((a) => a.nama === it.nama)!;
-    return s + asli.hargaJual * it.qty - asli.diskon;
+
+  // Samakan dengan mesin retur: refund = proporsi nilai bruto item yang
+  // diretur terhadap bruto transaksi, kali (total - pajak) sebagai penjualan
+  // neto, ditambah proporsi pajak yang ikut dibatalkan.
+  const grossAsli = t.items.reduce((s, i) => s + i.hargaJual * i.qty, 0);
+  const grossReturn = items.reduce((s, it) => {
+    const asli = baris.find((b) => b.nama === it.nama);
+    return s + (asli?.hargaJual ?? 0) * it.qty;
   }, 0);
+  const share = grossAsli > 0 ? grossReturn / grossAsli : 0;
+  const netAsli = Math.max(0, t.total - t.pajak);
+  const total = Math.round(share * netAsli) + Math.round(share * t.pajak);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink/50 p-4 backdrop-blur-sm" onClick={onClose}>
@@ -459,8 +478,8 @@ function ReturDialog({ t, onClose }: { t: TransaksiRiwayat; onClose: () => void 
           }}
         >
           <div className="space-y-2">
-            {t.items.map((i) => (
-              <div key={i.nama} className="flex items-center justify-between gap-2 rounded-xl border border-line bg-white p-2.5">
+            {baris.map((i, idx) => (
+              <div key={`${i.nama}-${idx}`} className="flex items-center justify-between gap-2 rounded-xl border border-line bg-white p-2.5">
                 <div>
                   <p className="text-sm font-semibold text-ink">{i.nama}</p>
                   <p className="text-xs text-muted">dibeli {i.qty} × <MoneyDisplay value={i.hargaJual} /></p>

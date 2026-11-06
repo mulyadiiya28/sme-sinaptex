@@ -4,6 +4,7 @@ import type {
   AuditEntry,
   Biaya,
   BiayaParams,
+  CashAccount,
   CashConversionCycle,
   CheckoutPayload,
   CheckoutResult,
@@ -45,6 +46,8 @@ import type {
   ShiftRiwayat,
   Solvency,
   TransaksiRiwayat,
+  TransferKas,
+  TransferKasInput,
   User,
   WorkingCapital,
   WorkingCapitalTurnover,
@@ -73,6 +76,7 @@ import {
   liveBiayaCatat,
   liveBiayaList,
   liveBuatUser,
+  liveCashAccounts,
   liveCheckout,
   liveCompanyProfileGet,
   liveCompanyProfilePut,
@@ -89,6 +93,8 @@ import {
   liveSupplierCreate,
   liveSupplierDeactivate,
   liveSupplierList,
+  liveTransferKasCreate,
+  liveTransferKasList,
   liveApprovalRuleCreate,
   liveApprovalRuleDeactivate,
   liveApprovalRuleList,
@@ -107,6 +113,7 @@ import {
   liveLabaRugi,
   liveLogin,
   liveLogout,
+  liveNeracaSaldoExport,
   livePelanggan,
   livePenyesuaianStok,
   livePembelianBuat,
@@ -343,6 +350,24 @@ export const api = {
     },
   },
 
+  transferKas: {
+    akun: async (): Promise<CashAccount[]> => {
+      if (API_MODE === "live") return liveCashAccounts();
+      await delay(120);
+      return mockDb.cashAccounts();
+    },
+    list: async (): Promise<TransferKas[]> => {
+      if (API_MODE === "live") return liveTransferKasList();
+      await delay(120);
+      return structuredClone(mockDb.transferKasRiwayat);
+    },
+    buat: async (input: TransferKasInput, user: User): Promise<TransferKas> => {
+      if (API_MODE === "live") return liveTransferKasCreate(input, user);
+      await delay(400);
+      return mockDb.catatTransferKas(input, user);
+    },
+  },
+
   pengaturan: {
     profil: async (): Promise<ProfilPerusahaan> => {
       if (API_MODE === "live") {
@@ -403,6 +428,18 @@ export const api = {
       if (API_MODE === "live") return liveAkun(params);
       await delay(120);
       return structuredClone(mockDb.akunSaldos(params));
+    },
+    eksporNeracaSaldo: async (dari: string, sampai: string): Promise<Blob> => {
+      if (API_MODE === "live") return liveNeracaSaldoExport(dari, sampai);
+      await delay(120);
+      const rows = mockDb.akunSaldos({ from: dari, to: sampai });
+      const head = "akun,saldo_awal,debit,kredit,saldo_berjalan";
+      const isi = rows.map((a) =>
+        [a.akun, a.saldoAwal, a.debit, a.kredit, a.saldoAkhir]
+          .map((v) => `"${String(v).replace(/"/g, '""')}"`)
+          .join(","),
+      );
+      return new Blob(["\uFEFF" + [head, ...isi].join("\r\n")], { type: "text/csv;charset=utf-8" });
     },
     labaRugi: async (): Promise<LabaRugi> => {
       if (API_MODE === "live") return liveLabaRugi();
@@ -641,12 +678,7 @@ export const api = {
       return [];
     },
     setujui: async (batch: PersetujuanBatch): Promise<void> => {
-      if (API_MODE === "live") {
-        return liveSetujuiBatch(
-          batch.batchId,
-          batch.transaksi.map((t) => t.id),
-        );
-      }
+      if (API_MODE === "live") return liveSetujuiBatch(batch);
       await delay(350);
       throw new Error("Mode mock tidak memiliki alur persetujuan transaksi.");
     },

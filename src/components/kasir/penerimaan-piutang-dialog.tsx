@@ -59,17 +59,22 @@ export function PenerimaanPiutangDialog({
     if (!Number.isFinite(nilai) || nilai <= 0) return;
     if (nilai > terpilih.piutang) return;
 
-    const hasil = await bayarPiutang.mutateAsync({
-      nomor: terpilih.nomor,
-      nominal: nilai,
-      metode,
-    });
+    try {
+      const hasil = await bayarPiutang.mutateAsync({
+        nomor: terpilih.nomor,
+        nominal: nilai,
+        metode,
+      });
 
-    setSukses({
-      nomor: terpilih.nomor,
-      nominal: nilai,
-      sisa: Math.max(0, hasil?.piutang ?? terpilih.piutang - nilai),
-    });
+      setSukses({
+        nomor: terpilih.nomor,
+        nominal: nilai,
+        sisa: Math.max(0, hasil?.piutang ?? terpilih.piutang - nilai),
+      });
+    } catch {
+      // Pesan galat sudah tampil lewat state mutation; jangan biarkan promise
+      // rejection menggantung tanpa penanganan.
+    }
   }
 
   if (sukses) {

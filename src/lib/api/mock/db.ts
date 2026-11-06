@@ -3,6 +3,7 @@ import type {
   AgingReport,
   ApprovalRule,
   Biaya,
+  CashAccount,
   CreateApprovalRuleRequest,
   CreateFiscalPeriodRequest,
   CreateSupplierRequest,
@@ -31,6 +32,8 @@ import type {
   ShiftMutasiInput,
   ShiftRiwayat,
   Supplier,
+  TransferKas,
+  TransferKasInput,
   TransaksiRiwayat,
   User,
 } from "@/lib/api/types";
@@ -91,6 +94,7 @@ let jurnalCounter = 0;
 let pembelianCounter = 0;
 let biayaCounter = 0;
 let returCounter = 0;
+let transferCounter = 0;
 
 function waktuSekarang(): string {
   return new Date().toISOString();
@@ -227,6 +231,7 @@ export const mockDb = {
   transaksi: [] as TransaksiRiwayat[],
   pembelian: [] as Pembelian[],
   biaya: [] as Biaya[],
+  transferKasRiwayat: [] as TransferKas[],
   jurnal: [
     buatJurnal("Modal awal usaha", "OPEN-001", [
       { akun: "Kas", debit: KAS_TUNAI_AWAL, kredit: 0 },
@@ -473,7 +478,8 @@ export const mockDb = {
   },
 
   periodeFiskalMenungguTutup(): FiscalPeriod[] {
-    const hariIni = new Date().toISOString().slice(0, 10);
+    const sekarang = new Date();
+    const hariIni = `${sekarang.getFullYear()}-${String(sekarang.getMonth() + 1).padStart(2, "0")}-${String(sekarang.getDate()).padStart(2, "0")}`;
     return structuredClone(
       this.fiscalPeriods.filter((p) => p.status === "OPEN" && p.endDate < hariIni),
     );
@@ -652,7 +658,7 @@ export const mockDb = {
     }
 
     return {
-      date: awal.toISOString().slice(0, 10),
+      date: `${awal.getFullYear()}-${String(awal.getMonth() + 1).padStart(2, "0")}-${String(awal.getDate()).padStart(2, "0")}`,
       accountCode,
       accountName: akun?.nama ?? "-",
       openingBalance,
@@ -1037,6 +1043,87 @@ export const mockDb = {
       ]),
     );
     return structuredClone(biaya);
+  },
+
+  cashAccounts(): CashAccount[] {
+    return [
+      {
+        id: "cash-kas",
+        nama: "Kas tunai",
+        kode: KODE_AKUN.Kas,
+        saldo: this.kas.tunai,
+        bawaan: true,
+        aktif: true,
+      },
+      {
+        id: "cash-bank",
+        nama: "Bank",
+        kode: KODE_AKUN.Bank,
+        saldo: this.kas.bank,
+        bawaan: false,
+        aktif: true,
+      },
+    ];
+  },
+
+  /**
+   * Transfer antar akun kas: dua sisi kas bergerak, jurnal hanya memindahkan
+   * saldo (tanpa akun pendapatan/biaya). Kalau shift aktif, perpindahan dari
+   * kas tunai dicatat sebagai kas keluar shift supaya kas sistem tetap cocok.
+   */
+  catatTransferKas(input: TransferKasInput, user: User): TransferKas {
+    if (user.role !== "pemilik") throw new Error("Hanya pemilik yang boleh memindahkan kas antar-rekening.");
+    if (!Number.isFinite(input.nominal) || input.nominal <= 0) {
+      throw new Error("Nominal transfer harus lebih besar dari nol.");
+    }
+    if (input.dariAkunId === input.keAkunId) {
+      throw new Error("Rekening asal dan tujuan harus berbeda.");
+    }
+
+    const akun = this.cashAccounts();
+    const asal = akun.find((a) => a.id === input.dariAkunId);
+    const tujuan = akun.find((a) => a.id === input.keAkunId);
+    if (!asal || !tujuan) throw new Error("Rekening kas tidak ditemukan.");
+    if (!asal.aktif || !tujuan.aktif) throw new Error("Rekening kas tidak aktif.");
+    if (input.nominal > asal.saldo) {
+      throw new Error(`Saldo ${asal.nama} tidak cukup untuk transfer.`);
+    }
+
+    const namaAkun = (id: string) => (id === "cash-kas" ? "Kas" : "Bank");
+    this.kas[asal.id === "cash-kas" ? "tunai" : "bank"] -= input.nominal;
+    this.kas[tujuan.id === "cash-kas" ? "tunai" : "bank"] += input.nominal;
+
+    if (this.shiftAktif) {
+      if (asal.id === "cash-kas") this.shiftAktif.kasKeluar += input.nominal;
+      if (tujuan.id === "cash-kas") this.shiftAktif.kasMasuk += input.nominal;
+      this.shiftAktif.kasTunaiSistem = kasTunaiSistem(this.shiftAktif);
+    }
+
+    transferCounter += 1;
+    const transfer: TransferKas = {
+      id: `TRF-${String(transferCounter).padStart(4, "0")}`,
+      waktu: waktuSekarang(),
+      dariAkunId: asal.id,
+      dariNama: asal.nama,
+      keAkunId: tujuan.id,
+      keNama: tujuan.nama,
+      nominal: input.nominal,
+      keterangan: input.keterangan?.trim() || undefined,
+      menungguPersetujuan: false,
+    };
+    this.transferKasRiwayat.unshift(transfer);
+    this.jurnal.unshift(
+      buatJurnal(`Transfer kas ${asal.nama} → ${tujuan.nama}`, transfer.id, [
+        { akun: namaAkun(tujuan.id), debit: input.nominal, kredit: 0 },
+        { akun: namaAkun(asal.id), debit: 0, kredit: input.nominal },
+      ]),
+    );
+    this.audit(
+      user,
+      "transfer-kas",
+      `${transfer.id}: ${asal.nama} → ${tujuan.nama} Rp${input.nominal.toLocaleString("id-ID")}`,
+    );
+    return structuredClone(transfer);
   },
 
   akunSaldos(params: { from?: string; to?: string } = {}): Array<{

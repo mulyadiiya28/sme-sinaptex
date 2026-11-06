@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api/client";
+import { tanggalLokal } from "@/lib/format";
 import type {
   ApprovalRule,
   CheckoutPayload,
@@ -18,6 +19,7 @@ import type {
   ShiftBukaInput,
   ShiftMutasiInput,
   Supplier,
+  TransferKasInput,
   User,
 } from "@/lib/api/types";
 
@@ -53,6 +55,14 @@ export function useBiaya() {
   return useQuery({ queryKey: ["biaya"], queryFn: () => api.biaya.list() });
 }
 
+export function useCashAccounts() {
+  return useQuery({ queryKey: ["cash-accounts"], queryFn: api.transferKas.akun });
+}
+
+export function useTransferKas() {
+  return useQuery({ queryKey: ["transfer-kas"], queryFn: api.transferKas.list });
+}
+
 export function useJurnal() {
   return useQuery({ queryKey: ["jurnal"], queryFn: () => api.akuntansi.jurnal() });
 }
@@ -69,7 +79,7 @@ export function useProfilPerusahaan() {
 }
 
 export function useRingkasanKesehatan() {
-  const hari = new Date().toISOString().slice(0, 10);
+  const hari = tanggalLokal();
   return useQuery({
     queryKey: ["kesehatan-usaha", hari],
     queryFn: () => api.analytics.healthSummary(hari),
@@ -388,6 +398,25 @@ export function useBiayaMutations() {
   });
 
   return { catat };
+}
+
+export function useTransferKasMutations() {
+  const qc = useQueryClient();
+  const buat = useMutation({
+    mutationFn: ({ input, user }: { input: TransferKasInput; user: User }) =>
+      api.transferKas.buat(input, user),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["transfer-kas"] });
+      qc.invalidateQueries({ queryKey: ["cash-accounts"] });
+      qc.invalidateQueries({ queryKey: ["jurnal"] });
+      qc.invalidateQueries({ queryKey: ["akun"] });
+      qc.invalidateQueries({ queryKey: ["laba-rugi"] });
+      qc.invalidateQueries({ queryKey: ["persetujuan"] });
+      qc.invalidateQueries({ queryKey: ["shift"] });
+    },
+  });
+
+  return { buat };
 }
 
 export function useShiftMutations() {
