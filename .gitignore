@@ -17,6 +17,10 @@ Thumbs.db
 *.zip
 npm-cache/
 
+# Berkas env hasil unduhan (berisi kredensial)
+env.download
+*.download
+
 # Rust build artifacts
 src-tauri/target/
 

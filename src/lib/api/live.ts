@@ -2634,7 +2634,14 @@ export async function liveTransferStok(
   input: StockTransferInput,
   user: User,
 ): Promise<{ keluar: StockMovement; masuk: StockMovement }> {
-  const idempotensiKunci = crypto.randomUUID();
+  const idempotensiKunci = buatKunciIdempotensi();
+  const [stokAsal, stokTujuan] = await Promise.all([
+    minta<BtStok>(`/api/inventory/stock?warehouseId=${encodeURIComponent(input.gudangAsalId)}`),
+    minta<BtStok>(`/api/inventory/stock?warehouseId=${encodeURIComponent(input.gudangTujuanId)}`),
+  ]);
+  const qtyAsalSebelum = stokAsal.items.find((i) => i.productId === input.productId)?.quantity ?? 0;
+  const qtyTujuanSebelum = stokTujuan.items.find((i) => i.productId === input.productId)?.quantity ?? 0;
+
   const response = await minta<{
     outMovementId: string;
     inMovementId: string;
@@ -2664,8 +2671,7 @@ export async function liveTransferStok(
   const now = new Date().toISOString();
 
   // Need to get product name and warehouse names for the StockMovement records
-  const [produk, gudangAsal, gudangTujuan] = await Promise.all([
-    minta<BtProduk>(`/api/products/${input.productId}`),
+  const [gudangAsal, gudangTujuan] = await Promise.all([
     minta<BtGudang>(`/api/warehouses/${input.gudangAsalId}`),
     minta<BtGudang>(`/api/warehouses/${input.gudangTujuanId}`),
   ]);
@@ -2676,8 +2682,8 @@ export async function liveTransferStok(
     gudangId: input.gudangAsalId,
     tipe: "keluar",
     qty: -response.quantity,
-    qtySebelum: 0, // would need separate query to get actual before/after
-    qtySesudah: 0,
+    qtySebelum: qtyAsalSebelum,
+    qtySesudah: qtyAsalSebelum - response.quantity,
     hargaSatuan: response.unitCost,
     totalNilai: response.totalCost,
     referensi: { jenis: "transfer", id: response.outMovementId, gudangAsal: input.gudangAsalId, gudangTujuan: input.gudangTujuanId },
@@ -2692,8 +2698,8 @@ export async function liveTransferStok(
     gudangId: input.gudangTujuanId,
     tipe: "masuk",
     qty: response.quantity,
-    qtySebelum: 0,
-    qtySesudah: 0,
+    qtySebelum: qtyTujuanSebelum,
+    qtySesudah: qtyTujuanSebelum + response.quantity,
     hargaSatuan: response.unitCost,
     totalNilai: response.totalCost,
     referensi: { jenis: "transfer", id: response.inMovementId, gudangAsal: input.gudangAsalId, gudangTujuan: input.gudangTujuanId },
