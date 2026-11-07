@@ -2327,141 +2327,192 @@ export async function liveSetujuiBatch(batch: PersetujuanBatch): Promise<void> {
 
 type BtAsetTetap = {
   id: string;
-  kode: string;
-  nama: string;
-  kategori: string;
-  nilaiPerolehan: number;
-  nilaiResidu: number;
-  umurEkonomis: number;
-  metodePenyusutan: "garis-lurus" | "menurun-ganda" | "jumlah-tahun";
-  tanggalPerolehan: string;
-  lokasi: string;
-  status: "aktif" | "dijual" | "dihapuskan" | "dipindahkan";
-  akunAset: string;
-  akunPenyusutan: string;
-  akunBebanPenyusutan: string;
-  catatan?: string;
-  createdAt: string;
-  updatedAt: string;
-};
-
-type BtPenyusutanItem = {
-  asetId: string;
-  periode: string;
-  nilaiPenyusutan: number;
-  akumulasiPenyusutan: number;
-  nilaiBuku: number;
-};
-
-type BtMutasiAset = {
-  id: string;
-  asetId: string;
-  jenis: "pembelian" | "penjualan" | "pemindahan" | "penghapusan";
-  tanggal: string;
-  nilai: number;
-  keterangan: string;
-  lokasiBaru?: string;
+  code: string;
+  name: string;
+  category: string | null;
+  branchId: string | null;
+  acquisitionDate: string;
+  acquisitionCost: number;
+  salvageValue: number;
+  usefulLifeMonths: number;
+  depreciationMethod: string;
+  depreciationStartPeriod: string;
+  lastDepreciatedPeriod: string | null;
+  isActive: boolean;
   createdAt: string;
 };
 
-type BtLaporanAsetTetap = {
-  aset: BtAsetTetap;
-  penyusutanPeriode: number;
-  akumulasiPenyusutan: number;
-  nilaiBuku: number;
+type BtPenyusutanBulan = {
+  assetId: string;
+  assetName: string;
+  code: string;
+  monthNumber: number;
+  depreciationCharge: number;
+  accumulatedDepreciation: number;
+  bookValue: number;
 };
+
+type BtPostingPenyusutan = {
+  fixedAssetId: string;
+  code: string;
+  name: string;
+  period: string;
+  monthNumber: number;
+  charge: number;
+  bookValueAfter: number;
+  journalId: string;
+};
+
+type BtPostingPenyusutanResponse = {
+  period: string;
+  postedCount: number;
+  totalCharge: number;
+  postings: BtPostingPenyusutan[];
+};
+
+function metodePenyusutanEngine(method: string): AsetTetap["metodePenyusutan"] {
+  if (method === "garis-lurus" || method === "menurun-ganda" || method === "jumlah-tahun") {
+    return method;
+  }
+
+  throw new LiveApiError(`Metode penyusutan "${method}" belum dikenal POS.`, 500);
+}
 
 function petakanAsetTetap(p: BtAsetTetap): AsetTetap {
   return {
     id: p.id,
-    kode: p.kode,
-    nama: p.nama,
-    kategori: p.kategori,
-    nilaiPerolehan: p.nilaiPerolehan,
-    nilaiResidu: p.nilaiResidu,
-    umurEkonomis: p.umurEkonomis,
-    metodePenyusutan: p.metodePenyusutan,
-    tanggalPerolehan: p.tanggalPerolehan,
-    lokasi: p.lokasi,
-    status: p.status,
-    akunAset: p.akunAset,
-    akunPenyusutan: p.akunPenyusutan,
-    akunBebanPenyusutan: p.akunBebanPenyusutan,
-    catatan: p.catatan,
+    kode: p.code,
+    nama: p.name,
+    kategori: p.category ?? "",
+    nilaiPerolehan: p.acquisitionCost,
+    nilaiResidu: p.salvageValue,
+    umurEkonomis: p.usefulLifeMonths,
+    metodePenyusutan: metodePenyusutanEngine(p.depreciationMethod),
+    tanggalPerolehan: p.acquisitionDate.slice(0, 10),
+    // Engine tidak menyimpan lokasi, akun per aset, maupun catatan; kolomnya
+    // kosong dan disembunyikan di UI mode live.
+    lokasi: "",
+    status: p.isActive ? "aktif" : "nonaktif",
+    akunAset: "",
+    akunPenyusutan: "",
+    akunBebanPenyusutan: "",
     createdAt: p.createdAt,
-    updatedAt: p.updatedAt,
+    updatedAt: p.createdAt,
   };
 }
 
-function petakanPenyusutanItem(p: BtPenyusutanItem): PenyusutanItem {
+export async function liveDaftarAsetTetap(): Promise<AsetTetap[]> {
+  // "Hapus" di POS berarti menonaktifkan; aset nonaktif tetap harus muncul
+  // supaya statusnya bisa dibaca.
+  const rows = await minta<BtAsetTetap[]>("/api/fixed-assets?includeInactive=true");
+  return rows.map(petakanAsetTetap);
+}
+
+export async function liveBuatAsetTetap(input: AsetTetapInput, _user: User): Promise<AsetTetap> {
+  const row = await minta<BtAsetTetap>("/api/fixed-assets", {
+    method: "POST",
+    body: {
+      code: input.kode,
+      name: input.nama,
+      category: input.kategori.trim() || null,
+      acquisitionDate: input.tanggalPerolehan,
+      acquisitionCost: input.nilaiPerolehan,
+      salvageValue: input.nilaiResidu,
+      usefulLifeMonths: input.umurEkonomis,
+      depreciationMethod: input.metodePenyusutan,
+    },
+  });
+
+  return petakanAsetTetap(row);
+}
+
+export async function liveUbahAsetTetap(
+  id: string,
+  input: Partial<AsetTetapInput>,
+  _user: User,
+): Promise<AsetTetap> {
+  // Hanya field yang boleh berubah di engine; kode, tanggal, dan nilai
+  // perolehan sengaja tidak dikirim karena sudah menjadi fakta historis.
+  const row = await minta<BtAsetTetap>(`/api/fixed-assets/${encodeURIComponent(id)}`, {
+    method: "PUT",
+    body: {
+      ...(input.nama !== undefined ? { name: input.nama } : {}),
+      ...(input.kategori !== undefined ? { category: input.kategori.trim() || null } : {}),
+      ...(input.umurEkonomis !== undefined ? { usefulLifeMonths: input.umurEkonomis } : {}),
+      ...(input.nilaiResidu !== undefined ? { salvageValue: input.nilaiResidu } : {}),
+      ...(input.metodePenyusutan !== undefined
+        ? { depreciationMethod: input.metodePenyusutan }
+        : {}),
+    },
+  });
+
+  return petakanAsetTetap(row);
+}
+
+export async function liveHapusAsetTetap(id: string, _user: User): Promise<void> {
+  await minta<BtAsetTetap>(`/api/fixed-assets/${encodeURIComponent(id)}/deactivate`, {
+    method: "POST",
+  });
+}
+
+export async function liveHitungPenyusutanBulanan(periode: string): Promise<PenyusutanItem[]> {
+  const assets = await minta<BtAsetTetap[]>("/api/fixed-assets");
+
+  const rows = await Promise.all(
+    assets.map((asset) =>
+      minta<BtPenyusutanBulan>(
+        `/api/fixed-assets/depreciation?assetId=${encodeURIComponent(asset.id)}&period=${encodeURIComponent(periode)}`,
+      ),
+    ),
+  );
+
+  return rows
+    .filter((row) => row.depreciationCharge > 0)
+    .map((row) => ({
+      asetId: row.assetId,
+      periode,
+      nilaiPenyusutan: row.depreciationCharge,
+      akumulasiPenyusutan: row.accumulatedDepreciation,
+      nilaiBuku: row.bookValue,
+    }));
+}
+
+export async function livePostingPenyusutanBulanan(
+  periode: string,
+  _user: User,
+): Promise<{ jurnalId: string; totalPenyusutan: number }> {
+  const row = await minta<BtPostingPenyusutanResponse>("/api/fixed-assets/depreciation/post", {
+    method: "POST",
+    body: { period: periode },
+    idempotensiKunci: buatKunciIdempotensi(),
+  });
+
+  if (row.postedCount === 0) {
+    throw new LiveApiError("Tidak ada aset yang perlu disusutkan pada periode ini.", 409);
+  }
+
+  // Engine menulis satu jurnal per aset; POS hanya butuh totalnya.
   return {
-    asetId: p.asetId,
-    periode: p.periode,
-    nilaiPenyusutan: p.nilaiPenyusutan,
-    akumulasiPenyusutan: p.akumulasiPenyusutan,
-    nilaiBuku: p.nilaiBuku,
+    jurnalId: row.postings.length === 1 ? row.postings[0].journalId : "",
+    totalPenyusutan: row.totalCharge,
   };
 }
 
-function petakanMutasiAset(p: BtMutasiAset): MutasiAset {
-  return {
-    id: p.id,
-    asetId: p.asetId,
-    jenis: p.jenis,
-    tanggal: p.tanggal,
-    nilai: p.nilai,
-    keterangan: p.keterangan,
-    lokasiBaru: p.lokasiBaru,
-    createdAt: p.createdAt,
-  };
-}
-
-function petakanLaporanAsetTetap(p: BtLaporanAsetTetap): LaporanAsetTetap {
-  return {
-    aset: petakanAsetTetap(p.aset),
-    penyusutanPeriode: p.penyusutanPeriode,
-    akumulasiPenyusutan: p.akumulasiPenyusutan,
-    nilaiBuku: p.nilaiBuku,
-  };
-}
-
-function asetTetapBelumAda(): never {
+export async function liveMutasiAset(
+  _input: Omit<MutasiAset, "id" | "createdAt">,
+  _user: User,
+): Promise<MutasiAset> {
   throw new LiveApiError(
-    "Modul Aset Tetap belum tersedia di engine: belum ada endpoint /api/fixed-assets. Jalankan POS dalam mode mock (NEXT_PUBLIC_API_MODE=mock) untuk memakai modul ini.",
+    "Engine belum menyediakan endpoint mutasi aset (penjualan, pemindahan, penghapusan).",
     501,
   );
 }
 
-export async function liveDaftarAsetTetap(): Promise<AsetTetap[]> {
-  return asetTetapBelumAda();
-}
-
-export async function liveBuatAsetTetap(input: AsetTetapInput, user: User): Promise<AsetTetap> {
-  return asetTetapBelumAda();
-}
-
-export async function liveUbahAsetTetap(id: string, input: Partial<AsetTetapInput>, user: User): Promise<AsetTetap> {
-  return asetTetapBelumAda();
-}
-
-export async function liveHapusAsetTetap(id: string, user: User): Promise<void> {
-  return asetTetapBelumAda();
-}
-
-export async function liveHitungPenyusutanBulanan(periode: string): Promise<PenyusutanItem[]> {
-  return asetTetapBelumAda();
-}
-
-export async function livePostingPenyusutanBulanan(periode: string, user: User): Promise<{ jurnalId: string; totalPenyusutan: number }> {
-  return asetTetapBelumAda();
-}
-
-export async function liveMutasiAset(input: Omit<MutasiAset, "id" | "createdAt">, user: User): Promise<MutasiAset> {
-  return asetTetapBelumAda();
-}
-
-export async function liveLaporanAsetTetap(periode: string): Promise<LaporanAsetTetap[]> {
-  return asetTetapBelumAda();
+export async function liveLaporanAsetTetap(_periode: string): Promise<LaporanAsetTetap[]> {
+  throw new LiveApiError(
+    "Engine belum menyediakan laporan aset tetap per periode. Gunakan tab Penyusutan untuk melihat beban bulan berjalan.",
+    501,
+  );
 }
 
 // ===== INVENTARIS (INVENTORY) =====

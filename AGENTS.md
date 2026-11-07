@@ -116,12 +116,16 @@ Tidak ada lagi jalur 501 untuk alur yang sudah terhubung: `engineBelumAda` sudah
 untuk kode akun yang dipakai checkout/pelunasan/biaya belum ada, POS membuatnya lewat
 `POST /api/cash-accounts`.
 
-Pengecualian yang jujur: **modul Aset Tetap** dan sebagian **Inventaris** belum punya endpoint engine.
-`live.ts` melempar pesan eksplisit (status 501) untuk aset tetap;
-yang sudah jalan di live adalah master gudang, stok per gudang, penyesuaian stok, transfer stok antar
-gudang (`POST /api/inventory/transfers`), kartu stok (`GET /api/inventory/movements`), opname stok
-(`/api/inventory/opnames`), dan ringkasan/nilai persediaan (nilai memakai harga beli master
-karena engine belum membuka harga rata-rata per gudang).
+Pengecualian yang jujur: **sebagian modul Aset Tetap** belum punya endpoint engine. Yang sudah
+tersambung: daftar/tambah/ubah/nonaktifkan aset (`/api/fixed-assets`), hitung penyusutan satu aset per
+periode (`GET /api/fixed-assets/depreciation`), dan posting penyusutan bulanan
+(`POST /api/fixed-assets/depreciation/post`). Yang masih 501: mutasi aset (jual/pindah/hapuskan) dan
+laporan aset tetap per periode. Field POS yang tidak disimpan engine (lokasi, akun per aset, catatan)
+disembunyikan di mode live, "hapus" berarti menonaktifkan, dan status nonaktif dipetakan ke `nonaktif`.
+Sebagian **Inventaris** juga belum punya endpoint; yang sudah jalan di live adalah master gudang, stok
+per gudang, penyesuaian stok, transfer stok antar gudang (`POST /api/inventory/transfers`), kartu stok
+(`GET /api/inventory/movements`), opname stok (`/api/inventory/opnames`), dan ringkasan/nilai
+persediaan (nilai memakai harga beli master karena engine belum membuka harga rata-rata per gudang).
 
 Perilaku live yang menyimpang dari mock:
 

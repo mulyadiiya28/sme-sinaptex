@@ -346,7 +346,11 @@ export type AsetTetap = {
   metodePenyusutan: "garis-lurus" | "menurun-ganda" | "jumlah-tahun";
   tanggalPerolehan: string; // ISO date
   lokasi: string;
-  status: "aktif" | "dijual" | "dihapuskan" | "dipindahkan";
+  /// <summary>
+  /// <c>nonaktif</c> hanya datang dari mode live: engine tidak punya status
+  /// jual/hapus/pindah, hanya aktif atau nonaktif.
+  /// </summary>
+  status: "aktif" | "dijual" | "dihapuskan" | "dipindahkan" | "nonaktif";
   akunAset: string; // kode akun aset (mis. 1501 Mesin)
   akunPenyusutan: string; // kode akun penyusutan (mis. 1511 Akum. Penyusutan Mesin)
   akunBebanPenyusutan: string; // kode akun beban penyusutan (mis. 6911 Beban Penyusutan)
