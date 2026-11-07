@@ -179,7 +179,7 @@ export default function InventarisPage() {
     {
       key: "id",
       header: "Nomor",
-      render: (r) => <span className="font-mono text-xs">{r.id}</span>,
+      render: (r) => <span className="font-mono text-xs">{r.nomor ?? r.id}</span>,
     },
     {
       key: "tanggal",
@@ -459,8 +459,8 @@ export default function InventarisPage() {
       {tab === "mutasi" ? (
         <div className="panel p-4">
           <p className="px-1 text-sm text-muted">
-            Kartu stok menampilkan riwayat mutasi per produk. Di mode live engine belum menyediakan endpoint
-            riwayat mutasi, jadi daftar ini hanya terisi pada mode mock.
+            Kartu stok menampilkan riwayat mutasi per produk, dengan saldo sebelum dan sesudah tiap mutasi.
+            Pilih gudang untuk mempersempit riwayat ke satu lokasi.
           </p>
           <div className="mb-3 mt-3 flex flex-wrap items-end gap-3 px-1">
             <FormField label="Produk">

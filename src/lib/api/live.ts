@@ -74,6 +74,8 @@ import type {
   LowStockItem,
   StockAdjustmentInput,
   StockMovement,
+  StockMovementRef,
+  StockMovementType,
   StockOpname,
   StockOpnameInput,
   StockTransferInput,
@@ -346,6 +348,45 @@ type BtProduk = {
 
 type BtSatuan = { id: string; code: string; name: string; isActive: boolean };
 type BtStok = { warehouseId: string | null; items: { productId: string; quantity: number }[] };
+type BtMutasiStok = {
+  movementId: string;
+  productId: string;
+  warehouseId: string;
+  movementDate: string;
+  movementType: string;
+  quantity: number;
+  unitCost: number;
+  totalValue: number;
+  quantityBefore: number;
+  quantityAfter: number;
+  purchaseItemId: string | null;
+  saleItemId: string | null;
+  saleReturnItemId: string | null;
+  purchaseReturnItemId: string | null;
+  reversalOfMovementId: string | null;
+  createdAt: string;
+};
+type BtOpnameItem = {
+  productId: string;
+  systemQuantity: number;
+  physicalQuantity: number;
+  difference: number;
+  unitCost: number;
+  valueDifference: number;
+  notes: string | null;
+};
+type BtOpname = {
+  id: string;
+  number: string;
+  warehouseId: string;
+  opnameDate: string;
+  status: string;
+  notes: string | null;
+  createdBy: string;
+  createdAt: string;
+  updatedAt: string;
+  items: BtOpnameItem[];
+};
 type BtShift = {
   id: string;
   cashierUserId: string;
@@ -2570,11 +2611,68 @@ export async function liveStokRendah(): Promise<LowStockItem[]> {
     .sort((a, b) => b.kekurangan - a.kekurangan);
 }
 
-export async function liveMutasiStok(_productId: string, _gudangId?: string): Promise<StockMovement[]> {
-  throw new LiveApiError(
-    "Engine belum menyediakan endpoint riwayat mutasi stok (kartu stok).",
-    501,
-  );
+export async function liveMutasiStok(productId: string, gudangId?: string): Promise<StockMovement[]> {
+  const query = new URLSearchParams({ productId });
+  if (gudangId) query.set("warehouseId", gudangId);
+
+  const rows = await minta<BtMutasiStok[]>(`/api/inventory/movements?${query.toString()}`);
+
+  return rows.map((row) => ({
+    id: row.movementId,
+    productId: row.productId,
+    gudangId: row.warehouseId,
+    tipe: tipeMutasiEngine(row.movementType),
+    // Engine menyimpan qty bertanda; tabel menampilkan besaran seperti mode mock.
+    qty: Math.abs(row.quantity),
+    qtySebelum: row.quantityBefore,
+    qtySesudah: row.quantityAfter,
+    hargaSatuan: row.unitCost,
+    totalNilai: Math.abs(row.totalValue),
+    referensi: referensiMutasi(row),
+    createdAt: row.createdAt,
+    // Engine tidak menyimpan aktor di movement; biarkan kosong daripada mengarang.
+    createdBy: "",
+  })).reverse();
+}
+
+function tipeMutasiEngine(movementType: string): StockMovementType {
+  switch (movementType) {
+    case "WAREHOUSE_TRANSFER_IN":
+      return "transfer_masuk";
+    case "WAREHOUSE_TRANSFER_OUT":
+      return "transfer_keluar";
+    case "SALE_ISSUE":
+    case "PURCHASE_RETURN_OUT":
+      return "keluar";
+    default:
+      return "masuk";
+  }
+}
+
+function referensiMutasi(row: BtMutasiStok): StockMovementRef {
+  if (row.purchaseItemId) return { jenis: "pembelian", id: row.purchaseItemId, nomor: row.purchaseItemId };
+  if (row.saleItemId) return { jenis: "penjualan", id: row.saleItemId, nomor: row.saleItemId };
+  if (row.saleReturnItemId) {
+    return { jenis: "retur_penjualan", id: row.saleReturnItemId, nomor: row.saleReturnItemId };
+  }
+  if (row.purchaseReturnItemId) {
+    return { jenis: "retur_pembelian", id: row.purchaseReturnItemId, nomor: row.purchaseReturnItemId };
+  }
+
+  if (row.movementType === "WAREHOUSE_TRANSFER_OUT") {
+    // Hanya sisi gudang yang diketahui dari baris movement itu sendiri;
+    // pasangannya tidak disimpan engine.
+    return { jenis: "transfer", id: row.movementId, gudangAsal: row.warehouseId };
+  }
+  if (row.movementType === "WAREHOUSE_TRANSFER_IN") {
+    return { jenis: "transfer", id: row.movementId, gudangTujuan: row.warehouseId };
+  }
+
+  return {
+    jenis: "penyesuaian",
+    id: row.movementId,
+    alasan: row.movementType === "STOCK_ADJUSTMENT_IN" ? "penyesuaian masuk" : "penyesuaian keluar",
+  };
 }
 
 export async function livePenyesuaianStokGudang(
@@ -2660,7 +2758,6 @@ export async function liveTransferStok(
         fromWarehouseId: input.gudangAsalId,
         toWarehouseId: input.gudangTujuanId,
         quantity: input.qty,
-        movementType: "WAREHOUSE_TRANSFER_OUT",
         costingMethod: "AVERAGE",
         reason: input.catatan ?? null,
       },
@@ -2712,23 +2809,86 @@ export async function liveTransferStok(
 }
 
 export async function liveDaftarOpname(): Promise<StockOpname[]> {
-  throw new LiveApiError("Engine belum menyediakan endpoint opname stok.", 501);
+  const rows = await minta<BtOpname[]>("/api/inventory/opnames");
+  return rows.map(opnameEngine);
 }
 
 export async function liveBuatOpname(
-  _input: StockOpnameInput,
+  input: StockOpnameInput,
   _user: User,
 ): Promise<StockOpname> {
-  throw new LiveApiError(
-    "Engine belum menyediakan endpoint opname stok. Gunakan penyesuaian stok per produk.",
-    501,
+  const row = await minta<BtOpname>("/api/inventory/opnames", {
+    method: "POST",
+    body: {
+      opnameDate: input.tanggal,
+      warehouseId: input.gudangId,
+      notes: input.catatan ?? null,
+      items: input.items.map((item) => ({
+        productId: item.productId,
+        physicalQuantity: item.qtyFisik,
+        notes: item.keterangan ?? null,
+      })),
+    },
+    idempotensiKunci: buatKunciIdempotensi(),
+  });
+
+  return opnameEngine(row);
+}
+
+export async function liveSelesaikanOpname(id: string, _user: User): Promise<StockOpname> {
+  const row = await minta<BtOpname>(
+    `/api/inventory/opnames/${encodeURIComponent(id)}/complete?costingMethod=AVERAGE`,
+    {
+      method: "POST",
+      idempotensiKunci: buatKunciIdempotensi(),
+    },
   );
+
+  return opnameEngine(row);
 }
 
-export async function liveSelesaikanOpname(_id: string, _user: User): Promise<StockOpname> {
-  throw new LiveApiError("Engine belum menyediakan endpoint opname stok.", 501);
+export async function liveBatalkanOpname(id: string, _user: User): Promise<StockOpname> {
+  const row = await minta<BtOpname>(
+    `/api/inventory/opnames/${encodeURIComponent(id)}/cancel`,
+    {
+      method: "POST",
+      idempotensiKunci: buatKunciIdempotensi(),
+    },
+  );
+
+  return opnameEngine(row);
 }
 
-export async function liveBatalkanOpname(_id: string, _user: User): Promise<StockOpname> {
-  throw new LiveApiError("Engine belum menyediakan endpoint opname stok.", 501);
+function statusOpnameEngine(status: string): StockOpname["status"] {
+  switch (status) {
+    case "COMPLETED":
+      return "selesai";
+    case "CANCELLED":
+      return "dibatalkan";
+    default:
+      return "draft";
+  }
+}
+
+function opnameEngine(row: BtOpname): StockOpname {
+  return {
+    id: row.id,
+    nomor: row.number,
+    gudangId: row.warehouseId,
+    tanggal: row.opnameDate.slice(0, 10),
+    status: statusOpnameEngine(row.status),
+    items: row.items.map((item) => ({
+      productId: item.productId,
+      qtySistem: item.systemQuantity,
+      qtyFisik: item.physicalQuantity,
+      selisih: item.difference,
+      hargaRataRata: item.unitCost,
+      nilaiSelisih: item.valueDifference,
+      keterangan: item.notes ?? undefined,
+    })),
+    catatan: row.notes ?? undefined,
+    createdAt: row.createdAt,
+    createdBy: row.createdBy,
+    updatedAt: row.updatedAt,
+  };
 }

@@ -47,7 +47,7 @@ export type StockMovementRef =
   | { jenis: "retur_penjualan"; id: string; nomor: string }
   | { jenis: "retur_pembelian"; id: string; nomor: string }
   | { jenis: "penyesuaian"; id: string; alasan: string }
-  | { jenis: "transfer"; id: string; gudangAsal: string; gudangTujuan: string }
+  | { jenis: "transfer"; id: string; gudangAsal?: string; gudangTujuan?: string }
   | { jenis: "opname"; id: string };
 
 /// <summary>Mutasi stok (stock movement / kardex).</summary>
@@ -56,7 +56,7 @@ export type StockMovement = {
   productId: string;
   gudangId: string;
   tipe: StockMovementType;
-  qty: number; // positif untuk masuk, negatif untuk keluar
+  qty: number; // besaran selalu positif; arah masuk/keluar dibaca dari `tipe`
   qtySebelum: number;
   qtySesudah: number;
   hargaSatuan: number; // harga rata-rata saat mutasi
@@ -88,6 +88,8 @@ export type StockTransferInput = {
 /// <summary>Opname stok (stock taking).</summary>
 export type StockOpname = {
   id: string;
+  /// Nomor dokumen dari engine (mis. OPN-0001). Mode mock tidak menyimpannya.
+  nomor?: string;
   gudangId: string;
   tanggal: string;
   status: "draft" | "selesai" | "dibatalkan";

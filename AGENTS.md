@@ -100,6 +100,8 @@ antar-rekening (`GET /api/cash-accounts`, `GET/POST /api/cash-transfers`), pelun
 penyesuaian stok (`POST /api/inventory/adjustments`), gudang (`GET/POST /api/warehouses`,
 `POST /api/warehouses/{id}/deactivate`), stok per gudang (`GET /api/inventory/stock?warehouseId=`),
 transfer stok antar gudang (`POST /api/inventory/transfers`),
+kartu stok (`GET /api/inventory/movements?productId=&warehouseId=`),
+opname stok (`GET/POST /api/inventory/opnames`, `POST /api/inventory/opnames/{id}/complete|cancel`),
 konfirmasi QRIS
 (`POST /api/sales/{id}/confirm-payment`), buat user kasir (`POST /api/users/direct`),
 daftar/ubah/hapus user (`GET/PUT/DELETE /api/users`), jejak audit (`GET /api/audit-log`),
@@ -115,9 +117,10 @@ untuk kode akun yang dipakai checkout/pelunasan/biaya belum ada, POS membuatnya 
 `POST /api/cash-accounts`.
 
 Pengecualian yang jujur: **modul Aset Tetap** dan sebagian **Inventaris** belum punya endpoint engine.
-`live.ts` melempar pesan eksplisit (status 501) untuk aset tetap, opname stok, dan kartu stok (mutasi);
+`live.ts` melempar pesan eksplisit (status 501) untuk aset tetap;
 yang sudah jalan di live adalah master gudang, stok per gudang, penyesuaian stok, transfer stok antar
-gudang (`POST /api/inventory/transfers`), dan ringkasan/nilai persediaan (nilai memakai harga beli master
+gudang (`POST /api/inventory/transfers`), kartu stok (`GET /api/inventory/movements`), opname stok
+(`/api/inventory/opnames`), dan ringkasan/nilai persediaan (nilai memakai harga beli master
 karena engine belum membuka harga rata-rata per gudang).
 
 Perilaku live yang menyimpang dari mock:
