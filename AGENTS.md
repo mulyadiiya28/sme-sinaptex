@@ -31,7 +31,7 @@ No ESLint/Prettier, no test runner in the POS repo. The engine repo has xUnit un
 cd backend
 dotnet build AccountingEngine.slnx
 dotnet test                                          # unit + integration suites
-dotnet run --project src/AccountingEngine.Api/AccountingEngine.Api   # http://localhost:5121
+dotnet run --project src/AccountingEngine.Api   # http://localhost:5121
 dotnet ef database update -p src/AccountingEngine.Infrastructure -s src/AccountingEngine.Api
 python ../tools/bootstrap-backend.py                # tenant + owner + RBAC + kas + periode
 ```
@@ -305,7 +305,7 @@ npx tsc --noEmit                    # typecheck (no lint/test)
 cd backend
 dotnet build AccountingEngine.slnx
 dotnet test
-dotnet run --project src/AccountingEngine.Api/AccountingEngine.Api   # :5121
+dotnet run --project src/AccountingEngine.Api   # :5121
 dotnet ef database update -p src/AccountingEngine.Infrastructure -s src/AccountingEngine.Api
 python ../tools/bootstrap-backend.py
 ```
