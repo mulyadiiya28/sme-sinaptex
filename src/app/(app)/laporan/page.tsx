@@ -85,7 +85,10 @@ export default function LaporanPage() {
   const [tab, setTab] = useState<Tab>("penjualan");
   const [dari, setDari] = useState("");
   const [sampai, setSampai] = useState("");
-  const [tgl, setTgl] = useState("");
+  const [hariIni, setHariIni] = useState("");
+  // Rasio berbasis saldo dibaca "per tanggal": ujung periode kalau diisi,
+  // kalau tidak hari ini. Tanggal diisi setelah mount (hindari hydration mismatch).
+  const tglEfektif = sampai || hariIni;
 
   const riwayat = useRiwayatTransaksi();
   const products = useProducts();
@@ -99,13 +102,13 @@ export default function LaporanPage() {
   const inventoryTurnover = useInventoryTurnover(dari, sampai);
   const arTurnover = useArTurnover(dari, sampai);
   const apTurnover = useApTurnover(dari, sampai);
-  const workingCapital = useWorkingCapital(tgl);
+  const workingCapital = useWorkingCapital(tglEfektif);
   const workingCapitalTurnover = useWorkingCapitalTurnover(dari, sampai);
-  const currentRatio = useCurrentRatio(tgl);
-  const cashRatio = useCashRatio(tgl);
-  const solvency = useSolvency(tgl);
+  const currentRatio = useCurrentRatio(tglEfektif);
+  const cashRatio = useCashRatio(tglEfektif);
+  const solvency = useSolvency(tglEfektif);
   const cashConversionCycle = useCashConversionCycle(dari, sampai);
-  const healthSummary = useHealthSummary(tgl, dari, sampai);
+  const healthSummary = useHealthSummary(tglEfektif, dari, sampai);
   const productPerformance = useProductPerformance(dari, sampai);
   const productRankings = useProductPerformanceRankings(dari, sampai);
   const [dmDate, setDmDate] = useState("");
@@ -116,6 +119,7 @@ export default function LaporanPage() {
   // merender nilai yang sama (hindari hydration mismatch pada tanggal).
   useEffect(() => {
     setDmDate(tanggalLokal());
+    setHariIni(tanggalLokal());
   }, []);
 
   const transaksi = useMemo(() => {
@@ -139,20 +143,23 @@ export default function LaporanPage() {
   const memuatNeraca = akun.isLoading;
   const memuatJurnal = jurnal.isLoading;
   const memuatBeban = biaya.isLoading;
+  // isLoading = sedang fetch. isPending juga true untuk query yang disabled
+  // (mis. periode belum diisi), yang dulu membuat skeleton tampil selamanya.
   const memuatAnalisis =
-    profitability.isPending ||
-    inventoryTurnover.isPending ||
-    arTurnover.isPending ||
-    apTurnover.isPending ||
-    workingCapital.isPending ||
-    workingCapitalTurnover.isPending ||
-    currentRatio.isPending ||
-    cashRatio.isPending ||
-    solvency.isPending ||
-    cashConversionCycle.isPending ||
-    healthSummary.isPending ||
-    productPerformance.isPending ||
-    productRankings.isPending;
+    profitability.isLoading ||
+    inventoryTurnover.isLoading ||
+    arTurnover.isLoading ||
+    apTurnover.isLoading ||
+    workingCapital.isLoading ||
+    workingCapitalTurnover.isLoading ||
+    currentRatio.isLoading ||
+    cashRatio.isLoading ||
+    solvency.isLoading ||
+    cashConversionCycle.isLoading ||
+    healthSummary.isLoading ||
+    productPerformance.isLoading ||
+    productRankings.isLoading;
+  const periodeAnalisisKosong = !dari || !sampai;
 
   const kolomHarian: Column<PenjualanHarian>[] = [
     { key: "tanggal", header: "Tanggal", render: (r) => <span className="font-medium">{r.tanggal}</span> },
@@ -483,7 +490,15 @@ export default function LaporanPage() {
 
       {tab === "analisis" && (
         <>
-          {memuatAnalisis ? (
+          {periodeAnalisisKosong ? (
+            <div className="panel p-4">
+              <p className="text-sm text-muted">
+                Isi <strong>Dari</strong> dan <strong>Sampai</strong> di atas untuk menghitung rasio periode
+                (profitabilitas, turnover, cash conversion cycle, dan performa produk). Rasio likuiditas dan
+                solvabilitas memakai tanggal <strong>Sampai</strong>, atau hari ini bila kosong.
+              </p>
+            </div>
+          ) : memuatAnalisis ? (
             <KpiSkeleton kolom={5} />
           ) : (
             <>
