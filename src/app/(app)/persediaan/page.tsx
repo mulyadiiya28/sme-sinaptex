@@ -57,7 +57,7 @@ function tanggalTampil(nilai: string): string {
   return d.toLocaleDateString("id-ID", { day: "2-digit", month: "short", year: "numeric" });
 }
 
-export default function InventarisPage() {
+export default function PersediaanPage() {
   const user = useAuth((s) => s.user);
   const [tab, setTab] = useState<Tab>("ringkasan");
   const produk = useProducts();
@@ -283,8 +283,8 @@ export default function InventarisPage() {
   return (
     <div>
       <PageHeader
-        title="Inventaris"
-        description="Stok per gudang, kartu stok, penyesuaian, dan opname."
+        title="Persediaan"
+        description="Stok barang dagang per gudang, kartu stok, penyesuaian, dan opname. Kendaraan, peralatan, dan bangunan dicatat di Aset Tetap."
         actions={
           <>
             <button

@@ -655,21 +655,28 @@ export async function liveCreateProduct(p: Omit<Product, "id">): Promise<Product
   // Stok awal produk: catat sebagai penyesuaian masuk di gudang default
   // agar stok yang terlihat di POS sama dengan yang diinput user.
   if (p.stok > 0) {
-    const gudang = await gudangDefault();
-    await minta("/api/inventory/adjustments", {
-      method: "POST",
-      idempotensiKunci: buatKunciIdempotensi(),
-      body: {
-        productId: dibuat.id,
-        warehouseId: gudang,
-        direction: "IN",
-        quantity: p.stok,
-        movementType: "STOCK_ADJUSTMENT_IN",
-        costingMethod: "AVERAGE",
-        unitCost: p.hargaBeli,
-        reason: `Stok awal produk ${p.nama}`,
-      },
-    });
+    try {
+      const gudang = await gudangDefault();
+      await minta("/api/inventory/adjustments", {
+        method: "POST",
+        idempotensiKunci: buatKunciIdempotensi(),
+        body: {
+          productId: dibuat.id,
+          warehouseId: gudang,
+          direction: "IN",
+          quantity: p.stok,
+          movementType: "STOCK_ADJUSTMENT_IN",
+          costingMethod: "AVERAGE",
+          unitCost: p.hargaBeli,
+          reason: `Stok awal produk ${p.nama}`,
+        },
+      });
+    } catch (err) {
+      const pesan = err instanceof Error ? err.message : String(err);
+      throw new Error(
+        `Produk "${p.nama}" sudah dibuat, tetapi stok awal ${p.stok} gagal dicatat: ${pesan}. Catat lewat Penyesuaian Stok — jangan tambah produk lagi karena SKU ${p.sku} sudah dipakai.`,
+      );
+    }
   }
 
   const [satuan, stok] = await Promise.all([

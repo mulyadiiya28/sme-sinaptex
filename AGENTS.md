@@ -122,7 +122,7 @@ periode (`GET /api/fixed-assets/depreciation`), dan posting penyusutan bulanan
 (`POST /api/fixed-assets/depreciation/post`). Yang masih 501: mutasi aset (jual/pindah/hapuskan) dan
 laporan aset tetap per periode. Field POS yang tidak disimpan engine (lokasi, akun per aset, catatan)
 disembunyikan di mode live, "hapus" berarti menonaktifkan, dan status nonaktif dipetakan ke `nonaktif`.
-Sebagian **Inventaris** juga belum punya endpoint; yang sudah jalan di live adalah master gudang, stok
+Sebagian **Persediaan** (menu `Persediaan`, rute `/persediaan`) juga belum punya endpoint; yang sudah jalan di live adalah master gudang, stok
 per gudang, penyesuaian stok, transfer stok antar gudang (`POST /api/inventory/transfers`), kartu stok
 (`GET /api/inventory/movements`), opname stok (`/api/inventory/opnames`), dan ringkasan/nilai
 persediaan (nilai memakai harga beli master karena engine belum membuka harga rata-rata per gudang).

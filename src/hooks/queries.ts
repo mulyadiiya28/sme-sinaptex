@@ -493,7 +493,7 @@ export function useProductMutations() {
 
   const create = useMutation({
     mutationFn: (p: Omit<Product, "id">) => api.master.createProduct(p),
-    onSuccess: invalidate,
+    onSettled: invalidate,
   });
   const update = useMutation({
     mutationFn: ({ id, data }: { id: string; data: Omit<Product, "id"> }) =>

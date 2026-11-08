@@ -66,7 +66,7 @@ export default function AsetTetapPage() {
   const [form, setForm] = useState<AsetTetapInput>({
     kode: "",
     nama: "",
-    kategori: "Mesin",
+    kategori: "Peralatan",
     nilaiPerolehan: 0,
     nilaiResidu: 0,
     umurEkonomis: 60,
@@ -142,12 +142,12 @@ export default function AsetTetapPage() {
         title="Aset Tetap"
         description={
           live
-            ? "Register aset tetap: perolehan, perubahan, nonaktifkan, dan penyusutan bulanan."
-            : "Manajemen aset tetap: pencatatan perolehan, penyusutan, mutasi, dan laporan."
+            ? "Tanah, bangunan, kendaraan, peralatan, dan perlengkapan: perolehan, perubahan, nonaktifkan, dan penyusutan bulanan. Stok barang dagang ada di Persediaan."
+            : "Tanah, bangunan, kendaraan, peralatan, dan perlengkapan: perolehan, penyusutan, mutasi, dan laporan. Stok barang dagang ada di Persediaan."
         }
         actions={
           <>
-            <button type="button" onClick={() => { setForm({ kode: "", nama: "", kategori: "Mesin", nilaiPerolehan: 0, nilaiResidu: 0, umurEkonomis: 60, metodePenyusutan: "garis-lurus", tanggalPerolehan: new Date().toISOString().slice(0, 10), lokasi: "Gudang Utama", status: "aktif", akunAset: "1501", akunPenyusutan: "1511", akunBebanPenyusutan: "6911", catatan: "" }); setEditing(null); setOpenCreate(true); }} className="btn-primary">
+            <button type="button" onClick={() => { setForm({ kode: "", nama: "", kategori: "Peralatan", nilaiPerolehan: 0, nilaiResidu: 0, umurEkonomis: 60, metodePenyusutan: "garis-lurus", tanggalPerolehan: new Date().toISOString().slice(0, 10), lokasi: "Gudang Utama", status: "aktif", akunAset: "1501", akunPenyusutan: "1511", akunBebanPenyusutan: "6911", catatan: "" }); setEditing(null); setOpenCreate(true); }} className="btn-primary">
               <Plus className="size-4" aria-hidden /> Tambah Aset
             </button>
             <button type="button" onClick={() => { setPenyusutanPeriode(new Date().toISOString().slice(0, 7)); setOpenPenyusutan(true); }} className="btn-secondary">
@@ -314,7 +314,12 @@ export default function AsetTetapPage() {
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <FormField label="Kode Aset"><input className="input" value={form.kode} onChange={(e) => setForm({ ...form, kode: e.target.value })} required disabled={live && !!editing} /></FormField>
                 <FormField label="Nama Aset"><input className="input" value={form.nama} onChange={(e) => setForm({ ...form, nama: e.target.value })} required /></FormField>
-                <FormField label="Kategori"><input className="input" value={form.kategori} onChange={(e) => setForm({ ...form, kategori: e.target.value })} /></FormField>
+                <FormField label="Kategori"><input className="input" value={form.kategori} onChange={(e) => setForm({ ...form, kategori: e.target.value })} list="daftar-kategori-aset" />
+                  <datalist id="daftar-kategori-aset">
+                    <option value="Tanah" /><option value="Bangunan" /><option value="Kendaraan" />
+                    <option value="Peralatan" /><option value="Perlengkapan" /><option value="Mesin" />
+                  </datalist>
+                </FormField>
                 {!live && <FormField label="Lokasi"><input className="input" value={form.lokasi} onChange={(e) => setForm({ ...form, lokasi: e.target.value })} /></FormField>}
                 <FormField label="Nilai Perolehan (Rp)"><input type="number" min={0} className="input text-right tabular-nums" value={form.nilaiPerolehan || ""} onChange={(e) => setForm({ ...form, nilaiPerolehan: Number(e.target.value) })} required disabled={live && !!editing} /></FormField>
                 <FormField label="Nilai Residu (Rp)"><input type="number" min={0} className="input text-right tabular-nums" value={form.nilaiResidu || ""} onChange={(e) => setForm({ ...form, nilaiResidu: Number(e.target.value) })} /></FormField>

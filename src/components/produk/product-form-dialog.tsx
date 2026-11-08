@@ -10,10 +10,10 @@ const SCHEMA = z.object({
   nama: z.string().trim().min(1, "Nama wajib diisi"),
   sku: z.string().trim().min(1, "SKU wajib diisi"),
   barcode: z.string().trim().default(""),
-  kategori: z.string().trim().min(1, "Kategori wajib diisi"),
+  kategori: z.string().trim().default(""),
   satuan: z.string().trim().min(1, "Satuan wajib diisi"),
   hargaBeli: z.number().int("Harga beli harus bilangan bulat").nonnegative("Harga beli tidak boleh negatif"),
-  hargaJual: z.number().int("Harga jual harus bilangan bulat").positive("Harga jual harus > 0"),
+  hargaJual: z.number().int("Harga jual harus bilangan bulat").nonnegative("Harga jual tidak boleh negatif"),
   stok: z.number().int().nonnegative("Stok tidak boleh negatif"),
   stokMinimum: z.number().int().nonnegative("Stok minimum tidak boleh negatif"),
   status: z.enum(["aktif", "nonaktif"]),
@@ -111,7 +111,7 @@ export function ProductFormDialog({
           <FormField label="Barcode" error={errors.barcode} hint="Boleh kosong bila tidak dipakai.">
             <input className="input" value={values.barcode} onChange={(e) => set("barcode", e.target.value)} />
           </FormField>
-          <FormField label="Kategori" error={errors.kategori}>
+          <FormField label="Kategori" error={errors.kategori} hint="Boleh kosong.">
             <input className="input" value={values.kategori} onChange={(e) => set("kategori", e.target.value)} list="daftar-kategori" />
             <datalist id="daftar-kategori">
               <option value="Sembako" /><option value="Bumbu" /><option value="Minuman" />
@@ -124,7 +124,7 @@ export function ProductFormDialog({
           <FormField label="Harga beli (HPP dasar)" error={errors.hargaBeli} hint="Diperbarui otomatis saat pembelian; di sini manual.">
             <input type="number" min={0} className="input text-right tabular-nums" value={values.hargaBeli || ""} onChange={(e) => set("hargaBeli", Number(e.target.value))} />
           </FormField>
-          <FormField label="Harga jual (Rp)" error={errors.hargaJual}>
+          <FormField label="Harga jual (Rp)" error={errors.hargaJual} hint="Boleh 0 bila belum ditetapkan.">
             <input type="number" min={0} className="input text-right tabular-nums" value={values.hargaJual || ""} onChange={(e) => set("hargaJual", Number(e.target.value))} />
           </FormField>
           <FormField label="Stok minimal peringatan" error={errors.stokMinimum}>

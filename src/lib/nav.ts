@@ -36,7 +36,7 @@ export const NAV_GROUPS: NavGroup[] = [
     title: "Produk & Persediaan",
     items: [
       { href: "/produk", label: "Produk", icon: Package, roles: ["pemilik"] },
-      { href: "/inventaris", label: "Inventaris", icon: Warehouse, roles: ["pemilik"] },
+      { href: "/persediaan", label: "Persediaan", icon: Warehouse, roles: ["pemilik"] },
       { href: "/aset-tetap", label: "Aset Tetap", icon: Building2, roles: ["pemilik"] },
       { href: "/pembelian", label: "Pembelian", icon: ClipboardList, roles: ["pemilik"] },
       { href: "/supplier", label: "Pemasok", icon: Truck, roles: ["pemilik"] },
