@@ -12,7 +12,7 @@ import { KpiSkeleton } from "@/components/skeleton";
 import { StatusBadge } from "@/components/status-badge";
 import { api } from "@/lib/api/client";
 import { useSupplierCreate, useSupplierDeactivate, useSupplierList } from "@/hooks/queries";
-import { cn } from "@/lib/utils";
+import { cn, kodeDariNama } from "@/lib/utils";
 
 export default function SupplierPage() {
   const suppliers = useSupplierList();
@@ -26,8 +26,9 @@ export default function SupplierPage() {
     taxNumber: "",
   });
   const [createPending, setCreatePending] = useState(false);
+  const [createError, setCreateError] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
-  const { mutate: createSupplier, isPending: creating } = useSupplierCreate();
+  const { mutateAsync: createSupplier, isPending: creating } = useSupplierCreate();
   const { mutate: deactivateSupplier, isPending: deleting } = useSupplierDeactivate();
 
   const columns: Column<Supplier>[] = [
@@ -57,11 +58,28 @@ export default function SupplierPage() {
     )},
   ];
 
-  const handleCreate = (e: React.FormEvent) => {
+  const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
-    createSupplier(createForm);
-    setCreateForm({ code: "", name: "", address: "", phone: "", email: "", taxNumber: "" });
-    setOpenCreate(false);
+    setCreateError(null);
+    const nama = createForm.name.trim();
+    if (!nama) return setCreateError("Nama pemasok wajib diisi.");
+    const duplikat = (suppliers.data ?? []).find(
+      (s) => s.isActive && s.name.trim().toLowerCase() === nama.toLowerCase(),
+    );
+    if (duplikat) {
+      return setCreateError(`Pemasok "${duplikat.name}" sudah ada (kode ${duplikat.code}). Pilih dari daftar, bukan membuat baru.`);
+    }
+    try {
+      await createSupplier({
+        ...createForm,
+        code: createForm.code.trim() || kodeDariNama(nama, (suppliers.data ?? []).map((s) => s.code)),
+        name: nama,
+      });
+      setCreateForm({ code: "", name: "", address: "", phone: "", email: "", taxNumber: "" });
+      setOpenCreate(false);
+    } catch (err) {
+      setCreateError(err instanceof Error ? err.message : String(err));
+    }
   };
 
   return (
@@ -74,7 +92,10 @@ export default function SupplierPage() {
       <div className="mb-4 flex items-center justify-between gap-2">
         <button
           type="button"
-          onClick={() => setOpenCreate(true)}
+          onClick={() => {
+            setCreateError(null);
+            setOpenCreate(true);
+          }}
           className="btn-primary px-4 py-2 text-sm"
         >
           <Plus className="size-4" aria-hidden /> Tambah Pemasok
@@ -97,11 +118,11 @@ export default function SupplierPage() {
           <div className="panel w-full max-w-md p-7" onClick={(e) => e.stopPropagation()}>
             <h2 className="font-black text-brand">Tambah Pemasok</h2>
             <form className="mt-4 space-y-3" onSubmit={handleCreate}>
-              <FormField label="Kode Pemasok" hint="Kode unik untuk pemasok">
-                <input className="input" value={createForm.code} onChange={(e) => setCreateForm({ ...createForm, code: e.target.value })} />
+              <FormField label="Kode Pemasok" hint="Kosongkan untuk dibuat otomatis dari nama.">
+                <input className="input" value={createForm.code} onChange={(e) => setCreateForm({ ...createForm, code: e.target.value })} placeholder="cth. PASAR-BARU" />
               </FormField>
               <FormField label="Nama Pemasok">
-                <input className="input" value={createForm.name} onChange={(e) => setCreateForm({ ...createForm, name: e.target.value })} autoFocus />
+                <input className="input" value={createForm.name} onChange={(e) => setCreateForm({ ...createForm, name: e.target.value })} autoFocus required />
               </FormField>
               <FormField label="Alamat">
                 <input className="input" value={createForm.address} onChange={(e) => setCreateForm({ ...createForm, address: e.target.value })} />
@@ -115,6 +136,7 @@ export default function SupplierPage() {
               <FormField label="NPWP">
                 <input className="input" value={createForm.taxNumber} onChange={(e) => setCreateForm({ ...createForm, taxNumber: e.target.value })} />
               </FormField>
+              {createError && <p className="rounded-xl bg-rose-50 px-3 py-2 text-xs text-rose-700">{createError}</p>}
               <div className="flex gap-2">
                 <button type="submit" disabled={creating} className="btn-primary flex-1 disabled:opacity-40">
                   {creating ? "Menyimpan..." : "Simpan"}

@@ -8,7 +8,8 @@ import { FormField } from "@/components/form-field";
 import { MoneyDisplay } from "@/components/money-display";
 import { PageHeader } from "@/components/page-header";
 import { StatusBadge } from "@/components/status-badge";
-import { usePembelian, usePembelianMutations, useProducts, useSupplierList } from "@/hooks/queries";
+import { usePembelian, usePembelianMutations, useProducts, useSupplierCreate, useSupplierList } from "@/hooks/queries";
+import { kodeDariNama } from "@/lib/utils";
 
 export default function PembelianPage() {
   const pembelian = usePembelian();
@@ -67,6 +68,7 @@ function PembelianFormDialog({ onClose }: { onClose: () => void }) {
   const products = useProducts();
   const suppliers = useSupplierList();
   const { buat } = usePembelianMutations();
+  const { mutateAsync: createSupplier, isPending: creatingSupplier } = useSupplierCreate();
 
   const [pemasokId, setPemasokId] = useState<string | null>(null);
   const [pemasokNama, setPemasokNama] = useState("");
@@ -78,6 +80,7 @@ function PembelianFormDialog({ onClose }: { onClose: () => void }) {
   const [error, setError] = useState<string | null>(null);
 
   const produkDipilih: Product | undefined = products.data?.find((p) => p.id === produkId);
+  const suppliersAktif = (suppliers.data ?? []).filter((s) => s.isActive);
   const total = items.reduce((s, i) => s + i.qty * i.hargaBeli, 0);
 
   function tambahItem() {
@@ -91,13 +94,40 @@ function PembelianFormDialog({ onClose }: { onClose: () => void }) {
     setHarga(0);
   }
 
-  function submit(e: React.FormEvent) {
+  async function submit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
-    if (!pemasokId) return setError("Pilih pemasok terlebih dahulu.");
     if (items.length === 0) return setError("Tambahkan minimal satu item.");
+
+    const nama = pemasokNama.trim();
+    if (!nama && metode === "hutang") {
+      return setError("Pembelian hutang wajib menyebut pemasok agar sisa hutang bisa dilacak. Untuk pembelian pasar, pilih Tunai.");
+    }
+
+    let supplierId = pemasokId;
+    let pemasok = nama;
+    if (nama && !supplierId) {
+      const cocok = suppliersAktif.find((s) => s.name.trim().toLowerCase() === nama.toLowerCase());
+      if (cocok) {
+        supplierId = cocok.id;
+        pemasok = cocok.name;
+      } else {
+        try {
+          const baru = await createSupplier({
+            code: kodeDariNama(nama, (suppliers.data ?? []).map((s) => s.code)),
+            name: nama,
+          });
+          supplierId = baru.id;
+        } catch (err) {
+          setError(err instanceof Error ? err.message : String(err));
+          return;
+        }
+      }
+    }
+    if (!nama) pemasok = "Tanpa pemasok";
+
     buat.mutate(
-      { pemasok: pemasokNama, supplierId: pemasokId, items, metode },
+      { pemasok, supplierId, items, metode },
       { onSuccess: onClose, onError: (err) => setError(String(err)) },
     );
   }
@@ -108,18 +138,31 @@ function PembelianFormDialog({ onClose }: { onClose: () => void }) {
         <h2 className="font-black text-brand">Buat Pembelian</h2>
         <form onSubmit={submit} className="mt-5 space-y-4">
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <FormField label="Pemasok">
-              <select className="input" value={pemasokId ?? ""} onChange={(e) => {
-                const id = e.target.value;
-                const s = suppliers.data?.find((x) => x.id === id);
-                setPemasokId(id);
-                setPemasokNama(s?.name ?? "");
-              }}>
-                <option value="">Pilih pemasok...</option>
-                {(suppliers.data ?? []).filter((s) => s.isActive).map((s) => (
-                  <option key={s.id} value={s.id}>{s.name}</option>
+            <FormField
+              label="Pemasok"
+              hint={
+                metode === "hutang"
+                  ? "Wajib untuk pembelian hutang."
+                  : "Boleh kosong untuk pembelian pasar. Nama baru otomatis disimpan sebagai pemasok."
+              }
+            >
+              <input
+                className="input"
+                list="daftar-pemasok"
+                value={pemasokNama}
+                onChange={(e) => {
+                  const nilai = e.target.value;
+                  setPemasokNama(nilai);
+                  const cocok = suppliersAktif.find((s) => s.name.trim().toLowerCase() === nilai.trim().toLowerCase());
+                  setPemasokId(cocok?.id ?? null);
+                }}
+                placeholder="Ketik nama pemasok / pasar..."
+              />
+              <datalist id="daftar-pemasok">
+                {suppliersAktif.map((s) => (
+                  <option key={s.id} value={s.name} />
                 ))}
-              </select>
+              </datalist>
             </FormField>
             <FormField label="Metode pembayaran">
               <select className="input" value={metode} onChange={(e) => setMetode(e.target.value as PembelianMetode)}>
@@ -192,9 +235,9 @@ function PembelianFormDialog({ onClose }: { onClose: () => void }) {
           {error && <p className="rounded-xl bg-rose-50 px-3 py-2 text-xs text-rose-700">{error}</p>}
 
           <div className="flex gap-2">
-            <button type="submit" disabled={buat.isPending} className="btn-primary flex-1 disabled:opacity-40">
+            <button type="submit" disabled={buat.isPending || creatingSupplier} className="btn-primary flex-1 disabled:opacity-40">
               <ReceiptText className="size-4" aria-hidden />
-              {buat.isPending ? "Menyimpan..." : "Simpan Pembelian"}
+              {buat.isPending || creatingSupplier ? "Menyimpan..." : "Simpan Pembelian"}
             </button>
             <button type="button" onClick={onClose} className="btn-secondary">Batal</button>
           </div>

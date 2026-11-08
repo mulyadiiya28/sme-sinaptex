@@ -458,9 +458,8 @@ export const mockDb = {
   /**
    * Master pemasok mode mock.
    *
-   * Tanpa daftar ini dropdown pemasok di form pembelian kosong — dan karena
-   * faktur wajib menunjuk master, pembelian jadi tidak bisa dibuat sama
-   * sekali di mode mock.
+   * Daftar ini mengisi saran nama pemasok di form pembelian. Pembelian
+   * tunai/bank tetap bisa dibuat tanpa pemasok.
    */
   buatSupplier(input: CreateSupplierRequest): Supplier {
     const code = input.code.trim();
@@ -1050,7 +1049,7 @@ export const mockDb = {
           qty: item.qty,
           hargaSatuan: item.hargaBeli,
           referensi: { jenis: "pembelian", id: pembelian.nomor, nomor: pembelian.nomor },
-          keterangan: `Pembelian dari ${input.pemasok}`,
+          keterangan: input.supplierId ? `Pembelian dari ${input.pemasok}` : "Pembelian tanpa pemasok",
           user: { id: "system", nama: "Sistem", username: "system", role: "pemilik" },
         });
         p.hargaBeli = item.hargaBeli;
@@ -1060,7 +1059,7 @@ export const mockDb = {
 
     const akunSumber = input.metode === "tunai" ? "Kas" : input.metode === "bank" ? "Bank" : "Hutang usaha";
     this.jurnal.unshift(
-      buatJurnal(`Pembelian dari ${input.pemasok}`, pembelian.nomor, [
+      buatJurnal(input.supplierId ? `Pembelian dari ${input.pemasok}` : "Pembelian tanpa pemasok", pembelian.nomor, [
         { akun: "Persediaan", debit: total, kredit: 0 },
         { akun: akunSumber, debit: 0, kredit: total },
       ]),

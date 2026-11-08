@@ -1542,7 +1542,7 @@ export async function livePembelianList(): Promise<Pembelian[]> {
     return {
       id: p.id,
       nomor,
-      pemasok: p.supplierId ? namaPemasok.get(p.supplierId) ?? p.supplierId : "-",
+      pemasok: p.supplierId ? namaPemasok.get(p.supplierId) ?? p.supplierId : "Tanpa pemasok",
       supplierId: p.supplierId,
       waktu: p.purchaseDate,
       items: p.items.map((item) => ({
@@ -1586,7 +1586,7 @@ export async function livePembelianBuat(input: PembelianInput): Promise<Pembelia
       costingMethod: "AVERAGE",
       payableAccountCode: KODE.hutang,
       inventoryAccountCode: KODE.persediaan,
-      description: `Pembelian ${input.pemasok}`,
+      description: input.supplierId ? `Pembelian ${input.pemasok}` : "Pembelian tanpa pemasok",
       lines: input.items.map((i) => ({
         productId: i.productId,
         warehouseId: gudang,

@@ -134,12 +134,13 @@ Perilaku live yang menyimpang dari mock:
   ditulis tanpa cash movement/settlement/allocation, piutang tetap terbuka.
 - `livePembelianBuat` mendukung `metode: "hutang"` (pembelian 100% hutang) sejak engine commit
   `c6160ce`: dokumen ditulis tanpa cash account, hutang tetap terbuka. Pembelian DP sebagian juga didukung.
-  Faktur **wajib** menunjuk master pemasok (`supplierId`), supaya hutang tertelusur per pemasok di
-  laporan AP ageing (`counterpartyId`).
+  Faktur **tunai/bank** boleh tanpa pemasok (`supplierId` null) untuk pembelian pasar; faktur **hutang**
+  wajib menunjuk master pemasok supaya hutang tertelusur per pemasok di laporan AP ageing
+  (`counterpartyId`). Form pembelian bisa membuat pemasok baru langsung dari nama (kode dibuat otomatis).
 - Master pemasok sengaja hanya list/create/nonaktifkan (engine tidak menyediakan update kode/nama) —
   menjaga integritas nama pemasok pada faktur lama. `liveSupplierList` memakai
   `?includeInactive=true` supaya pemasok nonaktif tetap muncul di master dan namanya masih bisa
-  di-resolve pada faktur lama; dropdown pembelian menyaring yang aktif saja.
+  di-resolve pada faktur lama; saran nama di form pembelian menyaring yang aktif saja.
 - Kasir (authority level 2) boleh menerima pelunasan piutang langsung dari layar Kasir
   (tombol "Terima Piutang", F6) — engine tidak meminta approval terpisah (`approvalRequired: false`).
 - `liveVoidTransaksi` memanggil void engine; bila engine menolak 409 (POSTED tidak boleh di-void),
