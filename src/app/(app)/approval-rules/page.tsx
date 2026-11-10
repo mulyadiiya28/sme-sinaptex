@@ -1,32 +1,46 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
 import { Plus } from "lucide-react";
 import type { ApprovalRule, CreateApprovalRuleRequest } from "@/lib/api/types";
 import { DataTable, type Column } from "@/components/data-table";
 import { FormField } from "@/components/form-field";
 import { MoneyDisplay } from "@/components/money-display";
 import { PageHeader } from "@/components/page-header";
-import { KpiSkeleton } from "@/components/skeleton";
 import { StatusBadge } from "@/components/status-badge";
-import { api } from "@/lib/api/client";
 import { useApprovalRuleCreate, useApprovalRuleDeactivate, useApprovalRuleList } from "@/hooks/queries";
-import { cn } from "@/lib/utils";
+
+const TIPE_TRANSAKSI: Array<[string, string]> = [
+  ["SALE", "Penjualan"],
+  ["PURCHASE", "Pembelian"],
+  ["EXPENSE", "Biaya"],
+  ["CUSTOMER_PAYMENT", "Pelunasan piutang"],
+  ["SUPPLIER_PAYMENT", "Pelunasan hutang"],
+  ["CASH_TRANSFER", "Transfer antar rekening"],
+  ["OPENING_BALANCE", "Saldo awal"],
+  ["CLOSING", "Tutup buku"],
+  ["ADJUSTMENT", "Penyesuaian"],
+  ["STOCK_ADJUSTMENT", "Penyesuaian stok"],
+  ["INTEREST_ACCRUAL", "Akrual bunga"],
+  ["SALE_RETURN", "Retur penjualan"],
+  ["PURCHASE_RETURN", "Retur pembelian"],
+];
+
+const FORM_KOSONG: CreateApprovalRuleRequest = {
+  name: "",
+  transactionType: "SALE",
+  minimumAmount: 0,
+  requiredLevel: 1,
+  resolutionMode: "HIGHEST_LEVEL",
+};
 
 export default function ApprovalRulesPage() {
   const rules = useApprovalRuleList();
   const [openCreate, setOpenCreate] = useState(false);
-  const [createForm, setCreateForm] = useState<CreateApprovalRuleRequest>({
-    name: "",
-    transactionType: "",
-    minimumAmount: 0,
-    requiredLevel: 1,
-    resolutionMode: "HIGHEST_LEVEL",
-  });
-  const [createPending, setCreatePending] = useState(false);
-  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [createForm, setCreateForm] = useState<CreateApprovalRuleRequest>(FORM_KOSONG);
+  const [createError, setCreateError] = useState<string | null>(null);
   const { mutate: createRule, isPending: creating } = useApprovalRuleCreate();
-  const { mutate: deactivateRule, isPending: deleting } = useApprovalRuleDeactivate();
+  const { mutate: deactivateRule } = useApprovalRuleDeactivate();
 
   const columns: Column<ApprovalRule>[] = [
     { key: "name", header: "Nama", render: (r) => <span className="font-medium">{r.name ?? "-"}</span> },
@@ -54,9 +68,14 @@ export default function ApprovalRulesPage() {
 
   const handleCreate = (e: React.FormEvent) => {
     e.preventDefault();
-    createRule(createForm);
-    setCreateForm({ name: "", transactionType: "", minimumAmount: 0, requiredLevel: 1, resolutionMode: "HIGHEST_LEVEL" });
-    setOpenCreate(false);
+    setCreateError(null);
+    createRule(createForm, {
+      onSuccess: () => {
+        setCreateForm(FORM_KOSONG);
+        setOpenCreate(false);
+      },
+      onError: (err) => setCreateError(err instanceof Error ? err.message : String(err)),
+    });
   };
 
   return (
@@ -96,7 +115,15 @@ export default function ApprovalRulesPage() {
                 <input className="input" value={createForm.name} onChange={(e) => setCreateForm({ ...createForm, name: e.target.value })} />
               </FormField>
               <FormField label="Jenis Transaksi">
-                <input className="input" value={createForm.transactionType} onChange={(e) => setCreateForm({ ...createForm, transactionType: e.target.value })} />
+                <select
+                  className="input"
+                  value={createForm.transactionType}
+                  onChange={(e) => setCreateForm({ ...createForm, transactionType: e.target.value })}
+                >
+                  {TIPE_TRANSAKSI.map(([value, label]) => (
+                    <option key={value} value={value}>{label} ({value})</option>
+                  ))}
+                </select>
               </FormField>
               <FormField label="Ambang Batas (Rp)">
                 <input type="number" min={0} className="input text-right tabular-nums" value={createForm.minimumAmount || ""} onChange={(e) => setCreateForm({ ...createForm, minimumAmount: Number(e.target.value) })} />
@@ -110,6 +137,9 @@ export default function ApprovalRulesPage() {
                   <option value="ALL_MUST_APPROVE">ALL_MUST_APPROVE</option>
                 </select>
               </FormField>
+              {createError && (
+                <p className="rounded-xl bg-rose-50 px-3 py-2 text-xs text-rose-700">{createError}</p>
+              )}
               <div className="flex gap-2">
                 <button type="submit" disabled={creating} className="btn-primary flex-1 disabled:opacity-40">
                   {creating ? "Menyimpan..." : "Simpan"}

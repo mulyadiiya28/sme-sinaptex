@@ -116,12 +116,15 @@ Tidak ada lagi jalur 501 untuk alur yang sudah terhubung: `engineBelumAda` sudah
 untuk kode akun yang dipakai checkout/pelunasan/biaya belum ada, POS membuatnya lewat
 `POST /api/cash-accounts`.
 
-Pengecualian yang jujur: **sebagian modul Aset Tetap** belum punya endpoint engine. Yang sudah
-tersambung: daftar/tambah/ubah/nonaktifkan aset (`/api/fixed-assets`), hitung penyusutan satu aset per
-periode (`GET /api/fixed-assets/depreciation`), dan posting penyusutan bulanan
-(`POST /api/fixed-assets/depreciation/post`). Yang masih 501: mutasi aset (jual/pindah/hapuskan) dan
-laporan aset tetap per periode. Field POS yang tidak disimpan engine (lokasi, akun per aset, catatan)
-disembunyikan di mode live, "hapus" berarti menonaktifkan, dan status nonaktif dipetakan ke `nonaktif`.
+**Aset Tetap** sudah tersambung penuh: daftar/tambah/ubah/nonaktifkan aset (`/api/fixed-assets`),
+hitung penyusutan satu aset per periode (`GET /api/fixed-assets/depreciation`), posting penyusutan
+bulanan (`POST /api/fixed-assets/depreciation/post`), mutasi aset
+(`POST/GET /api/fixed-assets/{id}/mutations`; `SALE`/`DISPOSAL` menonaktifkan aset, `TRANSFER` tetap
+aktif dan menyimpan lokasi tujuan), dan laporan register per periode
+(`GET /api/fixed-assets/report?period=YYYY-MM`). Mutasi sengaja **tidak** menulis jurnal karena modul
+ini tidak pernah menjurnal perolehan aset; POS menampilkan status hasil mutasi sebagai `nonaktif`.
+Field POS yang tidak disimpan engine (lokasi, akun per aset, catatan) disembunyikan di mode live,
+"hapus" berarti menonaktifkan, dan status nonaktif dipetakan ke `nonaktif`.
 Sebagian **Persediaan** (menu `Persediaan`, rute `/persediaan`) juga belum punya endpoint; yang sudah jalan di live adalah master gudang, stok
 per gudang, penyesuaian stok, transfer stok antar gudang (`POST /api/inventory/transfers`), kartu stok
 (`GET /api/inventory/movements`), opname stok (`/api/inventory/opnames`), dan ringkasan/nilai

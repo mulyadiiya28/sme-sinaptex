@@ -124,9 +124,7 @@ export default function AsetTetapPage() {
             >
               <Trash2 className="size-3.5" aria-hidden />
             </button>
-            {!live && (
-              <button type="button" onClick={() => { setMutasiAsetId(r.id); setMutasiForm({ ...mutasiForm, asetId: r.id }); setOpenMutasi(true); }} className="btn-secondary rounded-lg px-2.5 py-1.5 text-xs"><ExternalLink className="size-3.5" aria-hidden /> Mutasi</button>
-            )}
+            <button type="button" onClick={() => { setMutasiAsetId(r.id); setMutasiForm({ ...mutasiForm, asetId: r.id }); setOpenMutasi(true); }} className="btn-secondary rounded-lg px-2.5 py-1.5 text-xs"><ExternalLink className="size-3.5" aria-hidden /> Mutasi</button>
           </>
         )}
       </div>
@@ -141,9 +139,7 @@ export default function AsetTetapPage() {
       <PageHeader
         title="Aset Tetap"
         description={
-          live
-            ? "Tanah, bangunan, kendaraan, peralatan, dan perlengkapan: perolehan, perubahan, nonaktifkan, dan penyusutan bulanan. Stok barang dagang ada di Persediaan."
-            : "Tanah, bangunan, kendaraan, peralatan, dan perlengkapan: perolehan, penyusutan, mutasi, dan laporan. Stok barang dagang ada di Persediaan."
+          "Tanah, bangunan, kendaraan, peralatan, dan perlengkapan: perolehan, penyusutan, mutasi, dan laporan. Stok barang dagang ada di Persediaan."
         }
         actions={
           <>
@@ -213,79 +209,64 @@ export default function AsetTetapPage() {
 
       {tab === "mutasi" && (
         <div className="space-y-4">
-          {live ? (
-            <div className="panel p-4">
-              <h2 className="mb-2 px-1 text-sm font-bold text-brand">Mutasi Aset Belum Tersedia di Engine</h2>
-              <p className="px-1 text-sm text-muted">
-                Engine belum menyediakan endpoint penjualan, pemindahan, atau penghapusan aset.
-                Di mode live, aset tetap hanya bisa didaftarkan, diubah, dinonaktifkan, dan disusutkan.
-              </p>
+          <div className="panel p-4">
+            <h2 className="mb-3 px-1 text-sm font-bold text-brand">Mutasi Aset (Penjualan / Pemindahan / Penghapusan)</h2>
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <FormField label="Aset">
+                <select className="input" value={mutasiForm.asetId} onChange={(e) => setMutasiForm({ ...mutasiForm, asetId: e.target.value })}>
+                  <option value="">— pilih aset —</option>
+                  {asetAktif.map((a) => <option key={a.id} value={a.id}>{a.nama} ({a.kode})</option>)}
+                </select>
+              </FormField>
+              <FormField label="Jenis Mutasi">
+                <select className="input" value={mutasiForm.jenis} onChange={(e) => setMutasiForm({ ...mutasiForm, jenis: e.target.value as MutasiAset["jenis"] })}>
+                  <option value="penjualan">Penjualan</option>
+                  <option value="pemindahan">Pemindahan</option>
+                  <option value="penghapusan">Penghapusan</option>
+                </select>
+              </FormField>
+              <FormField label="Tanggal">
+                <input type="date" className="input" value={mutasiForm.tanggal} onChange={(e) => setMutasiForm({ ...mutasiForm, tanggal: e.target.value })} />
+              </FormField>
+              <FormField label="Nilai (harga jual)">
+                <input type="number" className="input text-right tabular-nums" value={mutasiForm.nilai || ""} onChange={(e) => setMutasiForm({ ...mutasiForm, nilai: Number(e.target.value) })} />
+              </FormField>
+              <FormField label="Lokasi Baru (untuk pemindahan)">
+                <input className="input" value={mutasiForm.lokasiBaru} onChange={(e) => setMutasiForm({ ...mutasiForm, lokasiBaru: e.target.value })} required={mutasiForm.jenis === "pemindahan"} />
+              </FormField>
+              <FormField label="Keterangan">
+                <input className="input" value={mutasiForm.keterangan} onChange={(e) => setMutasiForm({ ...mutasiForm, keterangan: e.target.value })} />
+              </FormField>
             </div>
-          ) : (
-            <div className="panel p-4">
-              <h2 className="mb-3 px-1 text-sm font-bold text-brand">Mutasi Aset (Penjualan / Pemindahan / Penghapusan)</h2>
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                <FormField label="Aset">
-                  <select className="input" value={mutasiForm.asetId} onChange={(e) => setMutasiForm({ ...mutasiForm, asetId: e.target.value })}>
-                    <option value="">— pilih aset —</option>
-                    {asetAktif.map((a) => <option key={a.id} value={a.id}>{a.nama} ({a.kode})</option>)}
-                  </select>
-                </FormField>
-                <FormField label="Jenis Mutasi">
-                  <select className="input" value={mutasiForm.jenis} onChange={(e) => setMutasiForm({ ...mutasiForm, jenis: e.target.value as MutasiAset["jenis"] })}>
-                    <option value="penjualan">Penjualan</option>
-                    <option value="pemindahan">Pemindahan</option>
-                    <option value="penghapusan">Penghapusan</option>
-                  </select>
-                </FormField>
-                <FormField label="Tanggal">
-                  <input type="date" className="input" value={mutasiForm.tanggal} onChange={(e) => setMutasiForm({ ...mutasiForm, tanggal: e.target.value })} />
-                </FormField>
-                <FormField label="Nilai (harga jual / nilai perolehan)">
-                  <input type="number" className="input text-right tabular-nums" value={mutasiForm.nilai || ""} onChange={(e) => setMutasiForm({ ...mutasiForm, nilai: Number(e.target.value) })} />
-                </FormField>
-                <FormField label="Lokasi Baru (untuk pemindahan)">
-                  <input className="input" value={mutasiForm.lokasiBaru} onChange={(e) => setMutasiForm({ ...mutasiForm, lokasiBaru: e.target.value })} />
-                </FormField>
-                <FormField label="Keterangan">
-                  <input className="input" value={mutasiForm.keterangan} onChange={(e) => setMutasiForm({ ...mutasiForm, keterangan: e.target.value })} />
-                </FormField>
-              </div>
-              <div className="mt-3 flex gap-2">
-                <button type="button" onClick={() => mutasi.mutate({ input: mutasiForm, user: { id: "", nama: "", username: "", role: "pemilik" } })} disabled={mutasi.isPending} className="btn-primary">
-                  {mutasi.isPending ? "Memproses..." : "Proses Mutasi"}
-                </button>
-              </div>
-              {mutasi.isError && <p className="mt-3 rounded-xl bg-rose-50 px-3 py-2 text-xs text-rose-700">{String(mutasi.error)}</p>}
+            <div className="mt-3 flex gap-2">
+              <button type="button" onClick={() => mutasi.mutate({ input: mutasiForm, user: { id: "", nama: "", username: "", role: "pemilik" } })} disabled={mutasi.isPending || !mutasiForm.asetId || (mutasiForm.jenis === "pemindahan" && !(mutasiForm.lokasiBaru ?? "").trim())} className="btn-primary">
+                {mutasi.isPending ? "Memproses..." : "Proses Mutasi"}
+              </button>
             </div>
-          )}
+            {mutasi.isError && <p className="mt-3 rounded-xl bg-rose-50 px-3 py-2 text-xs text-rose-700">{String(mutasi.error)}</p>}
+          </div>
         </div>
       )}
 
       {tab === "laporan" && (
         <div className="space-y-4">
-          {live ? (
-            <div className="panel p-4">
-              <h2 className="mb-2 px-1 text-sm font-bold text-brand">Laporan Aset Tetap Belum Tersedia di Engine</h2>
-              <p className="px-1 text-sm text-muted">
-                Engine belum menyediakan laporan aset tetap per periode. Beban penyusutan bulan berjalan
-                tetap bisa dilihat dan diposting dari tab Penyusutan.
-              </p>
+          <div className="panel p-4">
+            <h2 className="mb-3 px-1 text-sm font-bold text-brand">Laporan Aset Tetap per Periode</h2>
+            <div className="flex flex-wrap items-end gap-4">
+              <FormField label="Periode (YYYY-MM)">
+                <input type="month" className="input" value={laporanPeriode} onChange={(e) => setLaporanPeriode(e.target.value)} />
+              </FormField>
+              <button
+                type="button"
+                onClick={() => laporan.mutate(laporanPeriode, { onSuccess: (res) => setLaporanData(res) })}
+                disabled={laporan.isPending}
+                className="btn-primary h-10"
+              >
+                {laporan.isPending ? "Memuat..." : "Tampilkan Laporan"}
+              </button>
             </div>
-          ) : (
-            <div className="panel p-4">
-              <h2 className="mb-3 px-1 text-sm font-bold text-brand">Laporan Aset Tetap per Periode</h2>
-              <div className="flex flex-wrap items-end gap-4">
-                <FormField label="Periode (YYYY-MM)">
-                  <input type="month" className="input" value={laporanPeriode} onChange={(e) => setLaporanPeriode(e.target.value)} />
-                </FormField>
-                <button type="button" onClick={() => { laporan.mutate(laporanPeriode); }} disabled={laporan.isPending} className="btn-primary h-10">
-                  {laporan.isPending ? "Memuat..." : "Tampilkan Laporan"}
-                </button>
-              </div>
-              {laporan.isError && <p className="mt-3 rounded-xl bg-rose-50 px-3 py-2 text-xs text-rose-700">{String(laporan.error)}</p>}
-            </div>
-          )}
+            {laporan.isError && <p className="mt-3 rounded-xl bg-rose-50 px-3 py-2 text-xs text-rose-700">{String(laporan.error)}</p>}
+          </div>
           {laporanData.length > 0 && (
             <div className="panel p-4">
               <h2 className="mb-3 px-1 text-sm font-bold text-brand">Laporan Periode {laporanPeriode}</h2>

@@ -1,10 +1,11 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { z } from "zod";
 import type { Product } from "@/lib/api/types";
 import { FormField } from "@/components/form-field";
 import { useProductMutations } from "@/hooks/queries";
+import { API_MODE } from "@/lib/api/client";
 
 const SCHEMA = z.object({
   nama: z.string().trim().min(1, "Nama wajib diisi"),
@@ -62,8 +63,8 @@ export function ProductFormDialog({
   const [serverError, setServerError] = useState<string | null>(null);
 
   const mutationPending = create.isPending || update.isPending;
-
-  useEffect(() => () => { create.reset(); update.reset(); }, [create, update]);
+  const live = API_MODE === "live";
+  const kunciMaster = live && !!editing;
 
   function set<K extends keyof FormValues>(key: K, value: FormValues[K]) {
     setSet((v) => ({ ...v, [key]: value }));
@@ -95,6 +96,12 @@ export function ProductFormDialog({
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink/50 p-4 backdrop-blur-sm">
       <div className="panel max-h-[90vh] w-full max-w-xl overflow-y-auto p-7">
         <h2 className="font-black text-brand">{editing ? "Edit Produk" : "Tambah Produk"}</h2>
+        {kunciMaster && (
+          <p className="mt-2 rounded-xl bg-amber-50 px-3 py-2 text-xs text-amber-700">
+            SKU, satuan, dan stok tidak bisa diubah dari form ini di mode live. Stok diubah lewat
+            Penyesuaian Stok; produk dinonaktifkan dari daftar produk.
+          </p>
+        )}
         <form onSubmit={submit} className="mt-5 grid grid-cols-1 gap-4 sm:grid-cols-2">
           <FormField label="Nama produk" error={errors.nama} className="sm:col-span-2">
             <input
@@ -105,8 +112,8 @@ export function ProductFormDialog({
               autoFocus
             />
           </FormField>
-          <FormField label="SKU" error={errors.sku}>
-            <input className="input" value={values.sku} onChange={(e) => set("sku", e.target.value)} placeholder="cth. BRS-5KG" />
+          <FormField label="SKU" error={errors.sku} hint={kunciMaster ? "Kode produk tidak bisa diubah." : undefined}>
+            <input className="input" value={values.sku} onChange={(e) => set("sku", e.target.value)} placeholder="cth. BRS-5KG" disabled={kunciMaster} />
           </FormField>
           <FormField label="Barcode" error={errors.barcode} hint="Boleh kosong bila tidak dipakai.">
             <input className="input" value={values.barcode} onChange={(e) => set("barcode", e.target.value)} />
@@ -118,8 +125,8 @@ export function ProductFormDialog({
               <option value="Kebersihan" /><option value="Paket" />
             </datalist>
           </FormField>
-          <FormField label="Satuan" error={errors.satuan}>
-            <input className="input" value={values.satuan} onChange={(e) => set("satuan", e.target.value)} placeholder="pcs / kg / sak" />
+          <FormField label="Satuan" error={errors.satuan} hint={kunciMaster ? "Satuan dasar tidak bisa diubah." : undefined}>
+            <input className="input" value={values.satuan} onChange={(e) => set("satuan", e.target.value)} placeholder="pcs / kg / sak" disabled={kunciMaster} />
           </FormField>
           <FormField label="Harga beli (HPP dasar)" error={errors.hargaBeli} hint="Diperbarui otomatis saat pembelian; di sini manual.">
             <input type="number" min={0} className="input text-right tabular-nums" value={values.hargaBeli || ""} onChange={(e) => set("hargaBeli", Number(e.target.value))} />
@@ -130,15 +137,32 @@ export function ProductFormDialog({
           <FormField label="Stok minimal peringatan" error={errors.stokMinimum}>
             <input type="number" min={0} className="input text-right tabular-nums" value={values.stokMinimum || ""} onChange={(e) => set("stokMinimum", Number(e.target.value))} />
           </FormField>
-          <FormField label="Stok tersedia" error={errors.stok} hint="Stok awal dicatat sebagai penyesuaian masuk di gudang default (mode live).">
-            <input type="number" min={0} className="input text-right tabular-nums" value={values.stok || ""} onChange={(e) => set("stok", Number(e.target.value))} />
+          <FormField
+            label="Stok tersedia"
+            error={errors.stok}
+            hint={
+              kunciMaster
+                ? "Ubah stok lewat tombol Penyesuaian Stok."
+                : "Stok awal dicatat sebagai penyesuaian masuk di gudang default (mode live)."
+            }
+          >
+            <input
+              type="number"
+              min={0}
+              className="input text-right tabular-nums"
+              value={values.stok || ""}
+              onChange={(e) => set("stok", Number(e.target.value))}
+              disabled={kunciMaster}
+            />
           </FormField>
-          <FormField label="Status" error={errors.status}>
-            <select className="input" value={values.status} onChange={(e) => set("status", e.target.value as FormValues["status"])}>
-              <option value="aktif">Aktif</option>
-              <option value="nonaktif">Nonaktif</option>
-            </select>
-          </FormField>
+          {!live && (
+            <FormField label="Status" error={errors.status}>
+              <select className="input" value={values.status} onChange={(e) => set("status", e.target.value as FormValues["status"])}>
+                <option value="aktif">Aktif</option>
+                <option value="nonaktif">Nonaktif</option>
+              </select>
+            </FormField>
+          )}
 
           {serverError && <p className="sm:col-span-2 rounded-xl bg-rose-50 px-3 py-2 text-xs text-rose-700">{serverError}</p>}
 

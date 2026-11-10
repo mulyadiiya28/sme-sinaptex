@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useRef, useState } from "react";
-import { Pencil, Plus, Search, SlidersHorizontal } from "lucide-react";
+import { Pencil, Plus, Search, SlidersHorizontal, Trash2 } from "lucide-react";
 import type { PenyesuaianStokInput, Product } from "@/lib/api/types";
 import { DataTable, type Column } from "@/components/data-table";
 import { FormField } from "@/components/form-field";
@@ -12,6 +12,7 @@ import { ProductFormDialog } from "@/components/produk/product-form-dialog";
 import { useProductMutations, useProducts } from "@/hooks/queries";
 import { useCariAwal } from "@/hooks/use-cari-awal";
 import { useAuth } from "@/lib/store/auth";
+import { API_MODE } from "@/lib/api/client";
 
 type Filter = "semua" | "menipis" | "nonaktif";
 
@@ -61,13 +62,29 @@ export default function ProdukPage() {
       return <StatusBadge label="Aktif" tone="success" />;
     } },
     { key: "aksi", header: "", align: "right", render: (r) => (
-      <button
-        type="button"
-        onClick={() => setDialog({ open: true, editing: r })}
-        className="btn-secondary rounded-lg px-2.5 py-1.5 text-xs"
-      >
-        <Pencil className="size-3.5" aria-hidden /> Edit
-      </button>
+      <div className="flex justify-end gap-1.5">
+        <button
+          type="button"
+          onClick={() => setDialog({ open: true, editing: r })}
+          className="btn-secondary rounded-lg px-2.5 py-1.5 text-xs"
+        >
+          <Pencil className="size-3.5" aria-hidden /> Edit
+        </button>
+        <button
+          type="button"
+          aria-label={API_MODE === "live" ? "Nonaktifkan produk" : "Hapus produk"}
+          title={API_MODE === "live" ? "Nonaktifkan produk" : "Hapus produk"}
+          onClick={() => {
+            if (confirm(API_MODE === "live" ? `Nonaktifkan produk "${r.nama}"?` : `Hapus produk "${r.nama}"?`)) {
+              remove.mutate(r.id);
+            }
+          }}
+          disabled={remove.isPending}
+          className="btn-secondary rounded-lg px-2.5 py-1.5 text-xs text-rose-600 disabled:opacity-40"
+        >
+          <Trash2 className="size-3.5" aria-hidden />
+        </button>
+      </div>
     ) },
   ];
 
@@ -125,6 +142,9 @@ export default function ProdukPage() {
           </div>
         </div>
 
+        {remove.isError && (
+          <p className="mt-3 rounded-xl bg-rose-50 px-3 py-2 text-xs text-rose-700">{String(remove.error)}</p>
+        )}
         {products.isError ? (
           <p className="py-12 text-center text-sm text-rose-600">Gagal memuat produk.</p>
         ) : (

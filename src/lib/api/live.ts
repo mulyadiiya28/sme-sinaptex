@@ -2349,6 +2349,24 @@ type BtAsetTetap = {
   createdAt: string;
 };
 
+type BtMutasiAset = {
+  id: string;
+  fixedAssetId: string;
+  type: string;
+  mutationDate: string;
+  amount: number;
+  note: string | null;
+  newLocation: string | null;
+  createdAt: string;
+};
+
+type BtLaporanAsetTetap = {
+  asset: BtAsetTetap;
+  depreciationCharge: number;
+  accumulatedDepreciation: number;
+  bookValue: number;
+};
+
 type BtPenyusutanBulan = {
   assetId: string;
   assetName: string;
@@ -2505,21 +2523,71 @@ export async function livePostingPenyusutanBulanan(
   };
 }
 
-export async function liveMutasiAset(
-  _input: Omit<MutasiAset, "id" | "createdAt">,
-  _user: User,
-): Promise<MutasiAset> {
-  throw new LiveApiError(
-    "Engine belum menyediakan endpoint mutasi aset (penjualan, pemindahan, penghapusan).",
-    501,
-  );
+function tipeMutasiAsetEngine(jenis: MutasiAset["jenis"]): string {
+  switch (jenis) {
+    case "penjualan":
+      return "SALE";
+    case "pemindahan":
+      return "TRANSFER";
+    case "penghapusan":
+      return "DISPOSAL";
+    default:
+      throw new LiveApiError(
+        "Pembelian aset dicatat lewat form Tambah Aset, bukan lewat mutasi.",
+        400,
+      );
+  }
 }
 
-export async function liveLaporanAsetTetap(_periode: string): Promise<LaporanAsetTetap[]> {
-  throw new LiveApiError(
-    "Engine belum menyediakan laporan aset tetap per periode. Gunakan tab Penyusutan untuk melihat beban bulan berjalan.",
-    501,
+function petakanMutasiAset(m: BtMutasiAset): MutasiAset {
+  const jenis: MutasiAset["jenis"] =
+    m.type === "SALE" ? "penjualan" : m.type === "TRANSFER" ? "pemindahan" : "penghapusan";
+
+  return {
+    id: m.id,
+    asetId: m.fixedAssetId,
+    jenis,
+    tanggal: m.mutationDate.slice(0, 10),
+    nilai: m.amount,
+    keterangan: m.note ?? "",
+    lokasiBaru: m.newLocation ?? undefined,
+    createdAt: m.createdAt,
+  };
+}
+
+export async function liveMutasiAset(
+  input: Omit<MutasiAset, "id" | "createdAt">,
+  _user: User,
+): Promise<MutasiAset> {
+  const tipe = tipeMutasiAsetEngine(input.jenis);
+  const row = await minta<BtMutasiAset>(
+    `/api/fixed-assets/${encodeURIComponent(input.asetId)}/mutations`,
+    {
+      method: "POST",
+      body: {
+        type: tipe,
+        mutationDate: input.tanggal,
+        amount: tipe === "SALE" ? input.nilai : 0,
+        note: input.keterangan.trim() || null,
+        newLocation: tipe === "TRANSFER" ? (input.lokasiBaru?.trim() || null) : null,
+      },
+    },
   );
+
+  return petakanMutasiAset(row);
+}
+
+export async function liveLaporanAsetTetap(periode: string): Promise<LaporanAsetTetap[]> {
+  const rows = await minta<BtLaporanAsetTetap[]>(
+    `/api/fixed-assets/report?period=${encodeURIComponent(periode)}`,
+  );
+
+  return rows.map((r) => ({
+    aset: petakanAsetTetap(r.asset),
+    penyusutanPeriode: r.depreciationCharge,
+    akumulasiPenyusutan: r.accumulatedDepreciation,
+    nilaiBuku: r.bookValue,
+  }));
 }
 
 // ===== INVENTARIS (INVENTORY) =====
