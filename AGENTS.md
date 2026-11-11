@@ -381,7 +381,7 @@ tools/             bootstrap-backend.py
 
 ### Verifikasi
 - Frontend: `npx tsc --noEmit` bersih + `npm run build` sukses (16 halaman statis)
-- Backend: `dotnet build` 0 warning + `dotnet test` 485 unit + 741 integration lulus
+- Backend: `dotnet build` 0 warning + `dotnet test` 485 unit + 744 integration lulus
 - Mock: alur manual `/kasir` (buka shift → checkout → riwayat → tutup shift)
 
 ## Docs

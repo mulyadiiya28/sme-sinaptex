@@ -7,8 +7,8 @@
 ## Ringkasan Status
 
 ### Backend (`acc-sinaptex`, nested repo)
-**Status:** semua endpoint yang dibutuhkan POS sudah ada; build 0 warning, tes **1226 lulus**
-(485 unit + 741 integration).
+**Status:** semua endpoint yang dibutuhkan POS sudah ada; build 0 warning, tes **1229 lulus**
+(485 unit + 744 integration).
 
 - ✅ **Sudah ada:** Auth (JWT + refresh), Products (+import, deactivate), Customers (+import),
   Shifts, Sales, Purchases, Returns (sales & purchases), Journal, Expenses, Audit log,
@@ -165,13 +165,13 @@ npm run build             # 16 halaman statis + manifest, export ke out/
 
 # Backend (workdir backend)
 dotnet build AccountingEngine.slnx   # 0 warning, 0 error
-dotnet test AccountingEngine.slnx    # 485 unit + 741 integration = 1226 PASSED
+dotnet test AccountingEngine.slnx    # 485 unit + 744 integration = 1229 PASSED
 ```
 
-**Test baru retur pembelian:** `PurchaseReturnsApiTests` (repo engine) bertambah 2 test —
-`GET /api/purchase-returns/by-transaction/{transactionId}` mengembalikan dokumen retur yang
-ditahan approval (id-nya langsung bisa dipakai `POST .../{id}/post`), serta 404 untuk transaksi
-tak dikenal / tenant lain.
+**Test baru retur pembelian:** `PurchaseReturnsApiTests` (repo engine) bertambah 2 test — ...
+**Test baru nilai persediaan:** `InventoryApiTests` (repo engine) bertambah 3 test —
+`GET /api/inventory/stock-valuation?warehouseId=` mengembalikan nilai persediaan per produk
+dengan rata-rata biaya (HPP) yang dihitung engine.
 
 **Test yang dipakai untuk fix engine `confirm-payment`:**
 `backend/tests/AccountingEngine.IntegrationTests/ConfirmPaymentApiTests.cs` (4 test) —
