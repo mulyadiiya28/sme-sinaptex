@@ -90,7 +90,8 @@ tools/                   → bootstrap-backend.py (tenant + owner + RBAC + kas +
 Sudah terhubung: auth login/logout + refresh JWT (`/api/auth/*`), produk CRUD
 (`/api/products`), pelanggan (`/api/customers`), shift (aktif/riwayat/buka/mutasi/tutup),
 checkout → `POST /api/cash-batches/sales`, riwayat penjualan (`/api/sales` + detail transaksi),
-pembelian (`/api/purchases`), void (`POST /api/transactions/{id}/void`), retur
+pembelian (`/api/purchases`), retur pembelian (`POST /api/purchase-returns`; lookup dokumen
+`GET /api/purchase-returns/by-transaction/{transactionId}`), void (`POST /api/transactions/{id}/void`), retur
 (`POST /api/sale-returns` + riwayat `GET /api/sale-returns`), impor produk
 (`POST /api/products/import`, multipart), impor pelanggan (`POST /api/customers/import`, multipart),
 impor saldo awal (`POST /api/accounts/opening-balances`, multipart), saldo akun + laba-rugi (dari `trial-balance`),
@@ -196,6 +197,14 @@ Perilaku live yang menyimpang dari mock:
   antrean diambil dari `GET /api/transactions?status=SUBMITTED`, tiap kaki di-approve lewat
   `POST /api/transactions/{id}/approve`, lalu batch di-post lewat `POST /api/cash-batches/{batchId}/post`.
   Status penjualan yang masih `SUBMITTED` di Riwayat berstatus `menunggu_persetujuan`.
+  `CASH_TRANSFER` dan `PURCHASE_RETURN` tidak punya cash batch: yang pertama di-post lewat
+  `/api/cash-transfers/{id}/post`, yang kedua lewat `/api/purchase-returns/{id}/post` setelah id
+  dokumennya dicari dengan `GET /api/purchase-returns/by-transaction/{transactionId}` (transaksi
+  approval hanya menyimpan id transaksi, bukan id dokumen). `SALE_RETURN` belum dipetakan.
+- Retur pembelian menunjuk **baris pembelian** (`PembelianItem.id` dari `GET /api/purchases`), bukan
+  produk, jadi `liveReturPembelian` mengalokasikan qty per baris (satu produk bisa muncul di beberapa
+  baris dengan harga beli berbeda) dan mengirim `purchaseItemId` + `quantity`. Mock memberi id baris
+  saat `registerPembelian`.
 - Konfirmasi QRIS dipicu dari Riwayat (tombol **Konfirmasi**, owner) saat transaksi berstatus
   `menunggu_pembayaran` dan punya pembayaran `qris`. Di mock Confirmation memindahkan dana dari
   `Penampung gateway` ke `Bank` dan menutup status jadi `lunas`. Di live rute engine
@@ -371,8 +380,8 @@ tools/             bootstrap-backend.py
 - Batch tertahan approval: `/persetujuan` → `GET /api/transactions?status=SUBMITTED` → approve → `POST /api/cash-batches/{batchId}/post`
 
 ### Verifikasi
-- Frontend: `npx tsc --noEmit` bersih + `npm run build` sukses (15 halaman statis)
-- Backend: `dotnet build` 0 warning + `dotnet test` 485 unit + 714 integration lulus
+- Frontend: `npx tsc --noEmit` bersih + `npm run build` sukses (16 halaman statis)
+- Backend: `dotnet build` 0 warning + `dotnet test` 485 unit + 741 integration lulus
 - Mock: alur manual `/kasir` (buka shift → checkout → riwayat → tutup shift)
 
 ## Docs

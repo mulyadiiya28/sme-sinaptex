@@ -42,6 +42,8 @@ import type {
   ProfilToko,
   ProfitabilityRatio,
   ReturInput,
+  ReturPembelian,
+  ReturPembelianInput,
   ReturPenjualan,
   ReturRiwayatParams,
   ShiftBukaInput,
@@ -153,6 +155,7 @@ import {
   livePenyesuaianStok,
   livePembelianBuat,
   livePembelianList,
+  liveReturPembelian,
   liveProductPerformance,
   liveProductPerformanceRankings,
   liveProducts,
@@ -464,6 +467,11 @@ export const api = {
       if (API_MODE === "live") return livePembelianBuat(input);
       await delay(400);
       return mockDb.registerPembelian(input);
+    },
+    retur: async (input: ReturPembelianInput, user: User): Promise<ReturPembelian> => {
+      if (API_MODE === "live") return liveReturPembelian(input);
+      await delay(400);
+      return mockDb.prosesReturPembelian(input, user);
     },
   },
 

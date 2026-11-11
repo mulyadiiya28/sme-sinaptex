@@ -35,6 +35,8 @@ import type {
   Product,
   Reconciliation,
   ReturInput,
+  ReturPembelian,
+  ReturPembelianInput,
   ReturPenjualan,
   Role,
   ShiftBukaInput,
@@ -113,6 +115,7 @@ let jurnalCounter = 0;
 let pembelianCounter = 0;
 let biayaCounter = 0;
 let returCounter = 0;
+let returPembelianCounter = 0;
 let transferCounter = 0;
 let mutasiCounter = 0;
 let opnameCounter = 0;
@@ -152,6 +155,7 @@ function umurFaktur(
 export const mockDb = {
   products: [...produkSeed] as Product[],
   retur: [] as ReturPenjualan[],
+  returPembelian: [] as ReturPembelian[],
   pelanggan: [] as Pelanggan[],
   suppliers: [
     {
@@ -1032,7 +1036,7 @@ export const mockDb = {
       pemasok: input.pemasok,
       supplierId: input.supplierId,
       waktu: waktuSekarang(),
-      items: input.items,
+      items: input.items.map((item, idx) => ({ ...item, id: `PBI-${pembelianCounter}-${idx + 1}` })),
       total,
       metode: input.metode,
       terbayar: input.metode === "hutang" ? 0 : total,
@@ -1089,6 +1093,74 @@ export const mockDb = {
       ]),
     );
     return structuredClone(p);
+  },
+
+  prosesReturPembelian(input: ReturPembelianInput, user: User): ReturPembelian {
+    if (user.role !== "pemilik") throw new Error("Hanya pemilik yang boleh memproses retur pembelian.");
+    const p = this.pembelian.find((x) => x.nomor === input.referensi);
+    if (!p) throw new Error("Faktur pembelian referensi tidak ditemukan.");
+    if (input.items.length === 0) throw new Error("Pilih minimal satu item untuk diretur.");
+
+    const items: ReturPembelian["items"] = [];
+    let nilaiRetur = 0;
+    for (const r of input.items) {
+      const asli = p.items.find((i) => i.nama === r.nama);
+      if (!asli) throw new Error(`Item ${r.nama} tidak ada di faktur ${p.nomor}.`);
+      if (r.qty <= 0 || r.qty > asli.qty) throw new Error(`Qty retur ${r.nama} harus 1–${asli.qty}.`);
+      const produk = this.products.find((x) => x.id === asli.productId);
+      if (produk) {
+        if (r.qty > produk.stok) throw new Error(`Stok ${produk.nama} tidak cukup untuk diretur.`);
+        this.catatMutasi({
+          productId: produk.id,
+          gudangId: this.gudangDefault().id,
+          tipe: "keluar",
+          qty: r.qty,
+          hargaSatuan: asli.hargaBeli,
+          referensi: { jenis: "retur_pembelian", id: input.referensi, nomor: input.referensi },
+          keterangan: `Retur pembelian ${input.referensi}`,
+          user,
+        });
+        this.sinkronStokProduk(produk.id);
+      }
+      items.push({ nama: r.nama, qty: r.qty, hargaBeli: asli.hargaBeli });
+      nilaiRetur += asli.hargaBeli * r.qty;
+    }
+
+    // Retur memperkecil nilai faktur; hutang yang sudah dibayar ikut menyusut
+    // supaya `sisa = total - terbayar` tidak pernah negatif.
+    p.total = Math.max(0, p.total - nilaiRetur);
+    p.terbayar = Math.min(p.terbayar, p.total);
+
+    returPembelianCounter += 1;
+    const retur: ReturPembelian = {
+      id: `RPB-${String(returPembelianCounter).padStart(4, "0")}`,
+      nomor: `RPB-${String(returPembelianCounter).padStart(6, "0")}`,
+      referensi: input.referensi,
+      pemasok: p.pemasok,
+      supplierId: p.supplierId,
+      waktu: waktuSekarang(),
+      items,
+      total: nilaiRetur,
+      alasan: input.alasan,
+      menungguPersetujuan: false,
+    };
+    this.returPembelian.unshift(retur);
+
+    // Sama seperti engine: retur membebani akun hutang (bukan kas) walau
+    // faktur aslinya tunai, supaya POS dan engine menjurnal identik.
+    this.jurnal.unshift(
+      buatJurnal(`Retur pembelian ${p.nomor} kepada ${p.pemasok}`, retur.nomor, [
+        { akun: "Hutang usaha", debit: nilaiRetur, kredit: 0 },
+        { akun: "Persediaan", debit: 0, kredit: nilaiRetur },
+      ]),
+    );
+
+    this.audit(user, "retur_pembelian", `${retur.nomor} dari ${p.nomor} (Rp${nilaiRetur.toLocaleString("id-ID")}) — ${input.alasan}`);
+    return structuredClone(retur);
+  },
+
+  riwayatReturPembelian(): ReturPembelian[] {
+    return structuredClone(this.returPembelian);
   },
 
   bayarPiutang(nomor: string, nominal: number, metode: "tunai" | "transfer"): TransaksiRiwayat {

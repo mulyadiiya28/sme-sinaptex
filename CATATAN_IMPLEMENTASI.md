@@ -7,8 +7,8 @@
 ## Ringkasan Status
 
 ### Backend (`acc-sinaptex`, nested repo)
-**Status:** semua endpoint yang dibutuhkan POS sudah ada; build 0 warning, tes **1224 lulus**
-(485 unit + 739 integration).
+**Status:** semua endpoint yang dibutuhkan POS sudah ada; build 0 warning, tes **1226 lulus**
+(485 unit + 741 integration).
 
 - ✅ **Sudah ada:** Auth (JWT + refresh), Products (+import, deactivate), Customers (+import),
   Shifts, Sales, Purchases, Returns (sales & purchases), Journal, Expenses, Audit log,
@@ -19,12 +19,13 @@
   Inventory (stock, movements, transfers, opnames), Fixed assets (+mutations).
 
 ### Frontend (`sme-sinaptex`)
-**Status:** **16 halaman** ter-render statis (15 menu + login). Seluruh **100 method `api.*`**
+**Status:** **16 halaman** ter-render statis (15 menu + login). Seluruh **101 method `api.*`**
 di `src/lib/api/client.ts` punya cabang `live` — tidak ada jalur mock-only di layer API.
-97 fungsi `live*` di `src/lib/api/live.ts` menjadi jembatan ke engine C#.
+98 fungsi `live*` di `src/lib/api/live.ts` menjadi jembatan ke engine C#.
 
 - ✅ **Terhubung ke engine:** Auth, Produk (CRUD + impor + penyesuaian stok), Pelanggan (+ impor),
-  Shift, Checkout, Riwayat penjualan, Retur penjualan, Void, Pembelian (+ master pemasok),
+  Shift, Checkout, Riwayat penjualan, Retur penjualan, Void, Pembelian (+ retur pembelian +
+  master pemasok),
   Piutang/Hutang (pelunasan, termasuk dari layar Kasir), Konfirmasi QRIS, Biaya, Jurnal,
   Neraca saldo (saldo awal/debit/kredit/saldo berjalan), Laba-rugi, User management, Audit log,
   Profil toko (company profile + logo), Kebijakan operasional, Periode fiskal, Aturan approval,
@@ -60,7 +61,7 @@ Kasir hanya boleh membuka **Kasir / Riwayat / Shift**; `AuthGuard` menolak role 
 ## Yang SUDAH Pakai Database
 
 ### Mode live (engine C#)
-Seluruh 100 method `api.*` memanggil `live*` yang menyentuh endpoint engine:
+Seluruh 101 method `api.*` memanggil `live*` yang menyentuh endpoint engine:
 
 - **Auth** — `/api/auth/*` (login, refresh, revoke), `/api/audit-log`
 - **Transaksi** — `/api/cash-batches/sales` (checkout), `/api/sales`, `/api/purchases`,
@@ -137,6 +138,7 @@ Hanya dua store yang persist:
 | 10 | Mock memakai `number` JS, bukan `decimal` | Pembulatan bisa berbeda dari engine |
 | 11 | Pemilik boleh menyetujui transaksinya sendiri bila **tanpa** rule | Ada audit `APPROVAL_BYPASS` — disengaja, tapi perlu disadari |
 | 12 | `BackupRestoreApiTests` kadang gagal saat suite penuh | SQLite locking saat paralel; lulus saat dijalankan sendiri |
+| 13 | Retur penjualan yang ditahan approval belum masuk `/persetujuan` | `SALE_RETURN` belum dipetakan di `livePersetujuanList`/`liveSetujuiBatch`; retur pembelian sudah |
 
 ## Fitur Engine yang Belum Dipakai POS
 
@@ -144,7 +146,6 @@ Endpoint-nya sudah ada di engine, tinggal dichotomi UI:
 
 | Controller engine | Fitur yang bisa ditambahkan |
 |---|---|
-| `PurchaseReturnsController` | **Retur pembelian** — POS baru punya retur penjualan |
 | `BackupsController` | Backup / restore database dari POS |
 | `BranchesController` | Manajemen cabang (multi-cabang) |
 | `InterBranchTransfersController` | Transfer antar cabang |
@@ -164,8 +165,13 @@ npm run build             # 16 halaman statis + manifest, export ke out/
 
 # Backend (workdir backend)
 dotnet build AccountingEngine.slnx   # 0 warning, 0 error
-dotnet test AccountingEngine.slnx    # 485 unit + 739 integration = 1224 PASSED
+dotnet test AccountingEngine.slnx    # 485 unit + 741 integration = 1226 PASSED
 ```
+
+**Test baru retur pembelian:** `PurchaseReturnsApiTests` (repo engine) bertambah 2 test —
+`GET /api/purchase-returns/by-transaction/{transactionId}` mengembalikan dokumen retur yang
+ditahan approval (id-nya langsung bisa dipakai `POST .../{id}/post`), serta 404 untuk transaksi
+tak dikenal / tenant lain.
 
 **Test yang dipakai untuk fix engine `confirm-payment`:**
 `backend/tests/AccountingEngine.IntegrationTests/ConfirmPaymentApiTests.cs` (4 test) —
@@ -194,8 +200,8 @@ post batch → penjualan ter-post. Test pertama sudah dibuktikan menangkap bug.
 
 ## Next Steps
 
-1. Retur pembelian (`/api/purchase-returns`) — celah paling impacting karena POS sudah punya
-   retur penjualan.
+1. Retur penjualan yang ditahan approval: petakan `SALE_RETURN` ke `/persetujuan` (butuh
+   lookup id dokumen per transaksi, seperti `GET /api/purchase-returns/by-transaction/{id}`).
 2. Nilai persediaan dari HPP per gudang (butuh endpoint harga rata-rata di engine).
 3. Dukungan pembayaran campuran + kembalian di engine (batch kas menerima satu akun kas).
 4. Diskon sebagai field tersendiri di dokumen penjualan engine.

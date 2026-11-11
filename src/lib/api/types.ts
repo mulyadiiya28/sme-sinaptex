@@ -392,6 +392,12 @@ export type LaporanAsetTetap = {
 };
 
 export type PembelianItem = {
+  /**
+   * Id baris pembelian. Engine menyimpan baris sebagai dokumen tersendiri dan
+   * retur pembelian menunjuk baris itu — bukan produknya — supaya barang yang
+   * dikembalikan benar-benar barang yang dibeli.
+   */
+  id?: string;
   productId: string;
   nama: string;
   qty: number;
@@ -410,6 +416,27 @@ export type Pembelian = {
   total: number;
   metode: PembelianMetode;
   terbayar: number;
+};
+
+export type ReturPembelianInput = {
+  /** Nomor faktur pembelian yang diretur (bukan id internal engine). */
+  referensi: string;
+  items: Array<{ nama: string; qty: number }>;
+  alasan: string;
+};
+
+export type ReturPembelian = {
+  id: string;
+  nomor: string;
+  referensi: string;
+  pemasok: string;
+  supplierId: string | null;
+  waktu: string;
+  items: Array<{ nama: string; qty: number; hargaBeli: number }>;
+  total: number;
+  alasan: string;
+  /** Batch ditahan aturan persetujuan — stok belum keluar sampai disetujui. */
+  menungguPersetujuan: boolean;
 };
 
 export type PembelianInput = {

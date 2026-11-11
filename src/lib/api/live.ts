@@ -39,6 +39,8 @@ import type {
   ProfilToko,
   ProfitabilityRatio,
   ReturInput,
+  ReturPembelian,
+  ReturPembelianInput,
   ReturPenjualan,
   ReturRiwayatParams,
   SaleReturn,
@@ -450,6 +452,14 @@ type BtTransaksi = {
   requestedBy: string;
   description: string | null;
 };
+type BtPembelianItem = {
+  id: string;
+  productId: string;
+  quantity: number;
+  unitCost: number;
+  unitPrice: number;
+};
+
 type BtPembelian = {
   id: string;
   supplierId: string | null;
@@ -459,7 +469,7 @@ type BtPembelian = {
   totalAmount: number;
   payableAmount: number;
   taxAmount: number;
-  items: (BtItem & { unitCost: number })[];
+  items: BtPembelianItem[];
 };
 type BtAkun = {
   accountCode: string;
@@ -1546,6 +1556,7 @@ export async function livePembelianList(): Promise<Pembelian[]> {
       supplierId: p.supplierId,
       waktu: p.purchaseDate,
       items: p.items.map((item) => ({
+        id: item.id,
         productId: item.productId,
         nama: namaProduk.get(item.productId) ?? item.productId,
         qty: item.quantity,
@@ -1607,6 +1618,107 @@ export async function livePembelianBuat(input: PembelianInput): Promise<Pembelia
     total: hasil.documentTotal,
     metode: input.metode === "bank" ? "bank" : hutang ? "hutang" : "tunai",
     terbayar: hutang ? 0 : hasil.documentTotal,
+  };
+}
+
+async function cariPembelianByNomor(nomor: string): Promise<BtPembelian> {
+  const pembelian = await minta<BtPembelian[]>(`/api/purchases?${rentangDaftar()}`);
+  const cocok = pembelian.find((p) => p.purchaseNumber === nomor || p.id === nomor);
+  if (!cocok) throw new LiveApiError(`Faktur pembelian ${nomor} tidak ditemukan.`, 404);
+  return cocok;
+}
+
+/**
+ * Retur pembelian: barang kembali ke pemasok dan hutang dikreditkan.
+ *
+ * Engine menunjuk baris pembelian, bukan produknya — jadi nama yang sama di
+ * dua faktur tidak bercampur. Barisnya dibaca dari detail faktur karena
+ * daftar pembelian tidak selalu membawa id baris.
+ */
+export async function liveReturPembelian(input: ReturPembelianInput): Promise<ReturPembelian> {
+  const pembelian = await cariPembelianByNomor(input.referensi);
+  const [produk, pemasok, detail] = await Promise.all([
+    minta<BtProduk[]>("/api/products"),
+    minta<{ id: string; name: string }[]>("/api/suppliers?includeInactive=true").catch(() => []),
+    minta<{ items: BtPembelianItem[] }>(`/api/purchases/${pembelian.id}`),
+  ]);
+
+  const namaProduk = new Map(produk.map((p) => [p.id, p.name]));
+  const namaPemasok = new Map(pemasok.map((s) => [s.id, s.name]));
+
+  // Satu produk bisa muncul di beberapa baris faktur dengan harga beli
+  // berbeda. Retur menunjuk baris, jadi qty dialokasikan berurutan dan tiap
+  // potongan dikirim sebagai baris retur tersendiri.
+  const terpakai = new Map<string, number>();
+  const barisRetur: Array<{ purchaseItemId: string; quantity: number }> = [];
+  const items: ReturPembelian["items"] = [];
+  for (const baris of input.items) {
+    const kandidat = detail.items.filter((item) => namaProduk.get(item.productId) === baris.nama);
+    if (kandidat.length === 0) {
+      throw new LiveApiError(`Item "${baris.nama}" tidak ada di faktur ${input.referensi}.`, 400);
+    }
+    const tersedia = kandidat.reduce(
+      (s, item) => s + item.quantity - (terpakai.get(item.id) ?? 0),
+      0,
+    );
+    if (baris.qty > tersedia) {
+      throw new LiveApiError(
+        `Jumlah retur "${baris.nama}" melebihi jumlah yang dibeli (${tersedia}).`,
+        400,
+      );
+    }
+    let sisa = baris.qty;
+    let nilai = 0;
+    for (const line of kandidat) {
+      if (sisa <= 0) break;
+      const sudah = terpakai.get(line.id) ?? 0;
+      const bisa = line.quantity - sudah;
+      if (bisa <= 0) continue;
+      const pakai = Math.min(bisa, sisa);
+      barisRetur.push({ purchaseItemId: line.id, quantity: pakai });
+      terpakai.set(line.id, sudah + pakai);
+      nilai += pakai * line.unitCost;
+      sisa -= pakai;
+    }
+    items.push({
+      nama: baris.nama,
+      qty: baris.qty,
+      hargaBeli: baris.qty > 0 ? nilai / baris.qty : 0,
+    });
+  }
+
+  const retur = await minta<{
+    purchaseReturnId: string;
+    purchaseReturnNumber: string | null;
+    totalAmount: number;
+    approvalRequired: boolean;
+  }>("/api/purchase-returns", {
+    method: "POST",
+    idempotensiKunci: `retur-pembelian-${input.referensi}-${Date.now()}`,
+    body: {
+      purchaseId: pembelian.id,
+      description: input.alasan,
+      costingMethod: "AVERAGE",
+      payableAccountCode: KODE.hutang,
+      inventoryAccountCode: KODE.persediaan,
+      taxable: false,
+      items: barisRetur,
+    },
+  });
+
+  return {
+    id: retur.purchaseReturnId,
+    nomor: retur.purchaseReturnNumber ?? retur.purchaseReturnId,
+    referensi: input.referensi,
+    pemasok: pembelian.supplierId
+      ? namaPemasok.get(pembelian.supplierId) ?? pembelian.supplierId
+      : "Tanpa pemasok",
+    supplierId: pembelian.supplierId,
+    waktu: new Date().toISOString(),
+    items,
+    total: retur.totalAmount,
+    alasan: input.alasan,
+    menungguPersetujuan: retur.approvalRequired,
   };
 }
 
@@ -2242,6 +2354,8 @@ const TIPE_BATCH_KAS = new Set([
   "PURCHASE",
   "CUSTOMER_PAYMENT",
   "SUPPLIER_PAYMENT",
+  // Retur tidak punya cash batch, tapi tetap ditahan aturan persetujuan.
+  "PURCHASE_RETURN",
 ]);
 
 export async function livePersetujuanList(): Promise<PersetujuanBatch[]> {
@@ -2254,7 +2368,7 @@ export async function livePersetujuanList(): Promise<PersetujuanBatch[]> {
   const namaPengguna = new Map(pengguna.map((u) => [u.id, u.fullName ?? u.username]));
 
   const relevan = rows.filter((r) =>
-    r.transactionType === "CASH_TRANSFER"
+    r.transactionType === "CASH_TRANSFER" || r.transactionType === "PURCHASE_RETURN"
       ? true
       : Boolean(r.batchId) && TIPE_BATCH_KAS.has(r.transactionType),
   );
@@ -2318,6 +2432,19 @@ export async function liveSetujuiBatch(batch: PersetujuanBatch): Promise<void> {
   if (transfer) {
     // Transfer tidak punya cash batch; rute postingnya memakai id transaksi.
     await minta(`/api/cash-transfers/${transfer.id}/post`, {
+      method: "POST",
+      idempotensiKunci: buatKunciIdempotensi(),
+    });
+    return;
+  }
+
+  const returPembelian = batch.transaksi.find((t) => t.tipe === "PURCHASE_RETURN");
+  if (returPembelian) {
+    // Posting retur memakai id dokumennya, bukan id transaksi approval.
+    const dokumen = await minta<{ id: string }>(
+      `/api/purchase-returns/by-transaction/${returPembelian.id}`,
+    );
+    await minta(`/api/purchase-returns/${dokumen.id}/post`, {
       method: "POST",
       idempotensiKunci: buatKunciIdempotensi(),
     });

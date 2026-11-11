@@ -19,6 +19,7 @@ import type {
   Product,
   ProfilPerusahaan,
   ReturInput,
+  ReturPembelianInput,
   ShiftBukaInput,
   ShiftMutasiInput,
   StockAdjustmentInput,
@@ -361,7 +362,19 @@ export function usePembelianMutations() {
     onSuccess: invalidateSemua,
   });
 
-  return { buat };
+  const retur = useMutation({
+    mutationFn: ({ input, user }: { input: ReturPembelianInput; user: User }) =>
+      api.pembelian.retur(input, user),
+    onSuccess: () => {
+      invalidateSemua();
+      qc.invalidateQueries({ queryKey: ["stok-gudang"] });
+      qc.invalidateQueries({ queryKey: ["ringkasan-inventaris"] });
+      qc.invalidateQueries({ queryKey: ["kartu-stok"] });
+      qc.invalidateQueries({ queryKey: ["audit"] });
+    },
+  });
+
+  return { buat, retur };
 }
 
 export function usePembayaranMutations() {
