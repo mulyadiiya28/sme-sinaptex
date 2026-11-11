@@ -96,7 +96,8 @@ pembelian (`/api/purchases`), retur pembelian (`POST /api/purchase-returns`; loo
 (`POST /api/products/import`, multipart), impor pelanggan (`POST /api/customers/import`, multipart),
 impor saldo awal (`POST /api/accounts/opening-balances`, multipart), saldo akun + laba-rugi (dari `trial-balance`),
 daftar jurnal (`GET /api/journal`), biaya (`GET/POST /api/expenses`), daftar akun kas + transfer
-antar-rekening (`GET /api/cash-accounts`, `GET/POST /api/cash-transfers`), pelunasan piutang
+antar-rekening (`GET /api/cash-accounts`, `GET/POST /api/cash-transfers`), kaki pembayaran penjualan
+(`GET /api/sales/{id}/payments`), pelunasan piutang
 (`POST /api/sales/{id}/payments`), pelunasan hutang (`POST /api/purchases/{id}/payments`),
 penyesuaian stok (`POST /api/inventory/adjustments`), gudang (`GET/POST /api/warehouses`,
 `POST /api/warehouses/{id}/deactivate`), stok per gudang (`GET /api/inventory/stock?warehouseId=`),
@@ -156,7 +157,9 @@ Perilaku live yang menyimpang dari mock:
   sudah di-resolve engine (nama, bukan GUID), `shiftId` dari deskripsi batch yang ditulis POS.
   `piutang` diambil dari
   `GET /api/reports/ar-ap/aging?side=RECEIVABLE` (`outstandingAmount` per `invoiceNumber`), karena
-  dokumen penjualan tidak menyimpannya.
+  dokumen penjualan tidak menyimpannya. Untuk transaksi yang belum lunas, kaki pembayaran dibaca dari
+  `GET /api/sales/{id}/payments`; metodenya ditebak dari kode akun kas (gateway → `qris`,
+  kas → `tunai`, lainnya → `transfer`) karena engine tidak menyimpan label metode.
 - `livePembelianList` juga memakai `?side=PAYABLE`: `terbayar = total − outstanding` dan
   `metode = outstanding > 0 ? "hutang" : "tunai"`. Jangan pakai `payableAmount` dokumen — itu nilai
   hutang **bruto**, bukan sisa.
@@ -206,10 +209,11 @@ Perilaku live yang menyimpang dari mock:
   baris dengan harga beli berbeda) dan mengirim `purchaseItemId` + `quantity`. Mock memberi id baris
   saat `registerPembelian`.
 - Konfirmasi QRIS dipicu dari Riwayat (tombol **Konfirmasi**, owner) saat transaksi berstatus
-  `menunggu_pembayaran` dan punya pembayaran `qris`. Di mock Confirmation memindahkan dana dari
-  `Penampung gateway` ke `Bank` dan menutup status jadi `lunas`. Di live rute engine
-  `POST /api/sales/{id}/confirm-payment` mencari kaki `CustomerPayment` lewat **BatchId transaksi
-  dokumen** — bukan `sale.BusinessTransactionId`, yang menunjuk baris dokumen itu sendiri.
+  `menunggu_pembayaran` dan punya pembayaran `qris` yang belum `POSTED`. Di mock Confirmation
+  memindahkan dana dari `Penampung gateway` ke `Bank` dan menutup status jadi `lunas`. Di live rute
+  engine `POST /api/sales/{id}/confirm-payment` mencari kaki `CustomerPayment` lewat **BatchId
+  transaksi dokumen** — bukan `sale.BusinessTransactionId`, yang menunjuk baris dokumen itu sendiri —
+  jadi tombol hanya muncul bila kaki itu benar-benar ada dan masih SUBMITTED/APPROVED.
 
 ## Conventions
 
@@ -381,7 +385,7 @@ tools/             bootstrap-backend.py
 
 ### Verifikasi
 - Frontend: `npx tsc --noEmit` bersih + `npm run build` sukses (16 halaman statis)
-- Backend: `dotnet build` 0 warning + `dotnet test` 485 unit + 744 integration lulus
+- Backend: `dotnet build` 0 warning + `dotnet test` 485 unit + 747 integration lulus
 - Mock: alur manual `/kasir` (buka shift → checkout → riwayat → tutup shift)
 
 ## Docs

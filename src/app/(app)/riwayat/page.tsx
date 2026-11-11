@@ -112,7 +112,10 @@ export default function RiwayatPage() {
         </button>
         {user?.role === "pemilik" && r.status !== "dibatalkan" && (
           <>
-            {r.status === "menunggu_pembayaran" && (r.pembayaran ?? []).some((p) => p.metode === "qris") && (
+            {r.status === "menunggu_pembayaran" &&
+              (r.pembayaran ?? []).some(
+                (p) => p.metode === "qris" && (p.status ?? "").toUpperCase() !== "POSTED",
+              ) && (
               <button
                 type="button"
                 onClick={() => setTargetKonfirmasi(r)}

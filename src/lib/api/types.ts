@@ -261,7 +261,11 @@ export type TransaksiRiwayat = {
   kembalian: number;
   piutang: number;
   status: "lunas" | "menunggu_pembayaran" | "menunggu_persetujuan" | "dibayar_sebagian" | "dibatalkan";
-  pembayaran?: Array<{ metode: PaymentMethod; nominal: number }>;
+  /**
+   * Daftar pembayaran yang tercatat. Untuk QRIS, cek ada payment dengan
+   * `metode === "qris"` untuk tampilkan tombol Konfirmasi di halaman Riwayat.
+   */
+  pembayaran?: Array<{ metode: PaymentMethod; nominal: number; status?: string }>;
 };
 
 /**

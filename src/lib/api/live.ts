@@ -28,6 +28,7 @@ import type {
   NeracaParams,
   PenyesuaianStokInput,
   Pelanggan,
+  PaymentMethod,
   Pembelian,
   PembelianInput,
   PersetujuanBatch,
@@ -90,6 +91,7 @@ export const ENGINE_APPROVER = process.env.NEXT_PUBLIC_ENGINE_APPROVER ?? "pemil
 const KODE = {
   kas: process.env.NEXT_PUBLIC_ENGINE_KAS ?? "1121",
   bank: process.env.NEXT_PUBLIC_ENGINE_BANK ?? "1111",
+  gateway: process.env.NEXT_PUBLIC_ENGINE_GATEWAY ?? "1130",
   piutang: process.env.NEXT_PUBLIC_ENGINE_PIUTANG ?? "1200",
   persediaan: process.env.NEXT_PUBLIC_ENGINE_PERSEDIAAN ?? "1300",
   hutang: process.env.NEXT_PUBLIC_ENGINE_HUTANG ?? "2101",
@@ -422,6 +424,15 @@ type BtDetailPenjualan = {
     unitPrice: number;
   }[];
 };
+type BtSalePayment = {
+  paymentTransactionId: string;
+  paymentDate: string;
+  amount: number;
+  status: string;
+  cashAccountCode: string | null;
+  cashAccountName: string | null;
+};
+
 type BtPenjualan = {
   id: string;
   businessTransactionId: string;
@@ -921,6 +932,7 @@ function petakanPenjualan(
   namaPelanggan: Map<string, string>,
   piutang: number,
   status: TransaksiRiwayat["status"],
+  pembayaran?: TransaksiRiwayat["pembayaran"],
 ): TransaksiRiwayat {
   return {
     nomor: sale.saleNumber ?? sale.id,
@@ -940,6 +952,7 @@ function petakanPenjualan(
     kembalian: 0,
     piutang,
     status,
+    pembayaran,
   };
 }
 
@@ -1486,6 +1499,17 @@ async function cariPelangganId(nama: string): Promise<string | null> {
   return cocok?.id ?? null;
 }
 
+/**
+ * Metode pembayaran ditebak dari akun kas yang menerima uangnya: engine tidak
+ * menyimpan label metode, hanya akun kas. Akun gateway menandai QRIS; akun kas
+ * default menandai tunai; sisanya (bank) transfer.
+ */
+function metodeDariAkun(kode: string | null): PaymentMethod {
+  if (kode === KODE.gateway) return "qris";
+  if (kode === KODE.kas) return "tunai";
+  return "transfer";
+}
+
 export async function liveTransaksiRiwayat(): Promise<TransaksiRiwayat[]> {
   const [penjualan, produk, pelanggan, ar] = await Promise.all([
     minta<BtPenjualan[]>(`/api/sales?${rentangDaftar()}`),
@@ -1525,10 +1549,34 @@ export async function liveTransaksiRiwayat(): Promise<TransaksiRiwayat[]> {
         namaPelanggan,
         piutang,
         status,
+        await pembayaranPenjualan(sale, dibatalkan, piutang),
       ),
     );
   }
   return hasil;
+}
+
+/**
+ * Rincian pembayaran hanya dibaca untuk transaksi yang belum lunas: di situlah
+ * kaki pembayaran menentukan apakah tombol Konfirmasi QRIS perlu muncul.
+ * Membacanya untuk setiap penjualan lunas hanya menambah satu permintaan HTTP
+ * per baris tanpa mengubah tampilan apa pun.
+ */
+async function pembayaranPenjualan(
+  sale: BtPenjualan,
+  dibatalkan: boolean,
+  piutang: number,
+): Promise<TransaksiRiwayat["pembayaran"]> {
+  if (dibatalkan || piutang <= 0) return undefined;
+
+  const kaki = await minta<BtSalePayment[]>(`/api/sales/${sale.id}/payments`);
+  if (kaki.length === 0) return undefined;
+
+  return kaki.map((k) => ({
+    metode: metodeDariAkun(k.cashAccountCode),
+    nominal: k.amount,
+    status: k.status,
+  }));
 }
 
 export async function livePembelianList(): Promise<Pembelian[]> {

@@ -117,10 +117,11 @@ Hanya dua store yang persist:
 - **Piutang** — tidak disimpan di dokumen penjualan → POS ambil ulang dari AR ageing.
 
 ### 4. Angka yang dihitung ulang di POS (bukan dari DB)
-- **Nilai persediaan** = `qty × purchasePrice master`. Engine belum membuka harga rata-rata
-  per gudang, jadi angka nilai persediaan di live **tidak mencerminkan HPP**
-  (`src/lib/api/live.ts:2647`).
-- **Status pembayaran digital** di live dipetakan dari status penjualan, bukan flag tersendiri.
+- **Nilai persediaan** = `qty × purchasePrice master`. Endpoint engine
+  `GET /api/inventory/stock-valuation?warehouseId=` sudah menyediakan nilai dari HPP,
+  tetapi POS **belum memakainya** (`src/lib/api/live.ts` masih memakai harga beli master).
+- **Status pembayaran digital** di live dipetakan dari status penjualan + kaki pembayaran
+  (`GET /api/sales/{id}/payments`); belum ada flag "menunggu konfirmasi" tersendiri di engine.
 
 ## Bug & Celah yang Masih Ada
 
@@ -128,9 +129,9 @@ Hanya dua store yang persist:
 |---|---|---|
 | 1 | Pembayaran campuran (tunai + non-tunai) ditolak engine | Kasir harus memilih satu metode per batch |
 | 2 | Overpayment / kembalian ditolak engine | `kembalian` selalu 0 di live |
-| 3 | QRIS belum jadi konsep engine | Status "menunggu konfirmasi" hanya ada di mock |
+| 3 | QRIS belum jadi konsep penuh di engine | Kaki pembayaran bisa dibaca (`GET /api/sales/{id}/payments`); status "menunggu konfirmasi" masih hanya di mock |
 | 4 | Diskon hilang di live | Struk & riwayat live tidak punya diskon |
-| 5 | Nilai persediaan live memakai harga beli master | Angka persediaan tidak akurat di live |
+| 5 | Nilai persediaan live memakai harga beli master | Endpoint HPP ada, POS belum memakainya |
 | 6 | Master pemasok tidak bisa diubah kode/nama | Engine `init`-only demi integritas faktur lama |
 | 7 | Satu shift aktif per tenant (bukan per kasir) | POS menampilkan peringatan "shift dibuka oleh X" |
 | 8 | Mutasi aset tidak menulis jurnal | Modul aset tetap memang tidak menjurnal perolehan |
@@ -165,13 +166,16 @@ npm run build             # 16 halaman statis + manifest, export ke out/
 
 # Backend (workdir backend)
 dotnet build AccountingEngine.slnx   # 0 warning, 0 error
-dotnet test AccountingEngine.slnx    # 485 unit + 744 integration = 1229 PASSED
+dotnet test AccountingEngine.slnx    # 485 unit + 747 integration = 1232 PASSED
 ```
 
 **Test baru retur pembelian:** `PurchaseReturnsApiTests` (repo engine) bertambah 2 test — ...
 **Test baru nilai persediaan:** `InventoryApiTests` (repo engine) bertambah 3 test —
 `GET /api/inventory/stock-valuation?warehouseId=` mengembalikan nilai persediaan per produk
 dengan rata-rata biaya (HPP) yang dihitung engine.
+**Test baru kaki pembayaran:** `SalePaymentsApiTests` (repo engine) bertambah 3 test —
+`GET /api/sales/{id}/payments` mengembalikan kaki pembayaran penjualan tunai (nominal +
+kode akun kas), kosong untuk penjualan kredit, dan 404 untuk penjualan yang tidak ada.
 
 **Test yang dipakai untuk fix engine `confirm-payment`:**
 `backend/tests/AccountingEngine.IntegrationTests/ConfirmPaymentApiTests.cs` (4 test) —
@@ -202,8 +206,8 @@ post batch → penjualan ter-post. Test pertama sudah dibuktikan menangkap bug.
 
 1. Konfirmasi QRIS dan pelunasan piutang di Riwayat (tombol **Konfirmasi**, owner) sudah
    berfungsi.
-2. Nilai persediaan dari HPP per gudang (butuh endpoint harga rata-rata di engine).
+2. Sambungkan `GET /api/inventory/stock-valuation` ke POS (nilai persediaan dari HPP).
 3. Dukungan pembayaran campuran + kembalian di engine (batch kas menerima satu akun kas).
 4. Diskon sebagai field tersendiri di dokumen penjualan engine.
-5. QRIS sebagai konsep engine (status menunggu konfirmasi + settlement).
+5. QRIS sebagai konsep penuh di engine (kaki pembayaran pending + settlement otomatis).
 6. UI backup/restore dan manajemen cabang.
