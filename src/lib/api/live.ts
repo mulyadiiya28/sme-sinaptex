@@ -352,6 +352,16 @@ type BtProduk = {
 
 type BtSatuan = { id: string; code: string; name: string; isActive: boolean };
 type BtStok = { warehouseId: string | null; items: { productId: string; quantity: number }[] };
+type BtStockValuation = {
+  warehouseId: string;
+  items: {
+    productId: string;
+    warehouseId: string;
+    onHand: number;
+    averageCost: number;
+    totalValue: number;
+  }[];
+};
 type BtMutasiStok = {
   movementId: string;
   productId: string;
@@ -1702,7 +1712,7 @@ async function nomorQrisTerkonfirmasi(gatewayId?: string): Promise<Set<string>> 
   if (!gatewayId) return new Set();
 
   const movements = await minta<BtCashMovement[]>(
-    `/api/cash-accounts/${gatewayId}/movements`,
+    `/api/cash-accounts/${gatewayId}/movements?${rentangDaftar()}`,
   );
 
   const hasil = new Set<string>();
@@ -2955,9 +2965,7 @@ export async function liveNonaktifkanGudang(id: string): Promise<void> {
 }
 
 export async function liveStokGudang(gudangId?: string): Promise<InventoryValuation> {
-  const query = gudangId ? `?warehouseId=${encodeURIComponent(gudangId)}` : "";
-  const [stok, produk, gudang] = await Promise.all([
-    minta<BtStok>(`/api/inventory/stock${query}`),
+  const [produk, gudang] = await Promise.all([
     minta<BtProduk[]>("/api/products"),
     minta<BtGudang[]>("/api/warehouses?includeInactive=true"),
   ]);
@@ -2965,23 +2973,43 @@ export async function liveStokGudang(gudangId?: string): Promise<InventoryValuat
   const petaGudang = new Map(gudang.map((g) => [g.id, g]));
   const gudangNama = gudangId ? petaGudang.get(gudangId)?.name ?? gudangId : "Semua Gudang";
 
-  const items = stok.items
-    .filter((i) => i.quantity !== 0)
-    .map((i) => {
-      const p = petaProduk.get(i.productId);
-      // Engine belum memberi harga rata-rata di endpoint stok; harga beli
-      // master dipakai sebagai dasar nilai dan diberi label di UI.
-      const harga = p?.purchasePrice ?? 0;
+  // Nilai persediaan harus mengikuti HPP engine, dan endpoint valuasi hanya
+  // menerima satu gudang per panggilan. Tampilan "semua gudang" menjumlahkan
+  // valuasi tiap gudang (bukan mengalikan qty dengan harga beli master).
+  const target = gudangId ? [gudangId] : gudang.map((g) => g.id);
+  const valuasi = await Promise.all(
+    target.map((id) =>
+      minta<BtStockValuation>(
+        `/api/inventory/stock-valuation?warehouseId=${encodeURIComponent(id)}`,
+      ),
+    ),
+  );
+
+  const agregat = new Map<string, { qty: number; nilai: number }>();
+  for (const v of valuasi) {
+    for (const item of v.items) {
+      if (item.onHand === 0) continue;
+      const cur = agregat.get(item.productId) ?? { qty: 0, nilai: 0 };
+      cur.qty += item.onHand;
+      cur.nilai += item.totalValue;
+      agregat.set(item.productId, cur);
+    }
+  }
+
+  const items = [...agregat.entries()]
+    .filter(([, a]) => a.qty !== 0)
+    .map(([productId, a]) => {
+      const p = petaProduk.get(productId);
       return {
-        productId: i.productId,
-        productNama: p?.name ?? i.productId,
+        productId,
+        productNama: p?.name ?? productId,
         sku: p?.code ?? "",
         satuan: p?.baseUnitId ?? "",
         gudangId: gudangId ?? "",
         gudangNama,
-        qty: i.quantity,
-        hargaRataRata: harga,
-        totalNilai: i.quantity * harga,
+        qty: a.qty,
+        hargaRataRata: a.nilai / a.qty,
+        totalNilai: a.nilai,
       };
     })
     .sort((a, b) => b.totalNilai - a.totalNilai);
@@ -2997,39 +3025,54 @@ export async function liveStokGudang(gudangId?: string): Promise<InventoryValuat
 }
 
 export async function liveRingkasanInventaris(): Promise<InventorySummary> {
-  const gudang = (await liveDaftarGudang()).filter((g) => g.isActive);
-  const total = await liveStokGudang();
-  const perGudang = await Promise.all(
-    gudang.map(async (g) => {
-      const nilai = await liveStokGudang(g.id);
-      return {
-        gudangId: g.id,
-        gudangNama: g.nama,
-        totalQty: nilai.totalQty,
-        totalNilai: nilai.totalNilai,
-      };
-    }),
+  const semuaGudang = await liveDaftarGudang();
+  // Satu valuasi per gudang dipakai dua kali: total seluruh gudang dan rincian
+  // per gudang. Menghitung total lewat satu panggilan "semua gudang" terpisah
+  // hanya menggandakan pekerjaan engine.
+  const valuasi = await Promise.all(
+    semuaGudang.map(async (g) => ({
+      gudang: g,
+      nilai: await liveStokGudang(g.id),
+    })),
   );
+  const gudangAktif = valuasi.filter((v) => v.gudang.isActive);
 
   const produk = await minta<BtProduk[]>("/api/products");
-  const stok = await minta<BtStok>("/api/inventory/stock");
-  const qtyMap = new Map(stok.items.map((i) => [i.productId, i.quantity]));
+  const qtyPerProduk = new Map<string, number>();
+  let totalQty = 0;
+  let totalNilai = 0;
+  for (const v of valuasi) {
+    totalQty += v.nilai.totalQty;
+    totalNilai += v.nilai.totalNilai;
+    for (const item of v.nilai.items) {
+      qtyPerProduk.set(
+        item.productId,
+        (qtyPerProduk.get(item.productId) ?? 0) + item.qty,
+      );
+    }
+  }
+
   let lowStockCount = 0;
   let outOfStockCount = 0;
   for (const p of produk) {
-    const qty = qtyMap.get(p.id) ?? 0;
+    const qty = qtyPerProduk.get(p.id) ?? 0;
     if (qty === 0) outOfStockCount += 1;
     else if (p.minimumStock > 0 && qty <= p.minimumStock) lowStockCount += 1;
   }
 
   return {
     totalProduk: produk.filter((p) => p.isActive).length,
-    totalGudang: gudang.length,
-    totalQty: total.totalQty,
-    totalNilai: total.totalNilai,
+    totalGudang: gudangAktif.length,
+    totalQty,
+    totalNilai,
     lowStockCount,
     outOfStockCount,
-    nilaiPerGudang: perGudang,
+    nilaiPerGudang: gudangAktif.map((v) => ({
+      gudangId: v.gudang.id,
+      gudangNama: v.gudang.nama,
+      totalQty: v.nilai.totalQty,
+      totalNilai: v.nilai.totalNilai,
+    })),
   };
 }
 

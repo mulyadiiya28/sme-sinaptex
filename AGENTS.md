@@ -131,7 +131,8 @@ Field POS yang tidak disimpan engine (lokasi, akun per aset, catatan) disembunyi
 Sebagian **Persediaan** (menu `Persediaan`, rute `/persediaan`) juga belum punya endpoint; yang sudah jalan di live adalah master gudang, stok
 per gudang, penyesuaian stok, transfer stok antar gudang (`POST /api/inventory/transfers`), kartu stok
 (`GET /api/inventory/movements`), opname stok (`/api/inventory/opnames`), dan ringkasan/nilai
-persediaan (nilai memakai harga beli master karena engine belum membuka harga rata-rata per gudang).
+persediaan (`GET /api/inventory/stock-valuation?warehouseId=` — nilai dari harga rata-rata/HPP; tampilan
+"Semua Gudang" menjumlahkan valuasi tiap gudang karena endpoint hanya menerima satu gudang).
 
 Perilaku live yang menyimpang dari mock:
 

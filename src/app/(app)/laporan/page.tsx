@@ -65,6 +65,7 @@ import {
   useWorkingCapitalTurnover,
   useProducts,
   useRiwayatTransaksi,
+  useStokGudang,
 } from "@/hooks/queries";
 
 type Tab = "penjualan" | "laba-rugi" | "neraca-saldo" | "jurnal" | "beban" | "analisis" | "gerakan-harian";
@@ -96,6 +97,9 @@ export default function LaporanPage() {
   const akun = useAkun();
   const jurnal = useJurnal();
   const biaya = useBiaya();
+  // Nilai persediaan dibaca dari valuasi engine (harga rata-rata/HPP), bukan
+  // qty × harga beli master di kartu produk.
+  const valuasiPersediaan = useStokGudang();
 
   // Analytics hooks
   const profitability = useProfitability(dari, sampai);
@@ -135,10 +139,10 @@ export default function LaporanPage() {
   const daftarProduk = (products.data ?? []).filter((p) => p.status === "aktif");
 
   const omzetTotal = transaksi.reduce((s, t) => s + t.total, 0);
-  const nilaiPersediaan = daftarProduk.reduce((s, p) => s + p.stok * p.hargaBeli, 0);
+  const nilaiPersediaan = valuasiPersediaan.data?.totalNilai ?? 0;
   const perHarian = agregasiHarian(transaksi);
 
-  const memuatPenjualan = riwayat.isLoading || products.isLoading;
+  const memuatPenjualan = riwayat.isLoading || products.isLoading || valuasiPersediaan.isLoading;
   const memuatLabaRugi = labaRugi.isLoading;
   const memuatNeraca = akun.isLoading;
   const memuatJurnal = jurnal.isLoading;

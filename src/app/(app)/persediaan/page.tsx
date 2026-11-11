@@ -422,7 +422,7 @@ export default function PersediaanPage() {
               </select>
             </FormField>
             <p className="pb-2 text-xs text-muted">
-              Nilai memakai harga beli master sebagai dasar — engine belum membuka harga rata-rata per gudang.
+              Nilai dihitung dari harga rata-rata (HPP) engine per gudang, bukan harga beli master.
             </p>
             <button
               type="button"
