@@ -4,8 +4,10 @@ import type {
   AsetTetap,
   AsetTetapInput,
   AuditEntry,
+  BackupFile,
   Biaya,
   BiayaParams,
+  Cabang,
   CashAccount,
   CashConversionCycle,
   CheckoutPayload,
@@ -65,6 +67,7 @@ import type {
   CreateSupplierRequest,
   DailyMovementReport,
   FiscalPeriod,
+  HasilRestoreBackup,
   PenyusutanItem,
   Reconciliation,
   Supplier,
@@ -128,6 +131,12 @@ import {
   liveDaftarGudang,
   liveBuatGudang,
   liveNonaktifkanGudang,
+  liveBackupDaftar,
+  liveBackupBuat,
+  liveBackupPulihkan,
+  liveBackupUnduh,
+  liveCabangDaftar,
+  liveCabangBuat,
   liveStokGudang,
   liveRingkasanInventaris,
   liveStokRendah,
@@ -568,6 +577,54 @@ export const api = {
       await delay(150);
       throw new Error(
         "Unggah logo hanya tersedia di mode live — engine yang menyimpan berkas logo untuk faktur PDF.",
+      );
+    },
+  },
+
+  backup: {
+    daftar: async (): Promise<BackupFile[]> => {
+      if (API_MODE === "live") return liveBackupDaftar();
+      await delay(120);
+      return [];
+    },
+    /**
+     * Backup menyalin database engine. Mock tidak punya database — jadi
+     * workbook in-memory POS — sehingga fiturnya ditolak dengan pesan jelas.
+     */
+    buat: async (): Promise<BackupFile> => {
+      if (API_MODE === "live") return liveBackupBuat();
+      await delay(150);
+      throw new Error(
+        "Backup database hanya tersedia di mode live — engine yang menyimpan database toko.",
+      );
+    },
+    pulihkan: async (namaBerkas: string, alasan: string): Promise<HasilRestoreBackup> => {
+      if (API_MODE === "live") return liveBackupPulihkan(namaBerkas, alasan);
+      await delay(150);
+      throw new Error(
+        "Restore database hanya tersedia di mode live — engine yang menyimpan database toko.",
+      );
+    },
+    unduh: async (namaBerkas: string): Promise<Blob> => {
+      if (API_MODE === "live") return liveBackupUnduh(namaBerkas);
+      await delay(120);
+      throw new Error(
+        "Unduh backup hanya tersedia di mode live — engine yang menyimpan berkas backup.",
+      );
+    },
+  },
+
+  cabang: {
+    daftar: async (): Promise<Cabang[]> => {
+      if (API_MODE === "live") return liveCabangDaftar();
+      await delay(120);
+      return [];
+    },
+    buat: async (input: { parentId: string; kode: string; nama: string }): Promise<Cabang> => {
+      if (API_MODE === "live") return liveCabangBuat(input);
+      await delay(150);
+      throw new Error(
+        "Manajemen cabang hanya tersedia di mode live — hierarki cabang disimpan engine.",
       );
     },
   },

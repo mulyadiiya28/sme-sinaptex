@@ -148,12 +148,16 @@ Endpoint-nya sudah ada di engine, tinggal dichotomi UI:
 
 | Controller engine | Fitur yang bisa ditambahkan |
 |---|---|
-| `BackupsController` | Backup / restore database dari POS |
-| `BranchesController` | Manajemen cabang (multi-cabang) |
 | `InterBranchTransfersController` | Transfer antar cabang |
 | `LoansController` | Pinjaman + akrual bunga |
 | `RolesController` + `UserRolesController` | Manajemen RBAC (peran, izin, scope cabang) — POS hanya memakai `authorityLevel` |
 | `EmailSettingsController` | Pengaturan email / notifikasi |
+
+Sudah dipakai POS: `BackupsController` (tab **Backup Database** di Pengaturan:
+buat/unduh/pulihkan) dan `BranchesController` (tab **Cabang**: daftar + buat
+cabang). POS **belum** mengirim `X-Branch-Id`: engine menjaga stok per cabang,
+jadi pencatatan per cabang baru bisa dipakai setelah gudang-gudang POS terikat
+ke cabang tujuan.
 
 Selain itu, engine sudah menyediakan **kode QR** (`/api/sales/{id}/qrcode`) dan
 **faktur PDF** (`/api/sales/{id}/pdf`) yang belum dipakai POS.
@@ -214,5 +218,6 @@ post batch → penjualan ter-post. Test pertama sudah dibuktikan menangkap bug.
    sisa gap persediaan hanya endpoint yang belum ada (mis. master satuan konversi).
 3. Dukungan pembayaran campuran + kembalian di engine (batch kas menerima satu akun kas).
 4. Diskon sebagai field tersendiri di dokumen penjualan engine.
-5. UI Backup/restore dan manajemen cabang (endpoint engine sudah ada).
+5. Pencatatan per cabang: POS perlu mengirim `X-Branch-Id` dan gudang POS harus
+   terikat ke cabang tujuan (engine menolak stok dari gudang cabang lain).
 6. UI backup/restore dan manajemen cabang.

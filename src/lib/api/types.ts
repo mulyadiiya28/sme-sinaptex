@@ -851,6 +851,31 @@ export type CreateFiscalPeriodRequest = {
   status?: "OPEN" | "CLOSED" | "LOCKED";
 };
 
+/// <summary>Satu berkas backup database di server engine.</summary>
+export type BackupFile = {
+  fileName: string;
+  sizeBytes: number;
+  createdAt: string;
+  /** True untuk jaring pengaman: database sebelum sebuah restore. */
+  isPreRestore: boolean;
+};
+
+/// <summary>Hasil restore database dari sebuah backup.</summary>
+export type HasilRestoreBackup = {
+  restoredFrom: string;
+  preRestoreBackup: string;
+  restoredAt: string;
+};
+
+/// <summary>Cabang (atau pusat) dari hierarki usaha.</summary>
+export type Cabang = {
+  id: string;
+  parentId: string | null;
+  kode: string;
+  nama: string;
+  isHeadquarters: boolean;
+};
+
 /// <summary>Satu entri dalam Gerakan Harian: satu baris jurnal pada satu akun.</summary>
 export type DailyMovementEntry = {
   journalId: string;

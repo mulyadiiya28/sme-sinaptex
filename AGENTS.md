@@ -111,7 +111,9 @@ daftar/ubah/hapus user (`GET/PUT/DELETE /api/users`), jejak audit (`GET /api/aud
 master pemasok (`GET/POST /api/suppliers`, `POST /api/suppliers/{id}/deactivate`),
 kebijakan operasional (`GET/PUT /api/settings/operational-policy`), periode fiskal
 (`/api/fiscal-periods`), umur piutang/hutang + rekonsiliasi (`/api/reports/ar-ap/*`),
-analitik kesehatan & rasio (`/api/analytics/*`), dan persetujuan transaksi
+analitik kesehatan & rasio (`/api/analytics/*`), backup database
+(`GET/POST /api/backup`, `GET /api/backup/list`, `GET /api/backup/download`, `POST /api/backup/restore`),
+cabang (`GET/POST /api/branches`), dan persetujuan transaksi
 (`GET /api/transactions?status=SUBMITTED`, `POST /api/transactions/{id}/approve`,
 `POST /api/cash-batches/{batchId}/post`).
 
@@ -394,6 +396,7 @@ tools/             bootstrap-backend.py
 - Profil toko sync `/api/settings/company-profile`; field POS di localStorage
 - Logo upload ke engine (mock tolak)
 - QRIS: uang ditahan di akun gateway (`1130`), konfirmasi = `POST /api/cash-transfers` gateway→bank bertanda `[QRIS <nomor>]`
+- Backup/cabang hanya di tab Pengaturan; POS **tidak** mengirim `X-Branch-Id` (stok engine dijaga per cabang, gudang POS masih terikat ke pusat)
 - Batch tertahan approval: `/persetujuan` → `GET /api/transactions?status=SUBMITTED` → approve → `POST /api/cash-batches/{batchId}/post`
 
 ### Verifikasi

@@ -1,9 +1,11 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Building2, Calendar, CheckCircle2, FileDown, FileUp, Lock, Menu, Plus, RotateCcw, ShieldCheck, X } from "lucide-react";
+import { Building2, Calendar, CheckCircle2, DatabaseBackup, Download, FileDown, FileUp, Lock, Menu, Plus, RotateCcw, ShieldCheck, X } from "lucide-react";
 import type {
   AuditEntry,
+  BackupFile,
+  Cabang,
   CompanyProfile,
   CreateFiscalPeriodRequest,
   FiscalPeriod,
@@ -19,7 +21,7 @@ import { FormField } from "@/components/form-field";
 import { MoneyDisplay } from "@/components/money-display";
 import { PageHeader } from "@/components/page-header";
 import { StatusBadge, type StatusTone } from "@/components/status-badge";
-import { useAkun, useAuditLog, useAuthUsers, useFiscalPeriodList, useImporMutations, useUserMutations } from "@/hooks/queries";
+import { useAkun, useAuditLog, useAuthUsers, useBackupList, useBackupMutations, useCabangList, useCabangMutations, useFiscalPeriodList, useImporMutations, useUserMutations } from "@/hooks/queries";
 import { urlLogoAbsolut } from "@/lib/api/live";
 import { API_MODE } from "@/lib/api/client";
 import { unduhCsv, parseCsv } from "@/lib/csv";
@@ -28,7 +30,7 @@ import { useAuth } from "@/lib/store/auth";
 import { useToko } from "@/lib/store/toko";
 import { cn } from "@/lib/utils";
 
-type Tab = "profil" | "migrasi" | "operasional" | "akuntansi" | "keamanan";
+type Tab = "profil" | "migrasi" | "operasional" | "akuntansi" | "keamanan" | "backup" | "cabang";
 
 const TABS: Array<{ id: Tab; label: string }> = [
   { id: "profil", label: "Profil Toko" },
@@ -36,6 +38,8 @@ const TABS: Array<{ id: Tab; label: string }> = [
   { id: "operasional", label: "Operasional" },
   { id: "akuntansi", label: "Akuntansi" },
   { id: "keamanan", label: "Keamanan" },
+  { id: "backup", label: "Backup Database" },
+  { id: "cabang", label: "Cabang" },
 ];
 
 export default function PengaturanPage() {
@@ -68,6 +72,8 @@ export default function PengaturanPage() {
       {tab === "operasional" && <PanelInfo grup="Operasional" />}
       {tab === "akuntansi" && <PanelInfo grup="Akuntansi" />}
       {tab === "keamanan" && <PanelKeamanan />}
+      {tab === "backup" && <PanelBackup />}
+      {tab === "cabang" && <PanelCabang />}
     </div>
   );
 }
@@ -1104,6 +1110,388 @@ function PanelKeamanan() {
               </button>
               <button type="button" onClick={() => setTargetHapus(null)} className="btn-secondary">Batal</button>
             </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ukuranBerkas(byte: number): string {
+  if (byte >= 1024 * 1024) return `${(byte / (1024 * 1024)).toFixed(1)} MB`;
+  if (byte >= 1024) return `${(byte / 1024).toFixed(1)} KB`;
+  return `${byte} B`;
+}
+
+function PanelBackup() {
+  const backup = useBackupList(API_MODE === "live");
+  const { buat, pulihkan } = useBackupMutations();
+  const [targetRestore, setTargetRestore] = useState<BackupFile | null>(null);
+  const [alasan, setAlasan] = useState("");
+  const [pesan, setPesan] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const handleBuat = async () => {
+    setError(null);
+    setPesan(null);
+    try {
+      const hasil = await buat.mutateAsync();
+      setPesan(`Backup ${hasil.fileName} dibuat.`);
+    } catch (err) {
+      setError(String(err).replace("Error: ", ""));
+    }
+  };
+
+  const handleUnduh = async (file: BackupFile) => {
+    setError(null);
+    try {
+      const blob = await api.backup.unduh(file.fileName);
+      const url = URL.createObjectURL(blob);
+      const tautan = document.createElement("a");
+      tautan.href = url;
+      tautan.download = file.fileName;
+      document.body.appendChild(tautan);
+      tautan.click();
+      tautan.remove();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      setError(String(err).replace("Error: ", ""));
+    }
+  };
+
+  const handleRestore = async () => {
+    if (!targetRestore) return;
+    if (alasan.trim() === "") {
+      setError("Alasan restore wajib diisi — engine mencatatnya di jejak audit.");
+      return;
+    }
+    setError(null);
+    try {
+      const hasil = await pulihkan.mutateAsync({
+        namaBerkas: targetRestore.fileName,
+        alasan: alasan.trim(),
+      });
+      setPesan(
+        `Database dipulihkan dari ${hasil.restoredFrom}. Jaring pengaman: ${hasil.preRestoreBackup}.`,
+      );
+      setTargetRestore(null);
+      setAlasan("");
+    } catch (err) {
+      setError(String(err).replace("Error: ", ""));
+    }
+  };
+
+  const kolom: Column<BackupFile>[] = [
+    {
+      key: "fileName",
+      header: "Berkas",
+      render: (r) => <span className="font-mono text-xs">{r.fileName}</span>,
+    },
+    {
+      key: "sizeBytes",
+      header: "Ukuran",
+      align: "right",
+      render: (r) => <span className="tabular-nums text-xs text-muted">{ukuranBerkas(r.sizeBytes)}</span>,
+    },
+    {
+      key: "createdAt",
+      header: "Dibuat",
+      render: (r) => (
+        <span className="text-xs text-muted">
+          {new Date(r.createdAt).toLocaleString("id-ID", { dateStyle: "medium", timeStyle: "short" })}
+        </span>
+      ),
+    },
+    {
+      key: "jenis",
+      header: "Jenis",
+      align: "center",
+      render: (r) =>
+        r.isPreRestore ? (
+          <StatusBadge label="Pra-restore" tone="warning" />
+        ) : (
+          <StatusBadge label="Cadangan" tone="info" />
+        ),
+    },
+    {
+      key: "aksi",
+      header: "",
+      align: "right",
+      render: (r) => (
+        <div className="flex justify-end gap-1.5">
+          <button
+            type="button"
+            onClick={() => handleUnduh(r)}
+            className="btn-secondary inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs"
+          >
+            <Download className="size-3.5" aria-hidden /> Unduh
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setError(null);
+              setAlasan("");
+              setTargetRestore(r);
+            }}
+            className="btn-secondary inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs text-rose-600"
+          >
+            <RotateCcw className="size-3.5" aria-hidden /> Pulihkan
+          </button>
+        </div>
+      ),
+    },
+  ];
+
+  return (
+    <div className="panel p-6">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h2 className="text-sm font-bold text-brand">Backup Database</h2>
+          <p className="mt-1 max-w-xl text-xs text-muted">
+            Backup menyalin seluruh database engine — semua tenant, semua transaksi.
+            Berkas disimpan di server, bukan di perangkat kasir. Restore mengganti
+            database yang sedang dipakai, jadi engine menyimpan jaring pengaman
+            (pra-restore) sebelum menimpanya.
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={handleBuat}
+          disabled={buat.isPending || API_MODE !== "live"}
+          className="btn-primary inline-flex items-center gap-2 px-3 py-1.5 text-xs"
+        >
+          <DatabaseBackup className="size-4" aria-hidden />
+          {buat.isPending ? "Membuat..." : "Buat Backup"}
+        </button>
+      </div>
+
+      {API_MODE !== "live" && (
+        <p className="mt-3 rounded-xl bg-amber-50 px-3 py-2 text-xs text-amber-700">
+          Backup hanya tersedia di mode live — engine yang menyimpan database toko.
+        </p>
+      )}
+      {pesan && (
+        <p className="mt-3 inline-flex items-center gap-1.5 text-xs font-semibold text-emerald-700">
+          <CheckCircle2 className="size-4" aria-hidden /> {pesan}
+        </p>
+      )}
+      {error && <p className="mt-3 rounded-xl bg-rose-50 px-3 py-2 text-xs text-rose-700">{error}</p>}
+
+      <div className="mt-4">
+        <DataTable
+          columns={kolom}
+          rows={backup.data ?? []}
+          rowKey={(r) => r.fileName}
+          loading={backup.isLoading}
+          skeletonRows={3}
+          empty="Belum ada berkas backup."
+        />
+      </div>
+
+      {targetRestore && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-ink/50 p-4 backdrop-blur-sm"
+          onClick={() => setTargetRestore(null)}
+        >
+          <div className="panel w-full max-w-md p-7" onClick={(e) => e.stopPropagation()}>
+            <h2 className="font-black text-brand">Pulihkan Database?</h2>
+            <p className="mt-2 text-sm text-muted">
+              Database akan diganti dengan isi <span className="font-mono text-xs">{targetRestore.fileName}</span>.
+              Semua perubahan setelah berkas itu dibuat akan hilang.
+            </p>
+            <div className="mt-4">
+              <FormField label="Alasan restore" hint="Dicatat engine di jejak audit.">
+                <input
+                  className="input"
+                  value={alasan}
+                  onChange={(e) => setAlasan(e.target.value)}
+                  placeholder="Contoh: data rusak setelah update engine"
+                />
+              </FormField>
+            </div>
+            {error && <p className="mt-3 rounded-xl bg-rose-50 px-3 py-2 text-xs text-rose-700">{error}</p>}
+            <div className="mt-4 flex gap-2">
+              <button
+                type="button"
+                onClick={handleRestore}
+                disabled={pulihkan.isPending}
+                className="btn-primary flex-1 bg-rose-600 hover:bg-rose-500"
+              >
+                {pulihkan.isPending ? "Memulihkan..." : "Ya, Pulihkan"}
+              </button>
+              <button type="button" onClick={() => setTargetRestore(null)} className="btn-secondary">
+                Batal
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function PanelCabang() {
+  const cabang = useCabangList(API_MODE === "live");
+  const { buat } = useCabangMutations();
+  const [openCreate, setOpenCreate] = useState(false);
+  const [form, setForm] = useState({ parentId: "", kode: "", nama: "" });
+  const [error, setError] = useState<string | null>(null);
+
+  const daftar = cabang.data ?? [];
+  const pusat = daftar.find((c) => c.isHeadquarters);
+
+  const handleCreate = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(null);
+    if (form.kode.trim() === "" || form.nama.trim() === "") {
+      setError("Kode dan nama cabang wajib diisi.");
+      return;
+    }
+    const parentId = form.parentId || pusat?.id || "";
+    if (parentId === "") {
+      setError("Cabang induk belum ada — engine belum memiliki baris pusat.");
+      return;
+    }
+    try {
+      await buat.mutateAsync({
+        parentId,
+        kode: form.kode.trim(),
+        nama: form.nama.trim(),
+      });
+      setForm({ parentId: "", kode: "", nama: "" });
+      setOpenCreate(false);
+    } catch (err) {
+      setError(String(err).replace("Error: ", ""));
+    }
+  };
+
+  const kolom: Column<Cabang>[] = [
+    {
+      key: "kode",
+      header: "Kode",
+      render: (r) => <span className="font-mono text-xs">{r.kode}</span>,
+    },
+    {
+      key: "nama",
+      header: "Nama Cabang",
+      render: (r) => <span className="font-medium">{r.nama}</span>,
+    },
+    {
+      key: " induk",
+      header: "Induk",
+      render: (r) => (
+        <span className="text-xs text-muted">
+          {r.parentId ? (daftar.find((c) => c.id === r.parentId)?.nama ?? r.parentId) : "-"}
+        </span>
+      ),
+    },
+    {
+      key: "jenis",
+      header: "Jenis",
+      align: "center",
+      render: (r) =>
+        r.isHeadquarters ? (
+          <StatusBadge label="Pusat" tone="success" />
+        ) : (
+          <StatusBadge label="Cabang" tone="info" />
+        ),
+    },
+  ];
+
+  return (
+    <div className="panel p-6">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h2 className="text-sm font-bold text-brand">Cabang</h2>
+          <p className="mt-1 max-w-xl text-xs text-muted">
+            Struktur cabang disimpan engine. Setiap cabang punya gudang dan
+            pembukuan sendiri; POS memilih cabang pencatatan lewat header
+            <span className="font-mono"> X-Branch-Id</span>.
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={() => {
+            setError(null);
+            setOpenCreate(true);
+          }}
+          disabled={API_MODE !== "live"}
+          className="btn-primary inline-flex items-center gap-2 px-3 py-1.5 text-xs"
+        >
+          <Plus className="size-4" aria-hidden /> Tambah Cabang
+        </button>
+      </div>
+
+      {API_MODE !== "live" && (
+        <p className="mt-3 rounded-xl bg-amber-50 px-3 py-2 text-xs text-amber-700">
+          Manajemen cabang hanya tersedia di mode live — hierarki cabang disimpan engine.
+        </p>
+      )}
+      {error && <p className="mt-3 rounded-xl bg-rose-50 px-3 py-2 text-xs text-rose-700">{error}</p>}
+
+      <p className="mt-4 rounded-xl bg-line/40 px-3 py-2 text-xs text-muted">
+        POS masih mencatat ke pusat. Engine menjaga stok per cabang, jadi pencatatan
+        per cabang baru bisa dipakai setelah gudang-gudang POS terikat ke cabang tujuan.
+      </p>
+
+      <div className="mt-4">
+        <DataTable
+          columns={kolom}
+          rows={daftar}
+          rowKey={(r) => r.id}
+          loading={cabang.isLoading}
+          skeletonRows={2}
+          empty="Belum ada cabang."
+        />
+      </div>
+
+      {openCreate && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-ink/50 p-4 backdrop-blur-sm"
+          onClick={() => setOpenCreate(false)}
+        >
+          <div className="panel w-full max-w-md p-7" onClick={(e) => e.stopPropagation()}>
+            <h2 className="font-black text-brand">Tambah Cabang</h2>
+            <form className="mt-4 space-y-3" onSubmit={handleCreate}>
+              <FormField label="Induk">
+                <select
+                  className="input"
+                  value={form.parentId || pusat?.id || ""}
+                  onChange={(e) => setForm({ ...form, parentId: e.target.value })}
+                >
+                  {daftar.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.nama} ({c.kode})
+                    </option>
+                  ))}
+                </select>
+              </FormField>
+              <FormField label="Kode Cabang" hint="Unik per usaha, dinormalisasi huruf besar.">
+                <input
+                  className="input font-mono"
+                  value={form.kode}
+                  onChange={(e) => setForm({ ...form, kode: e.target.value })}
+                  placeholder="Contoh: CAB-01"
+                />
+              </FormField>
+              <FormField label="Nama Cabang">
+                <input
+                  className="input"
+                  value={form.nama}
+                  onChange={(e) => setForm({ ...form, nama: e.target.value })}
+                  placeholder="Contoh: Cabang Ragunan"
+                />
+              </FormField>
+              {error && <p className="rounded-xl bg-rose-50 px-3 py-2 text-xs text-rose-700">{error}</p>}
+              <div className="flex gap-2">
+                <button type="submit" disabled={buat.isPending} className="btn-primary flex-1 disabled:opacity-40">
+                  {buat.isPending ? "Menyimpan..." : "Simpan"}
+                </button>
+                <button type="button" onClick={() => setOpenCreate(false)} className="btn-secondary">
+                  Batal
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

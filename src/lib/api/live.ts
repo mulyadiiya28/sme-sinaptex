@@ -3,8 +3,10 @@ import type {
   AkunSaldo,
   AuditEntry,
   ArApTurnover,
+  BackupFile,
   Biaya,
   BiayaParams,
+  Cabang,
   CashAccount,
   CashConversionCycle,
   CheckoutPayload,
@@ -66,6 +68,7 @@ import type {
   CreateSupplierRequest,
   DailyMovementReport,
   FiscalPeriod,
+  HasilRestoreBackup,
   LaporanAsetTetap,
   MutasiAset,
   PenyusutanItem,
@@ -185,6 +188,9 @@ function headerLive(opsi: { json?: boolean; idempotensiKunci?: string } = {}): R
     headers["X-Actor-Id"] = state.user.id;
     headers["X-Actor-Level"] = state.user.role === "pemilik" ? "99" : "2";
   }
+  // Catatan: POS sengaja TIDAK mengirim X-Branch-Id. Engine menjaga stok per
+  // cabang, jadi menunjuk cabang aktif tanpa gudang yang terikat ke cabang itu
+  // akan menolak penjualan. Gudang POS masih terikat ke pusat.
   if (state.accessToken) headers.Authorization = `Bearer ${state.accessToken}`;
   if (opsi.idempotensiKunci) headers["Idempotency-Key"] = opsi.idempotensiKunci;
   return headers;
@@ -2962,6 +2968,103 @@ export async function liveBuatGudang(
 
 export async function liveNonaktifkanGudang(id: string): Promise<void> {
   await minta(`/api/warehouses/${id}/deactivate`, { method: "POST" });
+}
+
+type BtBackupFile = {
+  fileName: string;
+  sizeBytes: number;
+  createdAt: string;
+  isPreRestore: boolean;
+};
+
+type BtRestoreBackup = {
+  restoredFrom: string;
+  preRestoreBackup: string;
+  restoredAt: string;
+};
+
+type BtCabang = {
+  id: string;
+  parentBusinessId: string | null;
+  branchCode: string;
+  name: string;
+  isHeadquarters: boolean;
+};
+
+function petakanBackup(data: BtBackupFile): BackupFile {
+  return {
+    fileName: data.fileName,
+    sizeBytes: data.sizeBytes,
+    createdAt: data.createdAt,
+    isPreRestore: data.isPreRestore,
+  };
+}
+
+export async function liveBackupDaftar(): Promise<BackupFile[]> {
+  const data = await minta<BtBackupFile[]>("/api/backup/list");
+  return data.map(petakanBackup);
+}
+
+export async function liveBackupBuat(): Promise<BackupFile> {
+  const data = await minta<BtBackupFile>("/api/backup", { method: "POST" });
+  return petakanBackup(data);
+}
+
+export async function liveBackupPulihkan(
+  namaBerkas: string,
+  alasan: string,
+): Promise<HasilRestoreBackup> {
+  // Restore mengganti seluruh database, jadi engine menuntut alasan (X-Reason)
+  // dan kunci idempotensi: mengulang permintaan yang sama tidak memulihkan
+  // database untuk kedua kalinya.
+  const data = await minta<BtRestoreBackup>("/api/backup/restore", {
+    method: "POST",
+    idempotensiKunci: buatKunciIdempotensi(),
+    headers: { "X-Reason": alasan },
+    body: { fileName: namaBerkas },
+  });
+  return {
+    restoredFrom: data.restoredFrom,
+    preRestoreBackup: data.preRestoreBackup,
+    restoredAt: data.restoredAt,
+  };
+}
+
+export async function liveBackupUnduh(namaBerkas: string): Promise<Blob> {
+  return ambilBerkas(`/api/backup/download?fileName=${encodeURIComponent(namaBerkas)}`);
+}
+
+export async function liveCabangDaftar(): Promise<Cabang[]> {
+  const data = await minta<BtCabang[]>("/api/branches");
+  return data.map((b) => ({
+    id: b.id,
+    parentId: b.parentBusinessId,
+    kode: b.branchCode,
+    nama: b.name,
+    isHeadquarters: b.isHeadquarters,
+  }));
+}
+
+export async function liveCabangBuat(input: {
+  parentId: string;
+  kode: string;
+  nama: string;
+}): Promise<Cabang> {
+  const data = await minta<BtCabang>("/api/branches", {
+    method: "POST",
+    body: {
+      parentBusinessId: input.parentId,
+      branchCode: input.kode,
+      name: input.nama,
+    },
+  });
+  return {
+    id: data.id,
+    parentId: data.parentBusinessId,
+    kode: data.branchCode,
+    nama: data.name,
+    isHeadquarters: data.isHeadquarters,
+  };
 }
 
 export async function liveStokGudang(gudangId?: string): Promise<InventoryValuation> {

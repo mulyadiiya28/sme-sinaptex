@@ -671,6 +671,54 @@ export function useInventarisMutations() {
   };
 }
 
+export function useBackupList(enabled = true) {
+  return useQuery({
+    queryKey: ["backup"],
+    queryFn: () => api.backup.daftar(),
+    enabled,
+  });
+}
+
+export function useBackupMutations() {
+  const qc = useQueryClient();
+  const buat = useMutation({
+    mutationFn: () => api.backup.buat(),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["backup"] });
+    },
+  });
+  // Restore mengganti seluruh database: data POS yang ada di memori perlu
+  // dimuat ulang supaya layar tidak menampilkan angka dari database lama.
+  const pulihkan = useMutation({
+    mutationFn: (args: { namaBerkas: string; alasan: string }) =>
+      api.backup.pulihkan(args.namaBerkas, args.alasan),
+    onSuccess: () => {
+      qc.invalidateQueries();
+    },
+  });
+  return { buat, pulihkan };
+}
+
+export function useCabangList(enabled = true) {
+  return useQuery({
+    queryKey: ["cabang"],
+    queryFn: () => api.cabang.daftar(),
+    enabled,
+  });
+}
+
+export function useCabangMutations() {
+  const qc = useQueryClient();
+  const buat = useMutation({
+    mutationFn: (input: { parentId: string; kode: string; nama: string }) =>
+      api.cabang.buat(input),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["cabang"] });
+    },
+  });
+  return { buat };
+}
+
 export function useTransaksiMutations() {
   const qc = useQueryClient();
   const invalidate = () => {
