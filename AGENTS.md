@@ -97,7 +97,7 @@ pembelian (`/api/purchases`), retur pembelian (`POST /api/purchase-returns`; loo
 impor saldo awal (`POST /api/accounts/opening-balances`, multipart), saldo akun + laba-rugi (dari `trial-balance`),
 daftar jurnal (`GET /api/journal`), biaya (`GET/POST /api/expenses`), daftar akun kas + transfer
 antar-rekening (`GET /api/cash-accounts`, `GET/POST /api/cash-transfers`), kaki pembayaran penjualan
-(`GET /api/sales/{id}/payments`), pelunasan piutang
+(`GET /api/sales/{id}/payments`, `GET /api/sales/payments?from=&to=`), pelunasan piutang
 (`POST /api/sales/{id}/payments`), pelunasan hutang (`POST /api/purchases/{id}/payments`),
 penyesuaian stok (`POST /api/inventory/adjustments`), gudang (`GET/POST /api/warehouses`,
 `POST /api/warehouses/{id}/deactivate`), stok per gudang (`GET /api/inventory/stock?warehouseId=`),
@@ -105,7 +105,8 @@ transfer stok antar gudang (`POST /api/inventory/transfers`),
 kartu stok (`GET /api/inventory/movements?productId=&warehouseId=`),
 opname stok (`GET/POST /api/inventory/opnames`, `POST /api/inventory/opnames/{id}/complete|cancel`),
 konfirmasi QRIS
-(`POST /api/sales/{id}/confirm-payment`), buat user kasir (`POST /api/users/direct`),
+(`POST /api/cash-transfers` dari akun gateway, fallback `POST /api/sales/{id}/confirm-payment`),
+buat user kasir (`POST /api/users/direct`),
 daftar/ubah/hapus user (`GET/PUT/DELETE /api/users`), jejak audit (`GET /api/audit-log`),
 master pemasok (`GET/POST /api/suppliers`, `POST /api/suppliers/{id}/deactivate`),
 kebijakan operasional (`GET/PUT /api/settings/operational-policy`), periode fiskal
@@ -152,13 +153,12 @@ Perilaku live yang menyimpang dari mock:
   POS jatuh ke retur penuh (`liveRetur`).
 - `liveBuatUser`/`liveUbahUser` memakai `authorityLevel` engine (99 = pemilik, 2 = kasir); peran POS
   dipetakan ke level itu, jadi pemilik bisa dibuat dan peran bisa diubah dari Pengaturan.
-- `liveTransaksiRiwayat` kehilangan `diskon` (0), `kembalian` (0), dan status
-  pembayaran digital (dipetakan dari status penjualan). `kasir` dibaca dari `requestedByName` yang
-  sudah di-resolve engine (nama, bukan GUID), `shiftId` dari deskripsi batch yang ditulis POS.
-  `piutang` diambil dari
+- `liveTransaksiRiwayat` kehilangan `diskon` (0) dan `kembalian` (0). `kasir` dibaca dari
+  `requestedByName` yang sudah di-resolve engine (nama, bukan GUID), `shiftId` dari deskripsi batch
+  yang ditulis POS. `piutang` diambil dari
   `GET /api/reports/ar-ap/aging?side=RECEIVABLE` (`outstandingAmount` per `invoiceNumber`), karena
-  dokumen penjualan tidak menyimpannya. Untuk transaksi yang belum lunas, kaki pembayaran dibaca dari
-  `GET /api/sales/{id}/payments`; metodenya ditebak dari kode akun kas (gateway → `qris`,
+  dokumen penjualan tidak menyimpannya. Kaki pembayaran semua baris dibaca sekali lewat
+  `GET /api/sales/payments?from=&to=`; metodenya ditebak dari kode akun kas (gateway `1130` → `qris`,
   kas → `tunai`, lainnya → `transfer`) karena engine tidak menyimpan label metode.
 - `livePembelianList` juga memakai `?side=PAYABLE`: `terbayar = total − outstanding` dan
   `metode = outstanding > 0 ? "hutang" : "tunai"`. Jangan pakai `payableAmount` dokumen — itu nilai
@@ -209,11 +209,21 @@ Perilaku live yang menyimpang dari mock:
   baris dengan harga beli berbeda) dan mengirim `purchaseItemId` + `quantity`. Mock memberi id baris
   saat `registerPembelian`.
 - Konfirmasi QRIS dipicu dari Riwayat (tombol **Konfirmasi**, owner) saat transaksi berstatus
-  `menunggu_pembayaran` dan punya pembayaran `qris` yang belum `POSTED`. Di mock Confirmation
-  memindahkan dana dari `Penampung gateway` ke `Bank` dan menutup status jadi `lunas`. Di live rute
-  engine `POST /api/sales/{id}/confirm-payment` mencari kaki `CustomerPayment` lewat **BatchId
-  transaksi dokumen** — bukan `sale.BusinessTransactionId`, yang menunjuk baris dokumen itu sendiri —
-  jadi tombol hanya muncul bila kaki itu benar-benar ada dan masih SUBMITTED/APPROVED.
+  `menunggu_pembayaran` dan punya pembayaran `qris` yang belum `POSTED`. QRIS kini punya akun sendiri
+  di engine: checkout mengarahkan uangnya ke akun kas ber-kode `NEXT_PUBLIC_ENGINE_GATEWAY` (default
+  `1130`, dibuat otomatis lewat `POST /api/accounts` + `POST /api/cash-accounts` bila tenant belum
+  punya), bukan ke bank. Konfirmasi memindahkan dana penampung gateway ke bank lewat
+  `POST /api/cash-transfers` dengan deskripsi bertanda `[QRIS <nomor>]`; bila transfer ditahan aturan
+  approval (`approvalRequired`), status jadi `menunggu_persetujuan`. Bila penjualan tidak punya kaki
+  gateway (mis. pembayaran ditahan approval), POS jatuh ke jalur lama
+  `POST /api/sales/{id}/confirm-payment` — rute itu mencari kaki `CustomerPayment` lewat **BatchId
+  transaksi dokumen**, bukan `sale.BusinessTransactionId`.
+- Riwayat live membaca kaki pembayaran sekaligus lewat `GET /api/sales/payments?from=&to=`
+  (satu permintaan, bukan satu per baris). QRIS dianggap belum dikonfirmasi selama belum ada movement
+  keluar bertanda `[QRIS <nomor>]` di akun gateway (`GET /api/cash-accounts/{id}/movements`); kaki
+  gateway yang belum dikonfirmasi dilaporkan berstatus `MENUNGGU_KONFIRMASI` supaya tombol Konfirmasi
+  tetap tampil. `liveCheckout` menolak campuran QRIS + transfer karena engine hanya menerima satu akun
+  kas per batch.
 
 ## Conventions
 
@@ -275,8 +285,9 @@ Perilaku live yang menyimpang dari mock:
   kembalian; **transfer/qris** tidak boleh melebihi sisa (ditolak). Kekurangan hanya boleh jadi piutang
   bila `gunakanPiutang` dan `useToko().kebijakan.izinkanKredit` (default `true`) tidak memblokirnya.
 - Status pembayaran: `lunas | menunggu_pembayaran | dibayar_sebagian | dibatalkan` (terpisah dari status
-  transaksi). QRIS membuat status `menunggu_pembayaran` sampai owner mengonfirmasi (mock); di live
-  konfirmasi memanggil `POST /api/sales/{id}/confirm-payment`.
+  transaksi). QRIS membuat status `menunggu_pembayaran` sampai owner mengonfirmasi; di live konfirmasi
+  memindahkan dana gateway ke bank lewat `POST /api/cash-transfers` (fallback
+  `POST /api/sales/{id}/confirm-payment` bila tidak ada kaki gateway).
 - Void/retur/penyesuaian stok/konfirmasi digital/impor = owner only. Mock menegakkan role di `mockDb`
   (`user.role !== "pemilik"` → error); live memetakan ke otorisasi/approval engine. Transaksi asli tetap
   direferensikan, jurnal pembalik diposting.
@@ -300,7 +311,8 @@ retur proporsional, dan penghapusan `src/lib/api/calc.ts`.
 
 Batasan yang masih ada:
 
-- Live: pembayaran campuran + overpayment (kembalian) ditolak engine; QRIS belum jadi konsep engine.
+- Live: pembayaran campuran + overpayment (kembalian) ditolak engine; QRIS + transfer juga tidak bisa
+  digabung (satu akun kas per batch).
 - Live: diskon dilebur ke `unitPrice`, jadi riwayat/struk live tidak menampilkan diskon.
 - Live: master pemasok bisa dibuat & dinonaktifkan, tapi kode/nama tidak bisa diubah (engine sengaja
   `init`-only). Faktur lama tanpa `supplierId` (sebelum master dipakai) dikelompokkan lewat namanya.
@@ -380,12 +392,12 @@ tools/             bootstrap-backend.py
 - Impor produk live all-or-nothing, `satuan` harus ada master unit, no stok awal
 - Profil toko sync `/api/settings/company-profile`; field POS di localStorage
 - Logo upload ke engine (mock tolak)
-- QRIS bukan konsep engine; konfirmasi hanya untuk batch tertahan approval
+- QRIS: uang ditahan di akun gateway (`1130`), konfirmasi = `POST /api/cash-transfers` gateway→bank bertanda `[QRIS <nomor>]`
 - Batch tertahan approval: `/persetujuan` → `GET /api/transactions?status=SUBMITTED` → approve → `POST /api/cash-batches/{batchId}/post`
 
 ### Verifikasi
 - Frontend: `npx tsc --noEmit` bersih + `npm run build` sukses (16 halaman statis)
-- Backend: `dotnet build` 0 warning + `dotnet test` 485 unit + 747 integration lulus
+- Backend: `dotnet build` 0 warning + `dotnet test` 485 unit + 748 integration lulus
 - Mock: alur manual `/kasir` (buka shift → checkout → riwayat → tutup shift)
 
 ## Docs

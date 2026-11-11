@@ -433,6 +433,24 @@ type BtSalePayment = {
   cashAccountName: string | null;
 };
 
+type BtSalePayments = {
+  saleId: string;
+  saleNumber: string | null;
+  payments: BtSalePayment[];
+};
+
+type BtCashMovement = {
+  id: string;
+  cashAccountId: string;
+  movementDate: string;
+  movementType: string;
+  debit: number;
+  credit: number;
+  description: string | null;
+  cashTransferId: string | null;
+  createdAt: string;
+};
+
 type BtPenjualan = {
   id: string;
   businessTransactionId: string;
@@ -853,17 +871,56 @@ export async function liveKonfirmasiDigital(nomor: string): Promise<TransaksiRiw
   // (SALE-00001). Nomor diterjemahkan dulu supaya endpointnya tidak 404.
   const sale = await cariPenjualanByNomor(nomor);
 
-  await minta<{
-    paymentTransactionId: string;
-    journalIds: string[];
-    replayed: boolean;
-  }>(`/api/sales/${sale.id}/confirm-payment`, {
-    method: "POST",
-    idempotensiKunci: buatKunciIdempotensi(),
-    body: {
-      actorId: actor,
-    },
-  });
+  const kaki = await minta<BtSalePayment[]>(`/api/sales/${sale.id}/payments`);
+  const qris = kaki.filter((k) => k.cashAccountCode === KODE.gateway);
+  const nominal = qris.reduce((s, k) => s + k.amount, 0);
+
+  // Pembayaran QRIS sudah duduk di akun penampung gateway; konfirmasi berarti
+  // memindahkan dana itu ke bank. Bila tidak ada kaki gateway, ini jalur lama
+  // (CustomerPayment yang ditahan approval) dan confirm-payment yang memposting.
+  let status: TransaksiRiwayat["status"];
+  let pembayaran: TransaksiRiwayat["pembayaran"];
+
+  if (nominal > 0) {
+    const [gatewayId, bankId] = await Promise.all([
+      pastikanAkunKas(KODE.gateway, "Penampung Gateway QRIS"),
+      pastikanAkunKas(KODE.bank, "Bank"),
+    ]);
+
+    const transfer = await minta<{ approvalRequired?: boolean }>("/api/cash-transfers", {
+      method: "POST",
+      idempotensiKunci: buatKunciIdempotensi(),
+      body: {
+        fromCashAccountId: gatewayId,
+        toCashAccountId: bankId,
+        amount: nominal,
+        requestedBy: actor,
+        description: `[QRIS ${nomor}] konfirmasi penampung gateway ke bank`,
+      },
+    });
+
+    const tertahan = transfer.approvalRequired === true;
+    const lunas = !tertahan && nominal >= sale.totalAmount;
+    status = tertahan ? "menunggu_persetujuan" : lunas ? "lunas" : "dibayar_sebagian";
+    pembayaran = kaki.map((k) => ({
+      metode: metodeDariAkun(k.cashAccountCode),
+      nominal: k.amount,
+      status: tertahan ? "MENUNGGU_KONFIRMASI" : k.status,
+    }));
+  } else {
+    await minta<{
+      paymentTransactionId: string;
+      journalIds: string[];
+      replayed: boolean;
+    }>(`/api/sales/${sale.id}/confirm-payment`, {
+      method: "POST",
+      idempotensiKunci: buatKunciIdempotensi(),
+      body: {
+        actorId: actor,
+      },
+    });
+    status = "lunas";
+  }
 
   // Setelah konfirmasi, transaksi dikembalikan apa adanya: total, item, dan
   // kasir diambil dari dokumen, bukan dari objek kosong.
@@ -877,7 +934,8 @@ export async function liveKonfirmasiDigital(nomor: string): Promise<TransaksiRiw
     new Map(produk.map((p) => [p.id, p.name])),
     new Map(pelanggan.map((c) => [c.id, c.name])),
     0,
-    "lunas",
+    status,
+    pembayaran,
   );
 }
 
@@ -1300,6 +1358,43 @@ async function akunKasDefault(kodeAkun: string): Promise<string> {
   return dibuat.id;
 }
 
+/**
+ * Resolves the cash account for an EXACT ledger code, creating the ledger
+ * account and the cash account when the tenant's chart does not have them yet.
+ *
+ * Unlike `akunKasDefault`, it never falls back to the default cash account:
+ * QRIS money must land in the gateway account, and silently parking it in
+ * whatever account happens to be default would make the confirmation step move
+ * the wrong funds.
+ */
+async function pastikanAkunKas(kodeAkun: string, nama: string): Promise<string> {
+  const daftar = await minta<BtAkunKas[]>("/api/cash-accounts");
+  const ada = daftar.find((a) => a.accountCode === kodeAkun && a.isActive);
+  if (ada) return ada.id;
+
+  // The ledger account must exist before a cash account can name it. A 409
+  // means someone already created it, which is exactly the state we want.
+  try {
+    await minta("/api/accounts", {
+      method: "POST",
+      body: { code: kodeAkun, name: nama, accountType: "ASSET" },
+    });
+  } catch (err) {
+    if (!(err instanceof LiveApiError) || err.status !== 409) throw err;
+  }
+
+  const dibuat = await minta<BtAkunKas>("/api/cash-accounts", {
+    method: "POST",
+    body: {
+      name: nama,
+      accountCode: kodeAkun,
+      description: "Dibuat otomatis oleh POS",
+      isDefault: false,
+    },
+  });
+  return dibuat.id;
+}
+
 export async function liveCashAccounts(): Promise<CashAccount[]> {
   const daftar = await minta<BtAkunKas[]>("/api/cash-accounts?includeInactive=true");
   return daftar.map((a) => ({
@@ -1357,6 +1452,8 @@ export async function liveTransferKasCreate(input: TransferKasInput, user: User)
 
 function ringkasAlokasi(payload: CheckoutPayload): {
   tunai: number;
+  transfer: number;
+  qris: number;
   nontunai: number;
   total: number;
 } {
@@ -1368,10 +1465,13 @@ function ringkasAlokasi(payload: CheckoutPayload): {
   const tunai = payload.allocations
     .filter((a) => a.metode === "tunai")
     .reduce((sum, a) => sum + a.nominal, 0);
-  const nontunai = payload.allocations
-    .filter((a) => a.metode !== "tunai")
+  const qris = payload.allocations
+    .filter((a) => a.metode === "qris")
     .reduce((sum, a) => sum + a.nominal, 0);
-  return { tunai, nontunai, total: bersih };
+  const transfer = payload.allocations
+    .filter((a) => a.metode === "transfer")
+    .reduce((sum, a) => sum + a.nominal, 0);
+  return { tunai, transfer, qris, nontunai: transfer + qris, total: bersih };
 }
 
 function bulat2(nilai: number): number {
@@ -1429,12 +1529,22 @@ export async function liveCheckout(payload: CheckoutPayload): Promise<CheckoutRe
       400,
     );
   }
+  if (ringkasan.qris > 0 && ringkasan.transfer > 0) {
+    throw new LiveApiError(
+      "Engine C# menerima satu akun kas per batch — QRIS dan transfer tidak bisa digabung dalam satu transaksi.",
+      400,
+    );
+  }
   // Penjualan tanpa uang muka (dibayar 0) adalah penjualan kredit: engine
   // menulis dokumennya saja — tanpa kas movement, tanpa jurnal settlement dan
   // tanpa alokasi — sehingga piutang tetap terbuka.
+  // QRIS tidak masuk bank: dananya ditahan di akun penampung gateway sampai
+  // pemilik mengonfirmasinya, sehingga metode itu tetap bisa dibedakan.
   const cashAccountId =
     dibayar > 0
-      ? await akunKasDefault(ringkasan.tunai > 0 ? KODE.kas : KODE.bank)
+      ? await (ringkasan.qris > 0
+          ? pastikanAkunKas(KODE.gateway, "Penampung Gateway QRIS")
+          : akunKasDefault(ringkasan.tunai > 0 ? KODE.kas : KODE.bank))
       : null;
   const pelangganId = payload.pelanggan
     ? await cariPelangganId(payload.pelanggan)
@@ -1480,7 +1590,9 @@ export async function liveCheckout(payload: CheckoutPayload): Promise<CheckoutRe
     ? "menunggu_persetujuan"
     : piutang > 0
       ? "dibayar_sebagian"
-      : "lunas";
+      : ringkasan.qris > 0
+        ? "menunggu_pembayaran"
+        : "lunas";
 
   return {
     nomor: hasil.documentNumber ?? hasil.documentId,
@@ -1511,11 +1623,13 @@ function metodeDariAkun(kode: string | null): PaymentMethod {
 }
 
 export async function liveTransaksiRiwayat(): Promise<TransaksiRiwayat[]> {
-  const [penjualan, produk, pelanggan, ar] = await Promise.all([
+  const [penjualan, produk, pelanggan, ar, kakiSemua, daftarKas] = await Promise.all([
     minta<BtPenjualan[]>(`/api/sales?${rentangDaftar()}`),
     minta<BtProduk[]>("/api/products"),
     minta<BtPelanggan[]>("/api/customers"),
     minta<BtAging>("/api/reports/ar-ap/aging?side=RECEIVABLE"),
+    minta<BtSalePayments[]>(`/api/sales/payments?${rentangDaftar()}`),
+    minta<BtAkunKas[]>("/api/cash-accounts"),
   ]);
   const namaProduk = new Map(produk.map((p) => [p.id, p.name]));
   const namaPelanggan = new Map(pelanggan.map((c) => [c.id, c.name]));
@@ -1525,12 +1639,22 @@ export async function liveTransaksiRiwayat(): Promise<TransaksiRiwayat[]> {
     ar.invoices.map((i) => [i.invoiceNumber, i.outstandingAmount]),
   );
 
+  const kakiPerPenjualan = new Map(kakiSemua.map((k) => [k.saleId, k.payments]));
+  const akunGateway = daftarKas.find(
+    (a) => a.accountCode === KODE.gateway && a.isActive,
+  );
+  const sudahDikonfirmasi = await nomorQrisTerkonfirmasi(akunGateway?.id);
+
   const hasil: TransaksiRiwayat[] = [];
   for (const sale of penjualan) {
     const nomor = sale.saleNumber ?? sale.id;
     const dibatalkan = sale.status === "VOIDED" || sale.status === "CANCELLED";
     const piutang = dibatalkan ? 0 : (sisaPiutang.get(nomor) ?? 0);
-    const status: TransaksiRiwayat["status"] = dibatalkan
+    const kaki = kakiPerPenjualan.get(sale.id) ?? [];
+    const adaQris = kaki.some((k) => k.cashAccountCode === KODE.gateway);
+    const qrisTerkonfirmasi = sudahDikonfirmasi.has(nomor);
+
+    const dasar: TransaksiRiwayat["status"] = dibatalkan
       ? "dibatalkan"
       : sale.status === "SUBMITTED"
         ? "menunggu_persetujuan"
@@ -1542,41 +1666,52 @@ export async function liveTransaksiRiwayat(): Promise<TransaksiRiwayat[]> {
               ? "menunggu_pembayaran"
               : "dibayar_sebagian";
 
+    // QRIS yang belum dikonfirmasi masih menunggu, walaupun uangnya sudah
+    // tercatat di akun penampung (piutangnya nol).
+    const status: TransaksiRiwayat["status"] =
+      dasar === "lunas" && adaQris && !qrisTerkonfirmasi
+        ? "menunggu_pembayaran"
+        : dasar;
+
+    const pembayaran: TransaksiRiwayat["pembayaran"] =
+      kaki.length === 0
+        ? undefined
+        : kaki.map((k) => ({
+            metode: metodeDariAkun(k.cashAccountCode),
+            nominal: k.amount,
+            status:
+              k.cashAccountCode === KODE.gateway && !qrisTerkonfirmasi
+                ? "MENUNGGU_KONFIRMASI"
+                : k.status,
+          }));
+
     hasil.push(
-      petakanPenjualan(
-        sale,
-        namaProduk,
-        namaPelanggan,
-        piutang,
-        status,
-        await pembayaranPenjualan(sale, dibatalkan, piutang),
-      ),
+      petakanPenjualan(sale, namaProduk, namaPelanggan, piutang, status, pembayaran),
     );
   }
   return hasil;
 }
 
 /**
- * Rincian pembayaran hanya dibaca untuk transaksi yang belum lunas: di situlah
- * kaki pembayaran menentukan apakah tombol Konfirmasi QRIS perlu muncul.
- * Membacanya untuk setiap penjualan lunas hanya menambah satu permintaan HTTP
- * per baris tanpa mengubah tampilan apa pun.
+ * Nomor penjualan yang QRIS-nya sudah dipindahkan dari penampung gateway ke
+ * bank. Konfirmasi menulis cash transfer dengan deskripsi bertanda
+ * `[QRIS <nomor>]`, dan movement keluar dari akun gateway membawa deskripsi
+ * itu — satu pembacaan untuk seluruh halaman, bukan satu per penjualan.
  */
-async function pembayaranPenjualan(
-  sale: BtPenjualan,
-  dibatalkan: boolean,
-  piutang: number,
-): Promise<TransaksiRiwayat["pembayaran"]> {
-  if (dibatalkan || piutang <= 0) return undefined;
+async function nomorQrisTerkonfirmasi(gatewayId?: string): Promise<Set<string>> {
+  if (!gatewayId) return new Set();
 
-  const kaki = await minta<BtSalePayment[]>(`/api/sales/${sale.id}/payments`);
-  if (kaki.length === 0) return undefined;
+  const movements = await minta<BtCashMovement[]>(
+    `/api/cash-accounts/${gatewayId}/movements`,
+  );
 
-  return kaki.map((k) => ({
-    metode: metodeDariAkun(k.cashAccountCode),
-    nominal: k.amount,
-    status: k.status,
-  }));
+  const hasil = new Set<string>();
+  for (const m of movements) {
+    if (m.credit <= 0 || !m.description) continue;
+    const cocok = m.description.match(/\[QRIS ([^\]]+)\]/);
+    if (cocok) hasil.add(cocok[1]);
+  }
+  return hasil;
 }
 
 export async function livePembelianList(): Promise<Pembelian[]> {
