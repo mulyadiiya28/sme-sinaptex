@@ -1930,6 +1930,15 @@ async function cariPenjualanByNomor(nomor: string): Promise<BtPenjualan> {
   return cocok;
 }
 
+/**
+ * Faktur PDF penjualan, dirender engine (kop, logo, dan QR). Rute engine memakai
+ * id dokumen, jadi nomor POS diterjemahkan dulu.
+ */
+export async function liveFakturPdf(nomor: string): Promise<Blob> {
+  const sale = await cariPenjualanByNomor(nomor);
+  return ambilBerkas(`/api/sales/${sale.id}/pdf`);
+}
+
 export async function liveVoidTransaksi(nomor: string): Promise<TransaksiRiwayat> {
   const sale = await cariPenjualanByNomor(nomor);
   const [produk, pelanggan] = await Promise.all([

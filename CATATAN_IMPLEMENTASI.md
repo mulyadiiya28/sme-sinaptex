@@ -154,13 +154,14 @@ Endpoint-nya sudah ada di engine, tinggal dichotomi UI:
 | `EmailSettingsController` | Pengaturan email / notifikasi |
 
 Sudah dipakai POS: `BackupsController` (tab **Backup Database** di Pengaturan:
-buat/unduh/pulihkan) dan `BranchesController` (tab **Cabang**: daftar + buat
-cabang). POS **belum** mengirim `X-Branch-Id`: engine menjaga stok per cabang,
-jadi pencatatan per cabang baru bisa dipakai setelah gudang-gudang POS terikat
-ke cabang tujuan.
+buat/unduh/pulihkan), `BranchesController` (tab **Cabang**: daftar + buat
+cabang), dan faktur PDF (`GET /api/sales/{id}/pdf` — tombol **Faktur PDF** di
+dialog detail Riwayat; struk thermal tetap dicetak dari browser). POS **belum**
+mengirim `X-Branch-Id`: engine menjaga stok per cabang, jadi pencatatan per
+cabang baru bisa dipakai setelah gudang-gudang POS terikat ke cabang tujuan.
 
-Selain itu, engine sudah menyediakan **kode QR** (`/api/sales/{id}/qrcode`) dan
-**faktur PDF** (`/api/sales/{id}/pdf`) yang belum dipakai POS.
+Engine juga menyediakan **kode QR** (`/api/sales/{id}/qrcode`) yang belum dipakai
+POS.
 
 ## Verifikasi
 

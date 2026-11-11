@@ -156,6 +156,7 @@ import {
   liveInventoryTurnover,
   liveJurnal,
   liveKonfirmasiDigital,
+  liveFakturPdf,
   liveLabaRugi,
   liveLogin,
   liveLogout,
@@ -1082,6 +1083,18 @@ export const api = {
       if (API_MODE === "live") return liveKonfirmasiDigital(nomor);
       await delay(300);
       return mockDb.konfirmasiDigital(nomor, user);
+    },
+
+    /**
+     * Faktur PDF resmi dirender engine (kop toko, logo, dan QR). Mock tidak
+     * punya renderer faktur, jadi struk POS tetap dipakai di mode mock.
+     */
+    fakturPdf: async (nomor: string): Promise<Blob> => {
+      if (API_MODE === "live") return liveFakturPdf(nomor);
+      await delay(200);
+      throw new Error(
+        "Faktur PDF hanya tersedia di mode live — engine yang merender faktur resmi.",
+      );
     },
   },
 };

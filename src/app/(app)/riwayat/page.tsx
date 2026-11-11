@@ -11,6 +11,7 @@ import { TableSkeleton } from "@/components/skeleton";
 import { StatusBadge } from "@/components/status-badge";
 import { useRiwayatRetur, useRiwayatTransaksi, useTransaksiMutations } from "@/hooks/queries";
 import { useCariAwal } from "@/hooks/use-cari-awal";
+import { api, API_MODE } from "@/lib/api/client";
 import { useAuth } from "@/lib/store/auth";
 import { useToko } from "@/lib/store/toko";
 import { tanggalLokal } from "@/lib/format";
@@ -312,6 +313,29 @@ function VoidDialog({
 
 function DetailDialog({ t, onClose }: { t: TransaksiRiwayat; onClose: () => void }) {
   const subtotal = t.items.reduce((s, i) => s + i.hargaJual * i.qty - i.diskon, 0);
+  const [fakturError, setFakturError] = useState<string | null>(null);
+  const [fakturPending, setFakturPending] = useState(false);
+
+  const unduhFaktur = async () => {
+    setFakturError(null);
+    setFakturPending(true);
+    try {
+      const blob = await api.transaksi.fakturPdf(t.nomor);
+      const url = URL.createObjectURL(blob);
+      const tautan = document.createElement("a");
+      tautan.href = url;
+      tautan.download = `Faktur-${t.nomor}.pdf`;
+      document.body.appendChild(tautan);
+      tautan.click();
+      tautan.remove();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      setFakturError(String(err).replace("Error: ", ""));
+    } finally {
+      setFakturPending(false);
+    }
+  };
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink/50 p-4 backdrop-blur-sm" onClick={onClose}>
       <div className="panel max-h-[85vh] w-full max-w-md overflow-y-auto p-7" onClick={(e) => e.stopPropagation()}>
@@ -358,10 +382,21 @@ function DetailDialog({ t, onClose }: { t: TransaksiRiwayat; onClose: () => void
         <p className="mt-4 rounded-xl bg-slate-50 px-3 py-2 text-[11px] text-muted">
           Jurnal terkait transaksi ini bisa ditelusuri di menu Akuntansi → Jurnal Otomatis (ref: {t.nomor}).
         </p>
-        <div className="mt-4 flex gap-2">
+        {fakturError && <p className="mt-3 rounded-xl bg-rose-50 px-3 py-2 text-xs text-rose-700">{fakturError}</p>}
+        <div className="mt-4 flex flex-wrap gap-2">
           <button type="button" onClick={() => cetakStruk(useToko.getState().profil, { ...t, waktu: t.waktu, pembayaran: t.pembayaran })} className="btn-secondary flex-1">
             Cetak Struk
           </button>
+          {API_MODE === "live" && t.status !== "dibatalkan" && (
+            <button
+              type="button"
+              onClick={unduhFaktur}
+              disabled={fakturPending}
+              className="btn-secondary flex-1 disabled:opacity-40"
+            >
+              {fakturPending ? "Menyiapkan..." : "Faktur PDF"}
+            </button>
+          )}
           <button type="button" onClick={onClose} className="btn-primary flex-1">Tutup</button>
         </div>
       </div>

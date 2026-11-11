@@ -113,7 +113,8 @@ kebijakan operasional (`GET/PUT /api/settings/operational-policy`), periode fisk
 (`/api/fiscal-periods`), umur piutang/hutang + rekonsiliasi (`/api/reports/ar-ap/*`),
 analitik kesehatan & rasio (`/api/analytics/*`), backup database
 (`GET/POST /api/backup`, `GET /api/backup/list`, `GET /api/backup/download`, `POST /api/backup/restore`),
-cabang (`GET/POST /api/branches`), dan persetujuan transaksi
+cabang (`GET/POST /api/branches`), faktur PDF penjualan (`GET /api/sales/{id}/pdf`),
+dan persetujuan transaksi
 (`GET /api/transactions?status=SUBMITTED`, `POST /api/transactions/{id}/approve`,
 `POST /api/cash-batches/{batchId}/post`).
 
