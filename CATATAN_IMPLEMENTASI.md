@@ -138,7 +138,7 @@ Hanya dua store yang persist:
 | 10 | Mock memakai `number` JS, bukan `decimal` | Pembulatan bisa berbeda dari engine |
 | 11 | Pemilik boleh menyetujui transaksinya sendiri bila **tanpa** rule | Ada audit `APPROVAL_BYPASS` — disengaja, tapi perlu disadari |
 | 12 | `BackupRestoreApiTests` kadang gagal saat suite penuh | SQLite locking saat paralel; lulus saat dijalankan sendiri |
-| 13 | Retur penjualan yang ditahan approval belum masuk `/persetujuan` | `SALE_RETURN` belum dipetakan di `livePersetujuanList`/`liveSetujuiBatch`; retur pembelian sudah |
+| 13 | Retur penjualan yang ditahan approval belum masuk `/persetujuan` | Diperbaiki: `SALE_RETURN` + `PURCHASE_RETURN` sudah diproses di /persetujuan |
 
 ## Fitur Engine yang Belum Dipakai POS
 
@@ -200,8 +200,8 @@ post batch → penjualan ter-post. Test pertama sudah dibuktikan menangkap bug.
 
 ## Next Steps
 
-1. Retur penjualan yang ditahan approval: petakan `SALE_RETURN` ke `/persetujuan` (butuh
-   lookup id dokumen per transaksi, seperti `GET /api/purchase-returns/by-transaction/{id}`).
+1. Konfirmasi QRIS dan pelunasan piutang di Riwayat (tombol **Konfirmasi**, owner) sudah
+   berfungsi.
 2. Nilai persediaan dari HPP per gudang (butuh endpoint harga rata-rata di engine).
 3. Dukungan pembayaran campuran + kembalian di engine (batch kas menerima satu akun kas).
 4. Diskon sebagai field tersendiri di dokumen penjualan engine.

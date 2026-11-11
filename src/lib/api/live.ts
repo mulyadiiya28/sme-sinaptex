@@ -2354,8 +2354,8 @@ const TIPE_BATCH_KAS = new Set([
   "PURCHASE",
   "CUSTOMER_PAYMENT",
   "SUPPLIER_PAYMENT",
-  // Retur tidak punya cash batch, tapi tetap ditahan aturan persetujuan.
   "PURCHASE_RETURN",
+  "SALE_RETURN",
 ]);
 
 export async function livePersetujuanList(): Promise<PersetujuanBatch[]> {
@@ -2368,7 +2368,9 @@ export async function livePersetujuanList(): Promise<PersetujuanBatch[]> {
   const namaPengguna = new Map(pengguna.map((u) => [u.id, u.fullName ?? u.username]));
 
   const relevan = rows.filter((r) =>
-    r.transactionType === "CASH_TRANSFER" || r.transactionType === "PURCHASE_RETURN"
+    r.transactionType === "CASH_TRANSFER" ||
+    r.transactionType === "PURCHASE_RETURN" ||
+    r.transactionType === "SALE_RETURN"
       ? true
       : Boolean(r.batchId) && TIPE_BATCH_KAS.has(r.transactionType),
   );
@@ -2445,6 +2447,19 @@ export async function liveSetujuiBatch(batch: PersetujuanBatch): Promise<void> {
       `/api/purchase-returns/by-transaction/${returPembelian.id}`,
     );
     await minta(`/api/purchase-returns/${dokumen.id}/post`, {
+      method: "POST",
+      idempotensiKunci: buatKunciIdempotensi(),
+    });
+    return;
+  }
+
+  const returPenjualan = batch.transaksi.find((t) => t.tipe === "SALE_RETURN");
+  if (returPenjualan) {
+    // Sama seperti retur pembelian: lookup dokumen lewat transaksi.
+    const dokumen = await minta<{ id: string }>(
+      `/api/sale-returns/by-transaction/${returPenjualan.id}`,
+    );
+    await minta(`/api/sale-returns/${dokumen.id}/post`, {
       method: "POST",
       idempotensiKunci: buatKunciIdempotensi(),
     });
