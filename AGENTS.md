@@ -157,7 +157,7 @@ Perilaku live yang menyimpang dari mock:
   POS jatuh ke retur penuh (`liveRetur`).
 - `liveBuatUser`/`liveUbahUser` memakai `authorityLevel` engine (99 = pemilik, 2 = kasir); peran POS
   dipetakan ke level itu, jadi pemilik bisa dibuat dan peran bisa diubah dari Pengaturan.
-- `liveTransaksiRiwayat` kehilangan `diskon` (0) dan `kembalian` (0). `kasir` dibaca dari
+- `liveTransaksiRiwayat` kehilangan `kembalian` (0); `diskon` baris dibaca dari `discountAmount` engine, sedangkan diskon header selalu 0 (disebar ke baris saat checkout). `kasir` dibaca dari
   `requestedByName` yang sudah di-resolve engine (nama, bukan GUID), `shiftId` dari deskripsi batch
   yang ditulis POS. `piutang` diambil dari
   `GET /api/reports/ar-ap/aging?side=RECEIVABLE` (`outstandingAmount` per `invoiceNumber`), karena
@@ -175,8 +175,9 @@ Perilaku live yang menyimpang dari mock:
   `footerStruk`, `pajakPersen`) tetap di localStorage (`useToko`).
 - Impor produk live bersifat all-or-nothing (satu baris ditolak = tidak ada yang ditulis), hanya
   menerima `satuan` yang sudah ada di master unit engine, dan tidak mengimpor stok awal.
-- Diskon POS + diskon per baris dilebur ke `unitPrice` (sisa pembulatan ke baris terakhir), karena
-  dokumen penjualan engine tidak punya field diskon.
+- Diskon per baris dikirim sebagai `discountAmount` (harga katalog tetap) dan diskon transaksi
+  disebar proporsional ke baris (sisa pembulatan ke baris terakhir), karena dokumen penjualan
+  engine menyimpan diskon per baris, bukan diskon header.
 - `liveBiayaCatat` membebankan akun `NEXT_PUBLIC_ENGINE_BIAYA` (default `6900`); tunai memakai akun kas
   default, transfer memakai akun kas ber-kode `1111`. Akun non-EXPENSE/non-postable ditolak engine (400).
 - Shift menyimpan **user pembuka** (`cashierUserId`) selain namanya. POS memakai `shift.cashierUserId`
@@ -317,7 +318,8 @@ Batasan yang masih ada:
 
 - Live: pembayaran campuran + overpayment (kembalian) ditolak engine; QRIS + transfer juga tidak bisa
   digabung (satu akun kas per batch).
-- Live: diskon dilebur ke `unitPrice`, jadi riwayat/struk live tidak menampilkan diskon.
+- Live: diskon transaksi disebar ke baris, jadi riwayat/struk live menampilkan diskon per baris
+  (tidak ada baris `diskonTransaksi` terpisah).
 - Live: master pemasok bisa dibuat & dinonaktifkan, tapi kode/nama tidak bisa diubah (engine sengaja
   `init`-only). Faktur lama tanpa `supplierId` (sebelum master dipakai) dikelompokkan lewat namanya.
 - Live: satu shift aktif per tenant (bukan per kasir) — POS menandai "shift dibuka oleh X" kalau
@@ -388,7 +390,7 @@ tools/             bootstrap-backend.py
 ### Gotcha Mode Live
 - Engine pakai **id** dokumen; POS simpan nomor → terjemahkan dulu (`cariPenjualanByNomor`)
 - Engine tolak campuran & overpayment; `kembalian`=0; bayar 0 (kredit penuh) **diizinkan**
-- Diskon dilebur ke `unitPrice` → riwayat/struk live tanpa diskon
+- Diskon transaksi disebar ke baris → riwayat/struk live menampilkan diskon per baris
 - `piutang` dari aging `side=RECEIVABLE`; `terbayar` pembelian dari `side=PAYABLE` (bukan `payableAmount`)
 - Void 409 (POSTED) → fallback retur penuh
 - Master pemasok: list/create/nonaktifkan saja; list pakai `?includeInactive=true`
@@ -402,7 +404,7 @@ tools/             bootstrap-backend.py
 
 ### Verifikasi
 - Frontend: `npx tsc --noEmit` bersih + `npm run build` sukses (16 halaman statis)
-- Backend: `dotnet build` 0 warning + `dotnet test` 485 unit + 748 integration lulus
+- Backend: `dotnet build` 0 warning + `dotnet test` 490 unit + 749 integration lulus
 - Mock: alur manual `/kasir` (buka shift → checkout → riwayat → tutup shift)
 
 ## Docs

@@ -111,8 +111,8 @@ Hanya dua store yang persist:
 ### 3. Data yang disembunyikan di live karena engine tidak menyimpannya
 - **Aset tetap** — `lokasi`, `akunAset`, `akunPenyusutan`, `akunBebanPenyusutan`, `catatan`.
   Kolom dan field form disembunyikan saat live; "hapus" berarti menonaktifkan.
-- **Diskon** — POS + diskon per baris dilebur ke `unitPrice` → riwayat & struk live
-  **tidak menampilkan diskon**.
+- **Diskon header** — engine hanya menyimpan diskon per baris; POS menyebar diskon transaksi
+  ke baris saat checkout, jadi riwayat/struk live menampilkan diskon per baris.
 - **Kembalian** — selalu 0 (engine menolak overpayment).
 - **Piutang** — tidak disimpan di dokumen penjualan → POS ambil ulang dari AR ageing.
 
@@ -131,7 +131,7 @@ Hanya dua store yang persist:
 | 1 | Pembayaran campuran (tunai + non-tunai) ditolak engine | Kasir harus memilih satu metode per batch |
 | 2 | Overpayment / kembalian ditolak engine | `kembalian` selalu 0 di live |
 | 3 | QRIS belum jadi konsep penuh di engine | Diperbaiki: checkout menahan dana di akun gateway `1130`; konfirmasi = transfer gateway→bank bertanda `[QRIS <nomor>]`; status "menunggu konfirmasi" dibaca dari movement gateway |
-| 4 | Diskon hilang di live | Struk & riwayat live tidak punya diskon |
+| 4 | Diskon hilang di live | Diperbaiki: engine menyimpan `SaleItems.DiscountAmount`; POS mengirim diskon per baris dan menyebar diskon transaksi ke baris |
 | 5 | Nilai persediaan live memakai harga beli master | Diperbaiki: POS membaca `GET /api/inventory/stock-valuation` (HPP per gudang) |
 | 6 | Master pemasok tidak bisa diubah kode/nama | Engine `init`-only demi integritas faktur lama |
 | 7 | Satu shift aktif per tenant (bukan per kasir) | POS menampilkan peringatan "shift dibuka oleh X" |
@@ -172,7 +172,7 @@ npm run build             # 16 halaman statis + manifest, export ke out/
 
 # Backend (workdir backend)
 dotnet build AccountingEngine.slnx   # 0 warning, 0 error
-dotnet test AccountingEngine.slnx    # 485 unit + 748 integration = 1233 PASSED
+dotnet test AccountingEngine.slnx    # 490 unit + 749 integration = 1239 PASSED
 ```
 
 **Test baru retur pembelian:** `PurchaseReturnsApiTests` (repo engine) bertambah 2 test — ...
@@ -218,7 +218,7 @@ post batch → penjualan ter-post. Test pertama sudah dibuktikan menangkap bug.
 2. **Nilai persediaan sudah memakai HPP engine** (`GET /api/inventory/stock-valuation`);
    sisa gap persediaan hanya endpoint yang belum ada (mis. master satuan konversi).
 3. Dukungan pembayaran campuran + kembalian di engine (batch kas menerima satu akun kas).
-4. Diskon sebagai field tersendiri di dokumen penjualan engine.
+4. ~~Diskon sebagai field tersendiri di dokumen penjualan engine.~~ Selesai (SaleItems.DiscountAmount).
 5. Pencatatan per cabang: POS perlu mengirim `X-Branch-Id` dan gudang POS harus
    terikat ke cabang tujuan (engine menolak stok dari gudang cabang lain).
 6. UI backup/restore dan manajemen cabang.

@@ -429,7 +429,13 @@ type BtPelanggan = {
   phone: string | null;
   isActive: boolean;
 };
-type BtItem = { productId: string; quantity: number; unitPrice: number; lineTotal: number };
+type BtItem = {
+  productId: string;
+  quantity: number;
+  unitPrice: number;
+  discountAmount?: number;
+  lineTotal: number;
+};
 type BtDetailPenjualan = {
   id: string;
   items: {
@@ -1018,8 +1024,10 @@ function petakanPenjualan(
       nama: namaProduk.get(item.productId) ?? item.productId,
       qty: item.quantity,
       hargaJual: item.unitPrice,
-      diskon: 0,
+      diskon: item.discountAmount ?? 0,
     })),
+    // Diskon header tidak disimpan engine: POS menyebarnya ke tiap baris saat
+    // checkout, jadi potongannya sudah terlihat sebagai diskon baris.
     diskonTransaksi: 0,
     pajak: sale.taxAmount,
     total: sale.totalAmount,
@@ -1495,37 +1503,45 @@ function bulat2(nilai: number): number {
 }
 
 /**
- * Engine tidak punya field diskon pada dokumen penjualan — yang boleh dictate
- * total adalah `unitPrice` per baris. Jadi diskon POS (per baris maupun diskon
- * transaksi) dipotong di harga: harga yang dikirim = harga bersih, dan total
- * dokumen engine jadi sama dengan total yang dilihat kasir.
+ * Engine menyimpan diskon per baris (`discountAmount`), bukan diskon header.
+ * Jadi harga tetap harga katalog dan potongan per baris dikirim apa adanya;
+ * diskon transaksi disebar proporsional ke baris supaya total dokumen engine
+ * sama dengan total yang dilihat kasir.
  */
 function barisHargaBersih(payload: CheckoutPayload): {
   productId: string;
   qty: number;
   unitPrice: number;
+  discountAmount: number;
 }[] {
-  const bersihPerBaris = payload.lines.map((l) => ({
+  const baris = payload.lines.map((l) => ({
     productId: l.product.id,
     qty: l.qty,
-    harga: bulat2(Math.max(0, l.product.hargaJual * l.qty - l.diskon)),
+    unitPrice: Math.max(0, l.product.hargaJual),
+    bruto: bulat2(Math.max(0, l.product.hargaJual * l.qty)),
+    diskonBaris: Math.max(0, bulat2(l.diskon)),
   }));
-  const totalBaris = bersihPerBaris.reduce((s, b) => s + b.harga, 0);
-  const target = bulat2(Math.max(0, totalBaris - payload.diskonTransaksi));
 
-  const hasil: { productId: string; qty: number; unitPrice: number }[] = [];
-  let sisa = target;
+  const targetSebar = Math.max(0, bulat2(payload.diskonTransaksi));
+  const dasarSebar = baris.reduce((s, b) => s + Math.max(0, b.bruto - b.diskonBaris), 0);
+  let sisaSebar = targetSebar;
 
-  bersihPerBaris.forEach((baris, index) => {
-    const terakhir = index === bersihPerBaris.length - 1;
-    const proporsi = totalBaris > 0 ? baris.harga / totalBaris : 0;
-    const jumlahBaris = terakhir ? sisa : Math.min(bulat2(target * proporsi), sisa);
-    const unitPrice = baris.qty > 0 ? bulat2(jumlahBaris / baris.qty) : 0;
-    hasil.push({ productId: baris.productId, qty: baris.qty, unitPrice });
-    sisa = bulat2(sisa - bulat2(unitPrice * baris.qty));
+  return baris.map((b, index) => {
+    const terakhir = index === baris.length - 1;
+    const penuh = dasarSebar > 0 ? (b.bruto - b.diskonBaris) / dasarSebar : 0;
+    const porsi = terakhir
+      ? sisaSebar
+      : Math.min(bulat2(targetSebar * penuh), sisaSebar);
+
+    sisaSebar = bulat2(sisaSebar - porsi);
+
+    return {
+      productId: b.productId,
+      qty: b.qty,
+      unitPrice: b.unitPrice,
+      discountAmount: Math.min(b.bruto, bulat2(b.diskonBaris + porsi)),
+    };
   });
-
-  return hasil;
 }
 
 export async function liveCheckout(payload: CheckoutPayload): Promise<CheckoutResult> {
@@ -1596,6 +1612,7 @@ export async function liveCheckout(payload: CheckoutPayload): Promise<CheckoutRe
         warehouseId: gudang,
         quantity: baris.qty,
         unitPrice: baris.unitPrice,
+        discountAmount: baris.discountAmount,
       })),
     },
   });
