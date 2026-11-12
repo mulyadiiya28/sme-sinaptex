@@ -77,8 +77,11 @@ export function ProductFormDialog({
     if (!parsed.success) {
       const fieldErrors: Partial<Record<keyof FormValues, string>> = {};
       for (const issue of parsed.error.issues) {
-        const key = issue.path[0] as keyof FormValues;
-        if (!fieldErrors[key]) fieldErrors[key] = issue.message;
+        const field = issue.path[0];
+        if (typeof field === 'string') {
+          const key = field as keyof FormValues;
+          if (!fieldErrors[key]) fieldErrors[key] = issue.message;
+        }
       }
       setErrors(fieldErrors);
       return;

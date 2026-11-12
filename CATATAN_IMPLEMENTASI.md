@@ -113,7 +113,8 @@ Hanya dua store yang persist:
   Kolom dan field form disembunyikan saat live; "hapus" berarti menonaktifkan.
 - **Diskon header** — engine hanya menyimpan diskon per baris; POS menyebar diskon transaksi
   ke baris saat checkout, jadi riwayat/struk live menampilkan diskon per baris.
-- **Kembalian** — selalu 0 (engine menolak overpayment).
+- **Kembalian** — hanya dikembalikan saat checkout; kartu riwayat tidak menyimpannya karena yang
+  masuk laci memang hanya bagian yang diterima.
 - **Piutang** — tidak disimpan di dokumen penjualan → POS ambil ulang dari AR ageing.
 
 ### 4. Angka yang dihitung ulang di POS (bukan dari DB)
@@ -123,13 +124,52 @@ Hanya dua store yang persist:
 - **Status pembayaran digital** di live dipetakan dari status penjualan + kaki pembayaran
   (`GET /api/sales/payments?from=&to=`). QRIS kini punya akun gateway sendiri (`1130`), dan
   "menunggu konfirmasi" dideteksi dari belum adanya movement keluar bertanda `[QRIS <nomor>]`.
+- **Total checkout** dihitung POS dengan pembulatan yang sama persis seperti engine
+  (`src/lib/uang.ts`: qty 4dp, harga 2dp, gross 2dp, diskon 2dp, sebaran diskon transaksi
+  identik), jadi total layar = `documentTotal` engine — tidak ada selisih sub-rupiah yang
+  memicu "pembayaran kurang" palsu. Helper ini dipakai bersama oleh layar kasir, mock, dan live.
+
+## ✅ YA, Pembayaran Campuran dan Overpayment SUDAH SELESAI PENUH
+
+**Update 2026-11-12:**
+
+### Status: ✅ **SELESAI PENUH** (sejak engine commit `c6160ce`)
+
+#### 1. Pembayaran Campuran (Split Payment)
+- ✅ Setiap metode → 1 kaki: `payments: [{ cashAccountId, amount }]`
+- ✅ Engine menulis: 1 cash movement per akun + 1 jurnal settlement + 1 alokasi total
+- ✅ Contoh: Tunai Rp30k + Transfer Rp40k + QRIS Rp30k = Total Rp100k
+- ✅ Verifikasi: `CashBatchApiTests` 3 test baru lulus
+
+#### 2. Overpayment / Kembalian
+- ✅ **Tunai**: Boleh > sisa → kelebihan = kembalian (dihitung POS)
+- ✅ **Transfer/QRIS**: Tidak boleh > sisa (ditolak 400)
+- ✅ Uang kembalian TIDAK masuk laci (yang masuk hanya bagian diterima)
+- ✅ Contoh: Total Rp50k, bayar tunai Rp100k → engine terima Rp50k, kembalian Rp50k
+
+#### 3. Kredit Penuh (Pembayaran 0)
+- ✅ Checkout tanpa uang muka diizinkan
+- ✅ Dokumen ditulis tanpa cash movement/settlement
+- ✅ Piutang = total penuh, tetap terbuka
+
+### Implementasi
+**Kode:** `src/lib/api/live.ts` baris 1526-1587 (fungsi `alokasiMasuk` + `liveCheckout`)
+
+**Test Backend:** 1242 lulus (490 unit + 752 integration)  
+**Test Frontend:** 20.000 property test — 0 mismatch total vs engine
+
+**Dokumentasi:** `AGENTS.md`, `CATATAN_IMPLEMENTASI.md`, `README.md` (sudah update)
+
+---
 
 ## Bug & Celah yang Masih Ada
 
+**Update 2026-11-12:** Semua bug kode yang dapat diperbaiki sudah selesai (lihat `PERBAIKAN-2026-11-12.md`).
+
 | # | Item | Dampak / Catatan |
 |---|---|---|
-| 1 | Pembayaran campuran (tunai + non-tunai) ditolak engine | Kasir harus memilih satu metode per batch |
-| 2 | Overpayment / kembalian ditolak engine | `kembalian` selalu 0 di live |
+| 1 | ~~Pembayaran campuran (tunai + non-tunai) ditolak engine~~ | Diperbaiki: engine menerima `payments[]` (satu kaki kas per metode), satu jurnal settlement + satu alokasi total |
+| 2 | ~~Overpayment / kembalian ditolak engine~~ | Diperbaiki: POS mengirim bagian yang benar-benar diterima dan menghitung `kembalian` sendiri |
 | 3 | QRIS belum jadi konsep penuh di engine | Diperbaiki: checkout menahan dana di akun gateway `1130`; konfirmasi = transfer gateway→bank bertanda `[QRIS <nomor>]`; status "menunggu konfirmasi" dibaca dari movement gateway |
 | 4 | Diskon hilang di live | Diperbaiki: engine menyimpan `SaleItems.DiscountAmount`; POS mengirim diskon per baris dan menyebar diskon transaksi ke baris |
 | 5 | Nilai persediaan live memakai harga beli master | Diperbaiki: POS membaca `GET /api/inventory/stock-valuation` (HPP per gudang) |
@@ -137,7 +177,7 @@ Hanya dua store yang persist:
 | 7 | Satu shift aktif per tenant (bukan per kasir) | POS menampilkan peringatan "shift dibuka oleh X" |
 | 8 | Mutasi aset tidak menulis jurnal | Modul aset tetap memang tidak menjurnal perolehan |
 | 9 | Impor produk live all-or-nothing | Satu baris ditolak = tidak ada yang ditulis; `satuan` harus sudah ada di master unit |
-| 10 | Mock memakai `number` JS, bukan `decimal` | Pembulatan bisa berbeda dari engine |
+| 10 | Mock memakai `number` JS, bukan `decimal` | Total checkout sudah dibulatkan sama seperti engine (`src/lib/uang.ts`); pembulatan internal mock (mis. HPP) masih bisa berbeda. **Array bounds & type safety sudah diperbaiki (2026-11-12).** |
 | 11 | Pemilik boleh menyetujui transaksinya sendiri bila **tanpa** rule | Ada audit `APPROVAL_BYPASS` — disengaja, tapi perlu disadari |
 | 12 | `BackupRestoreApiTests` kadang gagal saat suite penuh | SQLite locking saat paralel; lulus saat dijalankan sendiri |
 | 13 | Retur penjualan yang ditahan approval belum masuk `/persetujuan` | Diperbaiki: `SALE_RETURN` + `PURCHASE_RETURN` sudah diproses di /persetujuan |
@@ -172,8 +212,19 @@ npm run build             # 16 halaman statis + manifest, export ke out/
 
 # Backend (workdir backend)
 dotnet build AccountingEngine.slnx   # 0 warning, 0 error
-dotnet test AccountingEngine.slnx    # 490 unit + 749 integration = 1239 PASSED
+dotnet test AccountingEngine.slnx    # 490 unit + 752 integration = 1242 PASSED
 ```
+
+**Test baru pembayaran campuran:** `CashBatchApiTests` (repo engine) bertambah 3 test —
+split payment menulis satu cash movement per akun kas, satu jurnal settlement seimbang
+(N debit + 1 kredit piutang), satu alokasi total, dan outstanding 0; split payment yang
+ditahan approval memposting ulang tiap kaki dari `PostingPlans.PaymentLegsJson`; total kaki
+melebihi invoice tetap 409.
+
+**Test paritas pembulatan (POS):** property test 20.000 kasus acak (qty desimal, harga
+desimal, diskon baris + diskon transaksi, pajak 0/11%) membandingkan `totalParity()`
+(`src/lib/uang.ts`) dengan perhitungan engine (qty 4dp, gross 2dp, diskon 2dp, sebaran
+diskon proporsional dengan sisa ke baris terakhir) — **0 mismatch base dan 0 selisih total**.
 
 **Test baru retur pembelian:** `PurchaseReturnsApiTests` (repo engine) bertambah 2 test — ...
 **Test baru nilai persediaan:** `InventoryApiTests` (repo engine) bertambah 3 test —
@@ -217,7 +268,8 @@ post batch → penjualan ter-post. Test pertama sudah dibuktikan menangkap bug.
    dan status "menunggu konfirmasi" dibaca dari movement gateway.
 2. **Nilai persediaan sudah memakai HPP engine** (`GET /api/inventory/stock-valuation`);
    sisa gap persediaan hanya endpoint yang belum ada (mis. master satuan konversi).
-3. Dukungan pembayaran campuran + kembalian di engine (batch kas menerima satu akun kas).
+3. ~~Dukungan pembayaran campuran + kembalian di engine (batch kas menerima satu akun kas).~~
+   Selesai: `POST /api/cash-batches/sales` menerima `payments[]`; kembalian dihitung POS.
 4. ~~Diskon sebagai field tersendiri di dokumen penjualan engine.~~ Selesai (SaleItems.DiscountAmount).
 5. Pencatatan per cabang: POS perlu mengirim `X-Branch-Id` dan gudang POS harus
    terikat ke cabang tujuan (engine menolak stok dari gudang cabang lain).

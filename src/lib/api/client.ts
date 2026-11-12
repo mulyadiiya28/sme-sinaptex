@@ -196,18 +196,16 @@ import {
   liveApTurnover,
 } from "@/lib/api/live";
 
-export const API_MODE = process.env.NEXT_PUBLIC_API_MODE ?? "mock";
+import { totalParity } from "@/lib/uang";
 
 const delay = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+export const API_MODE = process.env.NEXT_PUBLIC_API_MODE ?? "mock";
 
 let nomorBerikut = 25;
 
 export function hitungTotal(payload: Pick<CheckoutPayload, "lines" | "diskonTransaksi" | "pajak">): number {
-  const subtotal = payload.lines.reduce(
-    (sum, l) => sum + Math.max(0, l.product.hargaJual * l.qty - l.diskon),
-    0,
-  );
-  return Math.max(0, subtotal - payload.diskonTransaksi + payload.pajak);
+  return totalParity(payload).total;
 }
 
 function keHasilImpor(hasil: ImportResult): HasilImpor {

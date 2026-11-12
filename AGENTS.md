@@ -139,9 +139,14 @@ persediaan (`GET /api/inventory/stock-valuation?warehouseId=` — nilai dari har
 
 Perilaku live yang menyimpang dari mock:
 
-- `liveCheckout` menolak pembayaran campuran (tunai + non-tunai) dan overpayment; `kembalian` selalu 0.
+- `liveCheckout` mendukung **pembayaran campuran**: tiap metode dikirim sebagai satu kaki
+  (`payments: [{ cashAccountId, amount }]`) dan engine menulis satu kas movement per akun, satu jurnal
+  settlement (N debit + 1 kredit piutang), satu alokasi total. **Kembalian dihitung POS**, bukan engine:
+  POS mengirim bagian yang benar-benar diterima (tunai di-clamp ke sisa, kelebihannya jadi `kembalian`),
+  jadi uang kembalian tidak pernah masuk laci. Transfer/QRIS tetap tidak boleh melebihi sisa.
   Pembayaran 0 (kredit penuh tanpa uang muka) **diizinkan** sejak engine commit `c6160ce`: dokumen
   ditulis tanpa cash movement/settlement/allocation, piutang tetap terbuka.
+- **Pembulatan uang selaras engine**: POS menghitung total dengan pembulatan per-baris (qty 4dp, harga 2dp, gross 2dp, diskon 2dp) dan sebaran diskon transaksi yang sama persis seperti engine, sehingga total di layar kasir **sama persis** dengan `documentTotal` engine — tidak ada lagi selisih sub-rupiah yang menyebabkan "pembayaran kurang" palsu.
 - `livePembelianBuat` mendukung `metode: "hutang"` (pembelian 100% hutang) sejak engine commit
   `c6160ce`: dokumen ditulis tanpa cash account, hutang tetap terbuka. Pembelian DP sebagian juga didukung.
   Faktur **tunai/bank** boleh tanpa pemasok (`supplierId` null) untuk pembelian pasar; faktur **hutang**
@@ -157,7 +162,8 @@ Perilaku live yang menyimpang dari mock:
   POS jatuh ke retur penuh (`liveRetur`).
 - `liveBuatUser`/`liveUbahUser` memakai `authorityLevel` engine (99 = pemilik, 2 = kasir); peran POS
   dipetakan ke level itu, jadi pemilik bisa dibuat dan peran bisa diubah dari Pengaturan.
-- `liveTransaksiRiwayat` kehilangan `kembalian` (0); `diskon` baris dibaca dari `discountAmount` engine, sedangkan diskon header selalu 0 (disebar ke baris saat checkout). `kasir` dibaca dari
+- `liveTransaksiRiwayat` kehilangan `kembalian` (0) — kembalian hanya dikembalikan saat checkout;
+  `diskon` baris dibaca dari `discountAmount` engine, sedangkan diskon header selalu 0 (disebar ke baris saat checkout). `kasir` dibaca dari
   `requestedByName` yang sudah di-resolve engine (nama, bukan GUID), `shiftId` dari deskripsi batch
   yang ditulis POS. `piutang` diambil dari
   `GET /api/reports/ar-ap/aging?side=RECEIVABLE` (`outstandingAmount` per `invoiceNumber`), karena
@@ -227,8 +233,8 @@ Perilaku live yang menyimpang dari mock:
   (satu permintaan, bukan satu per baris). QRIS dianggap belum dikonfirmasi selama belum ada movement
   keluar bertanda `[QRIS <nomor>]` di akun gateway (`GET /api/cash-accounts/{id}/movements`); kaki
   gateway yang belum dikonfirmasi dilaporkan berstatus `MENUNGGU_KONFIRMASI` supaya tombol Konfirmasi
-  tetap tampil. `liveCheckout` menolak campuran QRIS + transfer karena engine hanya menerima satu akun
-  kas per batch.
+  tetap tampil. Pembayaran campuran QRIS + transfer boleh berbagi batch: tiap metode jadi kaki sendiri,
+  dan konfirmasi QRIS hanya memindahkan kaki gateway-nya.
 
 ## Conventions
 
@@ -316,8 +322,8 @@ retur proporsional, dan penghapusan `src/lib/api/calc.ts`.
 
 Batasan yang masih ada:
 
-- Live: pembayaran campuran + overpayment (kembalian) ditolak engine; QRIS + transfer juga tidak bisa
-  digabung (satu akun kas per batch).
+- Live: `kembalian` hanya dikembalikan saat checkout; kartu riwayat tidak menyimpannya (engine tidak
+  mencatat uang kembalian, karena yang masuk laci memang hanya bagian yang diterima).
 - Live: diskon transaksi disebar ke baris, jadi riwayat/struk live menampilkan diskon per baris
   (tidak ada baris `diskonTransaksi` terpisah).
 - Live: master pemasok bisa dibuat & dinonaktifkan, tapi kode/nama tidak bisa diubah (engine sengaja
@@ -389,7 +395,9 @@ tools/             bootstrap-backend.py
 
 ### Gotcha Mode Live
 - Engine pakai **id** dokumen; POS simpan nomor → terjemahkan dulu (`cariPenjualanByNomor`)
-- Engine tolak campuran & overpayment; `kembalian`=0; bayar 0 (kredit penuh) **diizinkan**
+- Campuran dikirim sebagai `payments[]` (satu kaki per akun kas); kembalian dihitung POS, bukan engine;
+  bayar 0 (kredit penuh) **diizinkan**
+- **Total checkout selaras engine**: pembulatan per-baris (qty 4dp, harga 2dp, gross 2dp, diskon 2dp) + sebaran diskon transaksi yang identik → total layar = `documentTotal` engine persis.
 - Diskon transaksi disebar ke baris → riwayat/struk live menampilkan diskon per baris
 - `piutang` dari aging `side=RECEIVABLE`; `terbayar` pembelian dari `side=PAYABLE` (bukan `payableAmount`)
 - Void 409 (POSTED) → fallback retur penuh
@@ -404,7 +412,7 @@ tools/             bootstrap-backend.py
 
 ### Verifikasi
 - Frontend: `npx tsc --noEmit` bersih + `npm run build` sukses (16 halaman statis)
-- Backend: `dotnet build` 0 warning + `dotnet test` 490 unit + 749 integration lulus
+- Backend: `dotnet build` 0 warning + `dotnet test` 490 unit + 752 integration lulus
 - Mock: alur manual `/kasir` (buka shift → checkout → riwayat → tutup shift)
 
 ## Docs

@@ -133,9 +133,11 @@ tools/bootstrap-backend.py
 ## Gotcha Mode Live
 
 - Engine pakai **id** dokumen; POS simpan nomor (`SALE-00001`) → terjemahkan dulu (`cariPenjualanByNomor`)
-- Engine tolak pembayaran campuran & overpayment; `kembalian` selalu 0; bayar 0 (kredit penuh) diizinkan
-- Diskon dilebur ke `unitPrice` → riwayat/struk live tanpa diskon
+- **Pembayaran campuran didukung penuh**: engine menerima `payments[]` (satu kaki per metode), menulis 1 cash movement per akun + 1 jurnal settlement + 1 alokasi total
+- **Kembalian dihitung POS**: tunai boleh > sisa (kelebihannya = kembalian), transfer/QRIS tidak boleh > sisa; engine hanya terima bagian yang diterima kasir
+- Bayar 0 (kredit penuh) **diizinkan**: dokumen ditulis tanpa cash movement, piutang tetap terbuka
 - `piutang` dari `/api/reports/ar-ap/aging?side=RECEIVABLE`; `terbayar` pembelian dari `side=PAYABLE` (jangan pakai `payableAmount` — itu bruto)
+- Diskon transaksi disebar ke baris → riwayat/struk live menampilkan diskon per baris (tidak ada baris `diskonTransaksi` terpisah)
 - Void engine 409 (POSTED) → POS fallback ke retur penuh
 - Master pemasok: list/create/nonaktifkan saja (tanpa update kode/nama); list pakai `?includeInactive=true`
 - Satu shift aktif per tenant (bukan per kasir)
@@ -157,7 +159,18 @@ tools/bootstrap-backend.py
 
 ## Dokumentasi
 
+**Teknis (Developer):**
 - `AGENTS.md` — **Aturan proyek lengkap** (sumber utama untuk agen/AI)
 - `DESIGN.md` — Token design system & utility yang benar-benar ada
 - `docs/rencana-desain-ui-ux.md` — Arsip historis: blueprint desain, kontrak endpoint usulan vs aktual, log perbaikan
 - `backend/README.md`, `backend/AGENTS.md`, `backend/knowledge.md` — Spesifikasi engine (repo terpisah)
+
+**User (Owner/Kasir):**
+- `docs/README-DOKUMENTASI.md` — **Panduan navigasi** (baca ini dulu!)
+- `docs/MANUAL-OWNER.md` — Manual lengkap owner (50 hal, tutorial detail)
+- `docs/MANUAL-KASIR.md` — Manual lengkap kasir (20 hal, tutorial sederhana)
+- `docs/QUICK-START-OWNER.md` — Cheat sheet owner (2 hal, cetak & tempel)
+- `docs/QUICK-START-KASIR.md` — Cheat sheet kasir (1 hal, cetak & tempel)
+- `docs/DEPLOYMENT-CHECKLIST.md` — Checklist deployment production (15 hal)
+
+**Total:** 105 halaman dokumentasi user + deployment ready 🚀

@@ -110,7 +110,7 @@ export function GlobalSearch() {
             setTerbuka(false);
             setCari("");
           }
-          if (e.key === "Enter" && hasil.length > 0) buka(hasil[0].href);
+          if (e.key === "Enter" && hasil.length > 0 && hasil[0]) buka(hasil[0].href);
         }}
         placeholder="Cari produk, transaksi, menu..."
         className="input pl-9"

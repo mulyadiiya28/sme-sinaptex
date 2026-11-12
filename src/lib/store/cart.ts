@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import type { CartLine, Product, PaymentAllocation, PaymentMethod } from "@/lib/api/types";
+import { totalParity, pajakNominal as pajakNominalUang } from "@/lib/uang";
 
 type CartState = {
   lines: CartLine[];
@@ -61,13 +62,14 @@ export const useCart = create<CartState>((set) => ({
 }));
 
 export function subtotalLines(lines: CartLine[]): number {
-  return lines.reduce((sum, l) => sum + Math.max(0, l.product.hargaJual * l.qty - l.diskon), 0);
+  return totalParity({ lines, diskonTransaksi: 0, pajak: 0 }).base;
 }
 
 export function totalTransaksi(lines: CartLine[], diskonTransaksi: number, pajakNominal = 0): number {
-  return Math.max(0, subtotalLines(lines) - diskonTransaksi) + pajakNominal;
+  return totalParity({ lines, diskonTransaksi, pajak: pajakNominal }).total;
 }
 
 export function pajakNominal(lines: CartLine[], diskonTransaksi: number, persen: number): number {
-  return Math.round(Math.max(0, subtotalLines(lines) - diskonTransaksi) * persen) / 100;
+  const base = totalParity({ lines, diskonTransaksi, pajak: 0 }).base;
+  return pajakNominalUang(base, persen);
 }

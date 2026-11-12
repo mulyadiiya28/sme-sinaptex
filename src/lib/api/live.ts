@@ -1,4 +1,5 @@
 import { useAuth } from "@/lib/store/auth";
+import { bulat2, totalParity } from "@/lib/uang";
 import type {
   AkunSaldo,
   AuditEntry,
@@ -330,7 +331,9 @@ export function bacaKlaim(accessToken: string): {
 } {
   const bagian = accessToken.split(".");
   if (bagian.length < 2) throw new LiveApiError("Token akses tidak valid.", 401);
-  const isi = bagian[1].replace(/-/g, "+").replace(/_/g, "/");
+  const payloadPart = bagian[1];
+  if (!payloadPart) throw new LiveApiError("Token akses tidak valid.", 401);
+  const isi = payloadPart.replace(/-/g, "+").replace(/_/g, "/");
   const json = JSON.parse(
     atob(isi.padEnd(isi.length + ((4 - (isi.length % 4)) % 4), "=")),
   ) as KlaimToken;
@@ -922,7 +925,10 @@ export async function liveKonfirmasiDigital(nomor: string): Promise<TransaksiRiw
     });
 
     const tertahan = transfer.approvalRequired === true;
-    const lunas = !tertahan && nominal >= sale.totalAmount;
+    // Kaki lain (tunai/transfer) sudah membayar bagiannya, jadi yang menentukan
+    // lunas adalah seluruh kaki pembayaran, bukan hanya kaki gateway.
+    const totalTerbayar = kaki.reduce((s, k) => s + k.amount, 0);
+    const lunas = !tertahan && totalTerbayar >= sale.totalAmount;
     status = tertahan ? "menunggu_persetujuan" : lunas ? "lunas" : "dibayar_sebagian";
     pembayaran = kaki.map((k) => ({
       metode: metodeDariAkun(k.cashAccountCode),
@@ -1357,6 +1363,8 @@ async function gudangDefault(): Promise<string> {
   const aktif = daftar.filter((g) => g.isActive);
   const pilihan = aktif.find((g) => g.isDefault) ?? aktif[0];
   if (pilihan) return pilihan.id;
+  
+  // Jika tidak ada gudang aktif, buat gudang default dulu
   const dibuat = await minta<BtGudang>("/api/warehouses", {
     method: "POST",
     body: { code: "GUDANG-UTAMA", name: "Gudang Utama", isDefault: true },
@@ -1474,114 +1482,87 @@ export async function liveTransferKasCreate(input: TransferKasInput, user: User)
   return petakanTransferKas(hasil, namaAkun);
 }
 
-function ringkasAlokasi(payload: CheckoutPayload): {
-  tunai: number;
-  transfer: number;
-  qris: number;
-  nontunai: number;
-  total: number;
-} {
-  const total = payload.lines.reduce(
-    (sum, l) => sum + Math.max(0, l.product.hargaJual * l.qty - l.diskon),
-    0,
-  );
-  const bersih = Math.max(0, total - payload.diskonTransaksi + payload.pajak);
-  const tunai = payload.allocations
-    .filter((a) => a.metode === "tunai")
-    .reduce((sum, a) => sum + a.nominal, 0);
-  const qris = payload.allocations
-    .filter((a) => a.metode === "qris")
-    .reduce((sum, a) => sum + a.nominal, 0);
-  const transfer = payload.allocations
-    .filter((a) => a.metode === "transfer")
-    .reduce((sum, a) => sum + a.nominal, 0);
-  return { tunai, transfer, qris, nontunai: transfer + qris, total: bersih };
-}
-
-function bulat2(nilai: number): number {
-  return Math.round(nilai * 100) / 100;
-}
-
 /**
- * Engine menyimpan diskon per baris (`discountAmount`), bukan diskon header.
- * Jadi harga tetap harga katalog dan potongan per baris dikirim apa adanya;
- * diskon transaksi disebar proporsional ke baris supaya total dokumen engine
- * sama dengan total yang dilihat kasir.
+ * Alokasi pembayaran kasir menjadi uang yang benar-benar masuk ke tiap akun,
+ * dengan aturan yang sama seperti mode mock: tunai boleh melebihi sisa (selisih
+ * jadi kembalian), transfer/QRIS tidak. Uang yang diserahkan tidak pernah
+ * melebihi total — yang dicatat adalah bagian yang diterima.
  */
-function barisHargaBersih(payload: CheckoutPayload): {
-  productId: string;
-  qty: number;
-  unitPrice: number;
-  discountAmount: number;
-}[] {
-  const baris = payload.lines.map((l) => ({
-    productId: l.product.id,
-    qty: l.qty,
-    unitPrice: Math.max(0, l.product.hargaJual),
-    bruto: bulat2(Math.max(0, l.product.hargaJual * l.qty)),
-    diskonBaris: Math.max(0, bulat2(l.diskon)),
-  }));
+function alokasiMasuk(payload: CheckoutPayload, total: number): {
+  perMetode: Map<PaymentMethod, number>;
+  kembalian: number;
+  sisa: number;
+} {
+  let belum = total;
+  let kembalian = 0;
+  const perMetode = new Map<PaymentMethod, number>();
 
-  const targetSebar = Math.max(0, bulat2(payload.diskonTransaksi));
-  const dasarSebar = baris.reduce((s, b) => s + Math.max(0, b.bruto - b.diskonBaris), 0);
-  let sisaSebar = targetSebar;
+  for (const a of payload.allocations) {
+    if (belum <= 0) break;
+    const nominal = Math.max(0, a.nominal);
+    if (a.metode !== "tunai" && nominal > belum + 0.01) {
+      throw new LiveApiError(
+        "Pembayaran digital tidak boleh melebihi sisa pembayaran.",
+        400,
+      );
+    }
+    const masuk = bulat2(Math.min(nominal, belum));
+    if (masuk <= 0) continue;
+    if (a.metode === "tunai") kembalian = bulat2(kembalian + Math.max(0, nominal - masuk));
+    perMetode.set(a.metode, bulat2((perMetode.get(a.metode) ?? 0) + masuk));
+    belum = bulat2(belum - masuk);
+  }
 
-  return baris.map((b, index) => {
-    const terakhir = index === baris.length - 1;
-    const penuh = dasarSebar > 0 ? (b.bruto - b.diskonBaris) / dasarSebar : 0;
-    const porsi = terakhir
-      ? sisaSebar
-      : Math.min(bulat2(targetSebar * penuh), sisaSebar);
-
-    sisaSebar = bulat2(sisaSebar - porsi);
-
-    return {
-      productId: b.productId,
-      qty: b.qty,
-      unitPrice: b.unitPrice,
-      discountAmount: Math.min(b.bruto, bulat2(b.diskonBaris + porsi)),
-    };
-  });
+  return { perMetode, kembalian, sisa: Math.max(0, belum) };
 }
 
 export async function liveCheckout(payload: CheckoutPayload): Promise<CheckoutResult> {
   const gudang = await gudangDefault();
-  const ringkasan = ringkasAlokasi(payload);
-  const dibayar = ringkasan.tunai + ringkasan.nontunai;
+  const { total, baris, diskonPerBaris } = totalParity(payload);
 
-  if (dibayar > ringkasan.total) {
+  // Total yang dibayar kasir adalah total yang akan dibukukan engine, jadi
+  // sisa pembayaran tidak pernah menyisakan selisih pembulatan.
+  const alokasi = alokasiMasuk(payload, total);
+
+  // Sisa yang tidak dibayar hanya boleh jadi piutang bila kasir menandainya.
+  if (alokasi.sisa > 0 && !payload.gunakanPiutang) {
     throw new LiveApiError(
-      "Engine C# menolak pembayaran melebihi total (kembalian belum didukung batch penjualan).",
+      "Pembayaran kurang dan penjualan kredit tidak diizinkan.",
       400,
     );
   }
-  if (ringkasan.tunai > 0 && ringkasan.nontunai > 0) {
-    throw new LiveApiError(
-      "Engine C# menerima satu akun kas per batch — pembayaran campuran (tunai + transfer) belum didukung.",
-      400,
-    );
+
+  // Satu kaki per metode. Tunai masuk akun kas (laci shift), transfer ke
+  // bank, QRIS ditahan di akun penampung gateway sampai pemilik
+  // mengonfirmasinya — sehingga metode tetap bisa dibedakan walau
+  // pembayarannya campuran.
+  const kaki: { cashAccountId: string; amount: number }[] = [];
+  for (const [metode, nominal] of alokasi.perMetode) {
+    if (nominal <= 0) continue;
+    const cashAccountId =
+      metode === "tunai"
+        ? await akunKasDefault(KODE.kas)
+        : metode === "qris"
+          ? await pastikanAkunKas(KODE.gateway, "Penampung Gateway QRIS")
+          : await pastikanAkunKas(KODE.bank, "Bank");
+    kaki.push({ cashAccountId, amount: nominal });
   }
-  if (ringkasan.qris > 0 && ringkasan.transfer > 0) {
-    throw new LiveApiError(
-      "Engine C# menerima satu akun kas per batch — QRIS dan transfer tidak bisa digabung dalam satu transaksi.",
-      400,
-    );
-  }
-  // Penjualan tanpa uang muka (dibayar 0) adalah penjualan kredit: engine
-  // menulis dokumennya saja — tanpa kas movement, tanpa jurnal settlement dan
-  // tanpa alokasi — sehingga piutang tetap terbuka.
-  // QRIS tidak masuk bank: dananya ditahan di akun penampung gateway sampai
-  // pemilik mengonfirmasinya, sehingga metode itu tetap bisa dibedakan.
-  const cashAccountId =
-    dibayar > 0
-      ? await (ringkasan.qris > 0
-          ? pastikanAkunKas(KODE.gateway, "Penampung Gateway QRIS")
-          : akunKasDefault(ringkasan.tunai > 0 ? KODE.kas : KODE.bank))
-      : null;
+
+  // Penjualan tanpa uang muka adalah penjualan kredit: engine menulis
+  // dokumennya saja — tanpa kas movement, tanpa jurnal settlement dan tanpa
+  // alokasi — sehingga piutang tetap terbuka.
   const pelangganId = payload.pelanggan
     ? await cariPelangganId(payload.pelanggan)
     : null;
   const actor = useAuth.getState().user?.id ?? ENGINE_APPROVER;
+
+  const linesApi = baris.map((b, i) => ({
+    productId: b.productId,
+    warehouseId: gudang,
+    quantity: b.qty,
+    unitPrice: b.unitPrice,
+    discountAmount: diskonPerBaris[i],
+  }));
 
   const hasil = await minta<{
     batchId: string;
@@ -1597,8 +1578,12 @@ export async function liveCheckout(payload: CheckoutPayload): Promise<CheckoutRe
       requestedBy: actor,
       approvedBy: actor === ENGINE_APPROVER ? `${ENGINE_APPROVER}-otorisasi` : ENGINE_APPROVER,
       customerId: pelangganId,
-      cashAccountId,
-      paymentAmount: dibayar,
+      // Satu kaki memakai bentuk lama (berlaku di engine versi berapa pun);
+      // lebih dari satu memakai daftar pembayaran, yang hanya engine baru
+      // yang paham.
+      cashAccountId: kaki.length === 1 ? kaki[0]?.cashAccountId ?? null : null,
+      paymentAmount: kaki.length === 1 ? kaki[0]?.amount ?? 0 : 0,
+      payments: kaki.length > 1 ? kaki : null,
       costingMethod: "AVERAGE",
       receivableAccountCode: KODE.piutang,
       revenueAccountCode: KODE.pendapatan,
@@ -1607,13 +1592,7 @@ export async function liveCheckout(payload: CheckoutPayload): Promise<CheckoutRe
       description: `Kasir ${payload.kasir} · shift ${payload.shiftId}`,
       taxable: payload.pajak > 0,
       taxAmount: payload.pajak > 0 ? payload.pajak : null,
-      lines: barisHargaBersih(payload).map((baris) => ({
-        productId: baris.productId,
-        warehouseId: gudang,
-        quantity: baris.qty,
-        unitPrice: baris.unitPrice,
-        discountAmount: baris.discountAmount,
-      })),
+      lines: linesApi,
     },
   });
 
@@ -1623,14 +1602,16 @@ export async function liveCheckout(payload: CheckoutPayload): Promise<CheckoutRe
     ? "menunggu_persetujuan"
     : piutang > 0
       ? "dibayar_sebagian"
-      : ringkasan.qris > 0
+      : alokasi.perMetode.has("qris")
         ? "menunggu_pembayaran"
         : "lunas";
 
   return {
     nomor: hasil.documentNumber ?? hasil.documentId,
     total: hasil.documentTotal,
-    kembalian: 0,
+    // Kembalian hanya mungkin dari uang tunai; batch yang tertahan belum
+    // memposting apa pun, jadi belum ada uang yang benar-benar masuk.
+    kembalian: tertahan ? 0 : alokasi.kembalian,
     // Batch yang tertahan belum memposting apa pun: piutangnya belum lahir,
     // dan uang yang diserahkan kasir belum tercatat sebagai kas.
     piutang: tertahan ? 0 : piutang,
@@ -1742,7 +1723,7 @@ async function nomorQrisTerkonfirmasi(gatewayId?: string): Promise<Set<string>> 
   for (const m of movements) {
     if (m.credit <= 0 || !m.description) continue;
     const cocok = m.description.match(/\[QRIS ([^\]]+)\]/);
-    if (cocok) hasil.add(cocok[1]);
+    if (cocok && cocok[1]) hasil.add(cocok[1]);
   }
   return hasil;
 }

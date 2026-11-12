@@ -105,7 +105,9 @@ function KartuImpor<T extends object>({ judul, deskripsi, namaTemplate, headerTe
       const teks = await f.text();
       const parsed = parseCsv(teks);
       if (parsed.length < 2) throw new Error("Berkas kosong atau hanya berisi header.");
-      const header = parsed[0].map((h) => h.trim().toLowerCase());
+      const headerRow = parsed[0];
+      if (!headerRow) throw new Error("Header tidak ditemukan.");
+      const header = headerRow.map((h) => h.trim().toLowerCase());
       const cocok = headerTemplate.map((h) => h.trim().toLowerCase());
       if (header.length !== cocok.length || header.some((h, i) => h !== cocok[i])) {
         throw new Error(`Header tidak sesuai template: harus "${headerTemplate.join(",")}".`);
@@ -368,7 +370,9 @@ function PanelProfil() {
           logoUrl: p.logoUrl ?? d.logoUrl,
         }));
       })
-      .catch((err) => console.error("Gagal muat profil toko:", err));
+      .catch(() => {
+        // Gagal muat profil; gunakan default dari store lokal
+      });
   }, []);
 
   const ubah = (k: keyof DraftProfil) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
@@ -674,7 +678,9 @@ function PanelKebijakanOperasional() {
     api.toko.kebijakan
       .get()
       .then((k) => setDraft(k))
-      .catch((err) => console.error("Gagal muat kebijakan operasional:", err));
+      .catch(() => {
+        // Gagal muat kebijakan; gunakan default dari store lokal
+      });
   }, []);
 
   const simpanSemua = async () => {

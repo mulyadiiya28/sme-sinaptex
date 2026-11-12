@@ -42,7 +42,7 @@ export function Sidebar({
 
       <nav className="flex-1 space-y-4 overflow-y-auto px-2 pb-4">
         {groups.map((group) => (
-          <div key={group.title ?? group.items[0].href}>
+          <div key={group.title ?? group.items[0]?.href ?? 'unknown'}>
             {group.title && !collapsed && (
               <p className="px-3 pb-1 pt-2 text-[10px] font-semibold uppercase tracking-widest text-white/40">
                 {group.title}
