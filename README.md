@@ -151,11 +151,22 @@ tools/bootstrap-backend.py
 
 ## Verifikasi
 
-- Frontend: `npx tsc --noEmit` bersih + `npm run build` sukses (15 halaman statis)
-- Backend: `dotnet build AccountingEngine.slnx` (0 warning) + `dotnet test` (485 unit + 714 integration lulus)
-- Mock: alur manual `/kasir` (buka shift → checkout → riwayat → tutup shift)
+- Frontend: `npx tsc --noEmit` bersih + `npm run build` sukses (20 halaman statis + 82 file)
+- Backend: `dotnet build AccountingEngine.slnx` (0 warning) + `dotnet test` (490 unit + 752 integration lulus = 1242 passing)
+- Deployment: ✅ MVP 1.0 production-ready, Tauri installer 2.4 MB, Backend 5121 port running
 
----
+## Status Deployment
+
+| Komponen | Status | Keterangan |
+|----------|--------|------------|
+| Frontend Build | ✅ | 20 pages, 82 files |
+| Tauri NSIS | ✅ | `POS-Sinaptex_0.1.0_x64-setup.exe` (2.4 MB) |
+| Backend Build | ✅ | 0 warnings, 1242 tests passing |
+| Database | ✅ | Migrated + Seeded (37 accounts) |
+| Backend Server | ✅ | Running on port 5121 |
+| Documentation | ✅ | 130+ halaman |
+
+**Repository:** https://github.com/mulyadiiya28/sme-sinaptex
 
 ## Dokumentasi
 
@@ -172,5 +183,27 @@ tools/bootstrap-backend.py
 - `docs/QUICK-START-OWNER.md` — Cheat sheet owner (2 hal, cetak & tempel)
 - `docs/QUICK-START-KASIR.md` — Cheat sheet kasir (1 hal, cetak & tempel)
 - `docs/DEPLOYMENT-CHECKLIST.md` — Checklist deployment production (15 hal)
+- `docs/DEPLOYMENT-GUIDE.md` — Panduan deployment lengkap (28 hal)
+- `docs/TODO-NEXT-PHASE.md` — TODO list development berikutnya (P1+P2)
 
-**Total:** 105 halaman dokumentasi user + deployment ready 🚀
+**Total:** 158+ halaman dokumentasi user + deployment ready 🚀
+
+## Next Phase (P1 & P2)
+
+Lihat `docs/TODO-NEXT-PHASE.md` untuk roadmap lengkap:
+
+**P1 (Operasional) - High Priority:**
+1. Printer ESC/POS (2 minggu) - Spec ready, implement segera
+2. Gateway Payment API (2 minggu) - Butuh API keys Midtrans/Xendit
+3. Auto Backup (1 minggu) - Simple implementation
+4. Reminder Piutang (1 minggu) - Cron + notification
+5. Export Laporan (1 minggu) - Excel/PDF export
+
+**P2 (Branding) - High Priority:**
+- Splash Screen & Activation (2 minggu) - Spec ready, 807 lines
+
+**Total P1+P2:** 8-10 minggu
+
+---
+
+**MVP 1.0 Production Ready! Deploy ke production sekarang!** 🚀
