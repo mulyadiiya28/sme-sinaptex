@@ -9,6 +9,7 @@ import { pajakNominal, totalTransaksi, useCart } from "@/lib/store/cart";
 import { useToko } from "@/lib/store/toko";
 import { cetakStruk } from "@/lib/struk";
 import { useCheckout } from "@/hooks/queries";
+import { API_BASE_URL } from "@/lib/api/live";
 
 const METODE: Array<{ id: PaymentMethod; label: string; digital: boolean }> = [
   { id: "tunai", label: "Tunai", digital: false },
@@ -51,6 +52,8 @@ export function PaymentDialog({
   const pajakPersen = hitungPajakEfektif(profil);
   const izinkanKredit = useToko((s) => s.kebijakan.izinkanKredit);
   const [sukses, setSukses] = useState<CheckoutResult | null>(null);
+  const [midtransLoading, setMidtransLoading] = useState(false);
+  const [midtransError, setMidtransError] = useState("");
   const kunciIdempotensi = useRef<string>(
     typeof crypto !== "undefined" && "randomUUID" in crypto ? crypto.randomUUID() : `chk-${Date.now()}-${Math.random()}`,
   );
@@ -243,6 +246,46 @@ export function PaymentDialog({
               </button>
             ))}
           </div>
+
+          {cart.allocations.some((a) => a.metode === "qris") ? (
+            <div className="mt-3">
+              <button
+                type="button"
+                disabled={midtransLoading}
+                onClick={async () => {
+                  setMidtransLoading(true);
+                  setMidtransError("");
+                  try {
+                    const orderId = `POS-${Date.now()}`;
+                    const res = await fetch(`${API_BASE_URL}/api/midtrans/create-transaction`, {
+                      method: "POST",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({
+                        orderId,
+                        grossAmount: total,
+                        customerName: cart.pelanggan || "Customer",
+                        customerEmail: undefined,
+                        customerPhone: undefined,
+                      }),
+                    });
+                    const data = await res.json();
+                    if (!res.ok) throw new Error(data?.message ?? "Gagal membuat transaksi Midtrans");
+                    if (data.redirectUrl) window.open(data.redirectUrl, "_blank");
+                  } catch (e) {
+                    setMidtransError(e instanceof Error ? e.message : "Gagal");
+                  } finally {
+                    setMidtransLoading(false);
+                  }
+                }}
+                className="btn-primary w-full rounded-lg px-4 py-2 text-sm"
+              >
+                {midtransLoading ? "Memproses..." : "Bayar via Midtrans (QRIS)"}
+              </button>
+              {midtransError ? (
+                <p className="mt-2 text-xs text-rose-600">{midtransError}</p>
+              ) : null}
+            </div>
+          ) : null}
         </div>
 
         {hitungan.kembalian > 0 && (
