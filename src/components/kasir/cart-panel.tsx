@@ -1,6 +1,6 @@
 "use client";
 
-import { Minus, Plus, ShoppingBasket, Trash2, X } from "lucide-react";
+import { Minus, Plus, ShoppingCart, Trash2, X } from "lucide-react";
 import type { Product } from "@/lib/api/types";
 import { MoneyDisplay } from "@/components/money-display";
 import { subtotalLines, pajakNominal, totalTransaksi, useCart } from "@/lib/store/cart";
@@ -27,7 +27,7 @@ export function CartPanel({
     return (
       <div className="flex h-full flex-col items-center justify-center gap-3 p-8 text-center">
         <span className="flex size-14 items-center justify-center rounded-2xl bg-brand/10 text-brand">
-          <ShoppingBasket className="size-6" aria-hidden />
+          <ShoppingCart className="size-6" aria-hidden />
         </span>
         <p className="font-bold text-brand">Keranjang kosong</p>
         <p className="max-w-xs text-sm text-muted">

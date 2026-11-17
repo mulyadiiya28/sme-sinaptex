@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState, useEffect, useRef } from "react";
-import { Search, PackageX } from "lucide-react";
+import { PackageX, ScanBarcode } from "lucide-react";
 import type { Product } from "@/lib/api/types";
 import { MoneyDisplay } from "@/components/money-display";
 import { cn } from "@/lib/utils";
@@ -96,7 +96,7 @@ export function ProductCatalog({
   return (
     <div className="flex h-full min-h-0 flex-col">
       <div className="relative mb-3">
-        <Search
+        <ScanBarcode
           className="pointer-events-none absolute left-3 top-1/2 size-5 -translate-y-1/2 text-muted/60"
           aria-hidden
         />
