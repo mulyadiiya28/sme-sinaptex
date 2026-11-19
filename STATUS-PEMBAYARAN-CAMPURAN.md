@@ -23,7 +23,7 @@
 
 #### 🔧 Cara Kerja
 ```typescript
-// src/lib/api/live.ts baris 1548-1587
+// src/lib/api/live.ts baris 1491-1560
 
 // Kasir input:
 Total: Rp 100.000
@@ -61,7 +61,7 @@ Total: Rp 100.000
 - ✅ Total kaki > invoice → 409 (ditolak)
 
 **Frontend (Property Test):**
-- ✅ 20.000 kasus acak: 0 mismatch total POS vs engine
+- ✅ 20.000 kasus acak (verifikasi ad-hoc): 0 mismatch total POS vs engine
 - ✅ Pembulatan selaras (qty 4dp, harga 2dp, gross 2dp, diskon 2dp)
 
 ---
@@ -77,7 +77,7 @@ Total: Rp 100.000
 
 #### 🔧 Cara Kerja
 ```typescript
-// src/lib/api/live.ts baris 1526-1537
+// src/lib/api/live.ts baris 1519-1533
 
 // Contoh 1: Tunai lebih
 Total: Rp 50.000
@@ -154,14 +154,14 @@ gunakanPiutang: true
 | Kredit penuh (bayar 0) | ✅ Selesai | Dokumen tanpa cash movement |
 | Approval tertahan | ✅ Selesai | Posting ulang dari `PostingPlans` |
 | Test backend | ✅ Lulus | 1242 test (490 unit + 752 integ) |
-| Test frontend | ✅ Lulus | 20k property test, 0 mismatch |
+| Test frontend | ✅ Lulus | 20k kasus paritas (ad-hoc, tanpa test runner) |
 
 ---
 
 ## 📁 File yang Terlibat
 
 ### Frontend
-- **`src/lib/api/live.ts`** (baris 1526-1587)
+- **`src/lib/api/live.ts`** (baris 1491-1560)
   - Fungsi `alokasiMasuk()`: hitung kembalian per metode
   - Fungsi `liveCheckout()`: kirim `payments[]` ke engine
 
@@ -270,7 +270,7 @@ gunakanPiutang: true
 - ✅ Kembalian tunai: kelebihan dihitung POS
 - ✅ Validasi digital: tidak boleh lebih (ditolak)
 - ✅ Kredit penuh: checkout tanpa uang muka
-- ✅ Test: 1242 backend + 20k property test lulus
+- ✅ Test: 1242 backend + 20k kasus paritas (ad-hoc)
 - ✅ Dokumentasi: lengkap dan konsisten
 
 **Tidak ada bug atau gap tersisa di area pembayaran.** 🚀

@@ -7,7 +7,7 @@
 ## ✅ Yang Sudah Selesai:
 
 1. **Frontend Build** ✅
-   - `npm run build` → 20 static pages
+   - `npm run build` → 16 static pages
    - Tauri build → `POS-Sinaptex_0.1.0_x64-setup.exe` (2.4 MB)
 
 2. **Database Migration** ✅
@@ -134,7 +134,7 @@ Atau edit `Properties/launchSettings.json`:
 - [ ] Jalankan backend dengan `dotnet run --urls http://localhost:5121`
 - [ ] Test endpoint `/api/auth/login` → dapat token
 - [ ] Seed chart of accounts (`/api/accounts/seed`)
-- [ ] Set `NEXT_PUBLIC_API_BASE_URL=http://localhost:5121` di `.env.local`
+- [ ] Set `NEXT_PUBLIC_API_BASE_URL=http://localhost:5121` di `.env.local` root repo, lalu build ulang installer
 - [ ] Test login frontend dengan mode live
 - [ ] Test transaksi kasir (buka shift → checkout → tutup shift)
 - [ ] Test laporan (laba-rugi, neraca saldo)
@@ -170,14 +170,14 @@ Atau edit `Properties/launchSettings.json`:
 2. Jalankan: `dotnet AccountingEngine.Api.dll`
 3. Copy `accounting.db` yang sudah di-migrate + bootstrap
 4. Install POS app (NSIS installer)
-5. Set `.env.local` → `API_BASE_URL=http://localhost:5121`
+5. Set build-time env → `API_BASE_URL=http://localhost:5121` di root repo, build ulang installer
 
 ### Mode B: LAN (Server + N Kasir)
 
 1. Install backend di server toko
 2. Edit `appsettings.json` → bind `0.0.0.0:5121`
 3. Buka firewall port 5121
-4. Kasir → set `.env.local` → `API_BASE_URL=http://<IP-SERVER>:5121`
+4. Kasir → pakai installer yang dibangun dengan `API_BASE_URL=http://<IP-SERVER>:5121`
 
 ---
 

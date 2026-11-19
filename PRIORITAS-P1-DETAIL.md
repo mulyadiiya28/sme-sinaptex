@@ -24,9 +24,9 @@ Fitur-fitur yang **meningkatkan efisiensi dan profesionalitas** operasional toko
 
 | Fitur P1 (Rencana Awal) | Status | Keterangan |
 |--------------------------|--------|------------|
-| Integrasi QRIS/Payment Gateway | ⏭️ **80%** | QRIS manual ✅, API gateway ❌ |
-| Printer Struk | ⏭️ **60%** | Browser print ✅, ESC/POS ❌ |
-| Piutang & Hutang Lengkap | ✅ **90%** | Inti ✅, reminder ⏭️ |
+| Integrasi QRIS/Payment Gateway | ✅ **90%** | QRIS manual ✅, API gateway ✅ (webhook/refund ⏭️) |
+| Printer Struk | ✅ **95%** | Browser print ✅, ESC/POS native ✅ (belum uji hardware) |
+| Piutang & Hutang Lengkap | ✅ **95%** | Inti ✅, reminder manual ✅ (provider otomatis ❌) |
 | Retur | ✅ **100%** | Retur penjualan & pembelian ✅ |
 | Diskon | ✅ **90%** | Diskon nominal ✅, voucher ⏭️ |
 | Pajak | ✅ **90%** | PPN ✅, PPh ⏭️ |
@@ -45,21 +45,23 @@ Fitur-fitur yang **meningkatkan efisiensi dan profesionalitas** operasional toko
 
 ### 1️⃣ Integrasi Payment Gateway API
 
-**Status:** ⏭️ **Belum** (QRIS manual sudah jalan)
+**Status:** ✅ **Selesai sisi POS** (2026-11-13) — Midtrans/Xendit/REST sendiri, semua configurable di Pengaturan
 
 #### Yang Sudah Ada:
 - ✅ Alur QRIS manual:
   - Kasir pilih metode QRIS
-  - Dana ditahan di akun gateway (1130)
+  - Dana ditahan di akun gateway (kode akun configurable, default 1130)
   - Status: "Menunggu Konfirmasi"
   - Pemilik konfirmasi setelah cek notifikasi HP
   - Transfer gateway → bank otomatis
 - ✅ Status tracking lengkap
 - ✅ Audit trail konfirmasi
+- ✅ Integrasi API provider (Midtrans QRIS default, Xendit, atau REST milik sendiri)
+- ✅ QR code generator otomatis di perangkat (tanpa layanan pihak ketiga)
+- ✅ Polling status pembayaran di layar kasir
+- ✅ Konfigurasi lengkap di Pengaturan → Gateway (tanpa kredensial hardcode)
 
 #### Yang Belum:
-- ❌ Integrasi API provider (Midtrans/Xendit/Doku/dll)
-- ❌ QR code generator otomatis
 - ❌ Webhook callback (payment success/failed/expired)
 - ❌ Auto-cancel timeout (misal: 15 menit)
 - ❌ Refund otomatis via API
@@ -165,7 +167,7 @@ Thermal printer langsung = UX jauh lebih baik.
 
 ### 3️⃣ Reminder Piutang Otomatis
 
-**Status:** ⏭️ **Belum** (Pelunasan sudah lengkap)
+**Status:** ✅ **Manual selesai** (2026-11-13) — otomatis via provider API menyusul
 
 #### Yang Sudah Ada:
 - ✅ Penjualan kredit (piutang)
@@ -173,13 +175,15 @@ Thermal printer langsung = UX jauh lebih baik.
 - ✅ Umur piutang (AR aging: Current, 30, 60, 90, 90+ days)
 - ✅ Rekonsiliasi piutang vs ledger
 - ✅ Status "Jatuh tempo" di list piutang
+- ✅ Halaman `/piutang`: daftar faktur jatuh tempo/terlambat, tahap H-1/H+3/H+7
+- ✅ Notifikasi piutang jatuh tempo di dashboard + link ke halaman reminder
+- ✅ Template pesan reminder (4 tahap, bisa diedit, placeholder dinamis)
+- ✅ History reminder per pelanggan (lokal, maks. 500 entri)
+- ✅ Kirim manual via WhatsApp (`wa.me`), salin pesan, tandai sudah remind
 
 #### Yang Belum:
-- ❌ Notifikasi piutang jatuh tempo (dashboard/popup)
-- ❌ Kirim reminder via WA/SMS/Email otomatis
-- ❌ Template pesan reminder (kustomisasi)
-- ❌ Jadwal reminder (3 hari sebelum, H-1, H+3, H+7)
-- ❌ History reminder per pelanggan
+- ❌ Kirim reminder via WA/SMS/Email otomatis dari background job (butuh provider + kredensial)
+- ❌ Riwayat reminder tersinkron ke engine (saat ini lokal per mesin)
 
 #### Implementasi:
 
@@ -369,9 +373,9 @@ PPh lebih relevan untuk:
 
 | No | Fitur P1 | Status Awal | Status Sekarang | Yang Belum | Prioritas | Estimasi |
 |----|----------|-------------|-----------------|------------|-----------|----------|
-| 1 | Payment Gateway API | ❌ | ⏭️ 80% | API integration | ⭐⭐⭐ | 1-2 minggu |
-| 2 | Printer ESC/POS | ❌ | ⏭️ 60% | Direct print | ⭐⭐⭐⭐ | 1-2 minggu |
-| 3 | Reminder Piutang | ❌ | ⏭️ 10% | Auto-notification | ⭐⭐⭐ | 1 minggu |
+| 1 | Payment Gateway API | ❌ | ✅ 90% | Webhook, auto-cancel, refund | ⭐⭐⭐ | 1-2 minggu |
+| 2 | Printer ESC/POS | ❌ | ✅ 95% | Uji hardware | ⭐⭐⭐⭐ | 1-2 minggu |
+| 3 | Reminder Piutang | ❌ | ✅ 95% | Provider otomatis (WA API) | ⭐⭐⭐ | 1 minggu |
 | 4 | Voucher/Kupon | ❌ | ⏭️ 0% | Voucher system | ⭐⭐ | 1-2 minggu |
 | 5 | PPh | ❌ | ⏭️ 0% | UI & laporan | ⭐ | 1 minggu |
 | 6 | Retur | ❌ | ✅ 100% | - | - | - |

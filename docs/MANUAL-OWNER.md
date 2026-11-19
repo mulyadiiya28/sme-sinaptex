@@ -1261,7 +1261,7 @@ Tabel:
 **Penyebab:**
 - Engine backend mati
 - Firewall block port 5121
-- Salah konfigurasi `.env.local`
+- Salah konfigurasi `.env.local` saat build (nilai `NEXT_PUBLIC_*` di-bake ke installer)
 
 **Solusi:**
 1. Cek engine running:
@@ -1270,7 +1270,7 @@ Tabel:
    ```
 2. Cek firewall:
    - Windows Firewall → Allow port 5121
-3. Cek `.env.local`:
+3. Cek `.env.local` di root repo (bukan folder AppData) lalu build ulang installer:
    ```env
    NEXT_PUBLIC_API_MODE=live
    NEXT_PUBLIC_API_BASE_URL=http://localhost:5121

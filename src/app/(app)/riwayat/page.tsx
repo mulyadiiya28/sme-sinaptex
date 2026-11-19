@@ -42,6 +42,8 @@ export default function RiwayatPage() {
   const [keyword, setKeyword] = useCariAwal();
   const [dari, setDari] = useState("");
   const [sampai, setSampai] = useState("");
+  const [statusFilter, setStatusFilter] = useState<"semua" | TransaksiRiwayat["status"]>("semua");
+  const [metodeFilter, setMetodeFilter] = useState<"semua" | "tunai" | "transfer" | "qris">("semua");
   const [detail, setDetail] = useState<TransaksiRiwayat | null>(null);
   const [targetVoid, setTargetVoid] = useState<TransaksiRiwayat | null>(null);
   const [targetRetur, setTargetRetur] = useState<TransaksiRiwayat | null>(null);
@@ -53,6 +55,11 @@ export default function RiwayatPage() {
       const hari = tanggalLokal(t.waktu);
       if (dari && hari < dari) return false;
       if (sampai && hari > sampai) return false;
+      if (statusFilter !== "semua" && t.status !== statusFilter) return false;
+      if (metodeFilter !== "semua") {
+        const metode = (t.pembayaran ?? []).map((p) => p.metode);
+        if (!metode.includes(metodeFilter)) return false;
+      }
       return (
         !q ||
         t.nomor.toLowerCase().includes(q) ||
@@ -60,7 +67,42 @@ export default function RiwayatPage() {
         (t.pelanggan ?? "").toLowerCase().includes(q)
       );
     });
-  }, [riwayat.data, keyword, dari, sampai]);
+  }, [riwayat.data, keyword, dari, sampai, statusFilter, metodeFilter]);
+
+  function terapkanPreset(preset: "hari-ini" | "7-hari" | "bulan-ini" | "belum-lunas") {
+    const hari = new Date();
+    const pad = (n: number) => String(n).padStart(2, "0");
+    const format = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+    if (preset === "belum-lunas") {
+      setStatusFilter("dibayar_sebagian");
+      setMetodeFilter("semua");
+      return;
+    }
+    setStatusFilter("semua");
+    setMetodeFilter("semua");
+    if (preset === "hari-ini") {
+      setDari(format(hari));
+      setSampai(format(hari));
+      return;
+    }
+    if (preset === "7-hari") {
+      const mulai = new Date(hari);
+      mulai.setDate(mulai.getDate() - 6);
+      setDari(format(mulai));
+      setSampai(format(hari));
+      return;
+    }
+    setDari(format(new Date(hari.getFullYear(), hari.getMonth(), 1)));
+    setSampai(format(hari));
+  }
+
+  function resetFilter() {
+    setDari("");
+    setSampai("");
+    setStatusFilter("semua");
+    setMetodeFilter("semua");
+    setKeyword("");
+  }
 
   function eksporCsv() {
     const head = "nomor,waktu,kasir,shift,pelanggan,jumlah_item,subtotal,diskon,pajak,total,kembalian,piutang,status";
@@ -192,9 +234,66 @@ export default function RiwayatPage() {
           <FormField label="Sampai">
             <input type="date" value={sampai} onChange={(e) => setSampai(e.target.value)} className="input w-36" />
           </FormField>
+          <FormField label="Status">
+            <select
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value as "semua" | TransaksiRiwayat["status"])}
+              className="input w-44"
+            >
+              <option value="semua">Semua status</option>
+              <option value="lunas">Lunas</option>
+              <option value="dibayar_sebagian">Sebagian (piutang)</option>
+              <option value="menunggu_pembayaran">Menunggu pembayaran</option>
+              <option value="menunggu_persetujuan">Menunggu persetujuan</option>
+              <option value="dibatalkan">Dibatalkan</option>
+            </select>
+          </FormField>
+          <FormField label="Metode bayar">
+            <select
+              value={metodeFilter}
+              onChange={(e) => setMetodeFilter(e.target.value as "semua" | "tunai" | "transfer" | "qris")}
+              className="input w-40"
+            >
+              <option value="semua">Semua</option>
+              <option value="tunai">Tunai</option>
+              <option value="transfer">Transfer</option>
+              <option value="qris">QRIS</option>
+            </select>
+          </FormField>
           <button type="button" onClick={eksporCsv} className="btn-secondary">
             <Download className="size-4" aria-hidden /> Ekspor CSV
           </button>
+        </div>
+
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          <span className="text-xs font-semibold text-muted">Preset:</span>
+          {(
+            [
+              { id: "hari-ini", label: "Hari ini" },
+              { id: "7-hari", label: "7 hari terakhir" },
+              { id: "bulan-ini", label: "Bulan ini" },
+              { id: "belum-lunas", label: "Belum lunas" },
+            ] as const
+          ).map((p) => (
+            <button
+              key={p.id}
+              type="button"
+              onClick={() => terapkanPreset(p.id)}
+              className="rounded-full border border-line bg-white px-3 py-1 text-xs font-semibold text-muted transition-colors hover:border-brand hover:text-brand"
+            >
+              {p.label}
+            </button>
+          ))}
+          <button
+            type="button"
+            onClick={resetFilter}
+            className="rounded-full border border-line bg-white px-3 py-1 text-xs font-semibold text-muted transition-colors hover:border-rose-300 hover:text-rose-600"
+          >
+            Reset filter
+          </button>
+          <span className="ml-auto text-xs text-muted">
+            Menampilkan {filtered.length} dari {(riwayat.data ?? []).length} transaksi
+          </span>
         </div>
 
         {riwayat.isError ? (

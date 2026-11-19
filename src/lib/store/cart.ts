@@ -1,6 +1,12 @@
 import { create } from "zustand";
 import type { CartLine, Product, PaymentAllocation, PaymentMethod } from "@/lib/api/types";
-import { totalParity, pajakNominal as pajakNominalUang } from "@/lib/uang";
+import { bulat2, totalParity, pajakNominal as pajakNominalUang } from "@/lib/uang";
+
+/** Voucher yang sedang dipakai keranjang, beserta diskon yang dihitung engine. */
+export type VoucherKeranjang = {
+  kode: string;
+  diskon: number;
+};
 
 type CartState = {
   lines: CartLine[];
@@ -8,6 +14,7 @@ type CartState = {
   allocations: PaymentAllocation[];
   gunakanPiutang: boolean;
   pelanggan?: string;
+  voucher?: VoucherKeranjang;
   add: (product: Product) => void;
   setQty: (productId: string, qty: number) => void;
   removeLine: (productId: string) => void;
@@ -17,6 +24,8 @@ type CartState = {
   removeAllocation: (index: number) => void;
   setPiutang: (pakai: boolean) => void;
   setPelanggan: (nama?: string) => void;
+  setVoucher: (voucher: VoucherKeranjang) => void;
+  clearVoucher: () => void;
   reset: () => void;
 };
 
@@ -58,18 +67,61 @@ export const useCart = create<CartState>((set) => ({
     set((state) => ({ allocations: state.allocations.filter((_, i) => i !== index) })),
   setPiutang: (pakai) => set({ gunakanPiutang: pakai }),
   setPelanggan: (nama) => set({ pelanggan: nama }),
-  reset: () => set({ lines: [], diskonTransaksi: 0, allocations: [], gunakanPiutang: false, pelanggan: undefined }),
+  setVoucher: (voucher) => set({ voucher }),
+  clearVoucher: () => set({ voucher: undefined }),
+  reset: () =>
+    set({
+      lines: [],
+      diskonTransaksi: 0,
+      allocations: [],
+      gunakanPiutang: false,
+      pelanggan: undefined,
+      voucher: undefined,
+    }),
 }));
 
 export function subtotalLines(lines: CartLine[]): number {
   return totalParity({ lines, diskonTransaksi: 0, pajak: 0 }).base;
 }
 
-export function totalTransaksi(lines: CartLine[], diskonTransaksi: number, pajakNominal = 0): number {
-  return totalParity({ lines, diskonTransaksi, pajak: pajakNominal }).total;
+export function totalTransaksi(
+  lines: CartLine[],
+  diskonTransaksi: number,
+  pajakNominal = 0,
+  diskonVoucher = 0,
+): number {
+  return totalParity({ lines, diskonTransaksi, pajak: 0, diskonVoucher }).baseVoucher + pajakNominal;
 }
 
-export function pajakNominal(lines: CartLine[], diskonTransaksi: number, persen: number): number {
-  const base = totalParity({ lines, diskonTransaksi, pajak: 0 }).base;
-  return pajakNominalUang(base, persen);
+export function pajakNominal(
+  lines: CartLine[],
+  diskonTransaksi: number,
+  persen: number,
+  diskonVoucher = 0,
+): number {
+  const { baseVoucher } = totalParity({ lines, diskonTransaksi, pajak: 0, diskonVoucher });
+  return pajakNominalUang(baseVoucher, persen);
+}
+
+/**
+ * Rekap Keranjang: base, diskon voucher, pajak, dan total.
+ *
+ * Voucher dipotong dari atas dokumen, jadi ia ikut menurunkan dasar pajak —
+ * promo menurunkan nilai barang yang terjual.
+ */
+export function rekapKeranjang(
+  lines: CartLine[],
+  diskonTransaksi: number,
+  diskonVoucher: number,
+  persenPajak: number,
+): { base: number; diskonVoucher: number; baseVoucher: number; pajak: number; total: number } {
+  const { base, baseVoucher } = totalParity({ lines, diskonTransaksi, pajak: 0, diskonVoucher });
+  const pajak = pajakNominalUang(baseVoucher, persenPajak);
+  return {
+    base,
+    diskonVoucher: bulat2(Math.max(0, diskonVoucher)),
+    baseVoucher,
+    pajak,
+    total: bulat2(baseVoucher + pajak),
+  };
 }

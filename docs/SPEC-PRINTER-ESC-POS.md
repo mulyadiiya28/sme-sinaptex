@@ -1,6 +1,6 @@
 # Specification: Printer ESC/POS (P1.1 - High Priority)
 
-**Status:** ⏭️ Development Phase  
+**Status:** ✅ Implemented (2026-11-13) — menunggu uji hardware  
 **Fase:** P1 - Operasional (Penyempurnaan Toko)  
 **Priority:** ⭐⭐⭐⭐ High  
 **Estimasi:** 1-2 minggu
@@ -39,24 +39,38 @@
 
 ## 🏗️ Architecture
 
+### Implementasi Aktual (2026-11-13)
+
+`@tauri-apps/plugin-printer` **tidak ada di npm**. Plugin pihak ketiga
+(`tauri-plugin-printer`) juga tidak mendukung ESC/POS mentah (hanya PDF/HTML/queue),
+sehingga printer diimplementasikan lewat command Tauri sendiri:
+
+```
+src-tauri/src/printer.rs        # EnumPrintersW + GetDefaultPrinterW, raw print via spooler
+src/lib/printer/escpos.ts       # builder ESC/POS (teks, bold, double, cut, drawer)
+src/lib/printer/printer.ts      # invoke("printers") / invoke("print_raw")
+src/lib/store/printer.ts        # pengaturan persist (pos-sinaptex-printer)
+src/components/pengaturan/printer-settings.tsx
+```
+
+Raw print memakai Windows spooler: `OpenPrinterW` → `StartDocPrinterW` dengan
+datatype `RAW` → `StartPagePrinter` → `WritePrinter` → `EndDocPrinter`.
+
 ### Frontend (POS-Sinaptex)
 
 ```
 src/
   components/
     kasir/
-      checkout-dialog.tsx          # Add auto-print toggle
-      print-preview.tsx            # (Optional: preview before print)
+      payment-dialog.tsx           # Auto-print setelah checkout sukses
     pengaturan/
-      printer-settings.tsx         # New: Printer configuration
-  hooks/
-    usePrinter.ts                  # New: ESC/POS printer hook
+      printer-settings.tsx         # Konfigurasi + halaman tes
   lib/
     printer/
-      escpos.ts                    # New: ESC/POS command builder
-      printer.ts                   # New: Printer manager
-  services/
-    printer-service.ts             # New: Print queue management
+      escpos.ts                    # ESC/POS command builder
+      printer.ts                   # Deteksi + raw print
+  lib/store/
+    printer.ts                     # Pengaturan persist
 ```
 
 ### Backend (Accounting Engine)
@@ -564,24 +578,19 @@ Terima Kasih!
 
 ## 📦 Dependencies
 
-### Tauri Plugin (Recommended)
+### Tauri API + windows-sys (implementasi terpakai)
 ```bash
-npm install @tauri-apps/plugin-printer
+npm install @tauri-apps/api
 ```
 
-### Alternative: ESC/POS Library (Untuk USB/Serial direct)
-```bash
-npm install escpos
+`src-tauri/Cargo.toml`:
+```toml
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61", features = ["Win32_Graphics_Printing"] }
 ```
 
-### Package.json Dependencies
-```json
-{
-  "dependencies": {
-    "@tauri-apps/plugin-printer": "^2.0.0"
-  }
-}
-```
+Plugin `@tauri-apps/plugin-printer` tidak dipakai karena tidak ada di npm;
+`tauri-plugin-printer` pihak ketiga tidak mendukung ESC/POS mentah.
 
 ---
 
@@ -626,31 +635,31 @@ npm install escpos
 
 ## 📊 Implementation Checklist
 
-- [ ] **Phase 1: Printer Detection & Configuration**
-  - [ ] `lib/printer/printer.ts` - Printer detection
-  - [ ] `components/pengaturan/printer-settings.tsx` - Settings UI
-  - [ ] Load/store printer settings (localStorage)
+- [x] **Phase 1: Printer Detection & Configuration**
+  - [x] `lib/printer/printer.ts` - Printer detection
+  - [x] `components/pengaturan/printer-settings.tsx` - Settings UI
+  - [x] Load/store printer settings (localStorage)
   
-- [ ] **Phase 2: ESC/POS Commands**
-  - [ ] `lib/printer/escpos.ts` - Command builder
-  - [ ] Text formatting (bold, underline, size, alignment)
+- [x] **Phase 2: ESC/POS Commands**
+  - [x] `lib/printer/escpos.ts` - Command builder
+  - [x] Text formatting (bold, size, alignment)
   - [ ] Barcode (EAN13, CODE128)
   - [ ] QR Code
-  - [ ] Cut paper
-  - [ ] Cash drawer
+  - [x] Cut paper
+  - [x] Cash drawer
   
-- [ ] **Phase 3: Print Service**
-  - [ ] `services/printer-service.ts` - Service class
-  - [ ] Print raw ESC/POS commands
-  - [ ] Print test page
-  - [ ] Error handling
+- [x] **Phase 3: Print Service**
+  - [x] `lib/printer/printer.ts` - Service (invoke Tauri)
+  - [x] Print raw ESC/POS commands
+  - [x] Print test page
+  - [x] Error handling + fallback browser
   
-- [ ] **Phase 4: Integration**
-  - [ ] `components/kasir/checkout-dialog.tsx` - Auto-print toggle
-  - [ ] `components/kasir/struk.tsx` - Receipt generation
-  - [ ] Fallback to browser print
+- [x] **Phase 4: Integration**
+  - [x] `components/kasir/payment-dialog.tsx` - Auto-print
+  - [x] `lib/struk.ts` - Receipt generation + kuitansi
+  - [x] Fallback to browser print
   
-- [ ] **Testing**
+- [ ] **Testing hardware**
   - [ ] TC-1: Printer detection
   - [ ] TC-2: Select printer
   - [ ] TC-3: Print test page
@@ -674,4 +683,5 @@ npm install escpos
 
 ---
 
-**Status:** Ready for development 🚀
+**Status:** ✅ Implemented (2026-11-13) — verifikasi `tsc`, `npm run build`,
+`cargo check --release` lulus; uji cetak fisik masih menunggu printer thermal.

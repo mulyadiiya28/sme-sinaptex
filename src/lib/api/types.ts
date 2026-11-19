@@ -194,6 +194,19 @@ export type CheckoutPayload = {
   kasir: string;
   shiftId: string;
   idempotensiKunci: string;
+  /** Referensi tagihan gateway (id charge) untuk rekonsiliasi manual. */
+  gatewayRef?: string;
+  /**
+   * Kode voucher yang dipakai kasir. Diskonnya dihitung engine, jadi POS
+   * hanya mengirim kodenya — bukan nominal diskon.
+   */
+  voucherCode?: string;
+  /**
+   * Diskon voucher yang sudah dihitung engine saat kasir menekan "Pakai".
+   * Dipakai POS untuk menghitung pajak dan total di layar; engine menghitung
+   * ulang sendiri dan itulah yang dibukukan.
+   */
+  diskonVoucher?: number;
 };
 
 export type CheckoutResult = {
@@ -365,6 +378,63 @@ export type AsetTetap = {
 
 /// <summary>Input untuk create/update aset tetap (tanpa id & timestamps).</summary>
 export type AsetTetapInput = Omit<AsetTetap, "id" | "createdAt" | "updatedAt">;
+
+/// <summary>
+/// Voucher: aturan diskon yang boleh dipakai kasir saat transaksi.
+///
+/// Diskon dihitung oleh engine — kasir hanya mengetik kodenya, sehingga angka
+/// yang masuk ke invoice bukan angka yang diminta client.
+/// </summary>
+export type Voucher = {
+  id: string;
+  kode: string;
+  deskripsi?: string;
+  /** <c>persen</c> = potong persentase; <c>nominal</c> = potong nilai tetap. */
+  tipe: "persen" | "nominal";
+  /** Untuk tipe persen: 0.10 berarti sepuluh persen. */
+  persen?: number;
+  /** Untuk tipe nominal: nilai yang dipotong, tidak boleh melebihi total. */
+  nominal?: number;
+  /** Minimum belanja (setelah diskon baris) agar voucher boleh dipakai. */
+  minimumBelanja: number;
+  validDari: string;
+  validSampai: string;
+  /** Batas pemakaian; undefined = tanpa batas. */
+  batasPemakaian?: number;
+  /** Berapa kali voucher sudah terpakai. */
+  dipakai: number;
+  aktif: boolean;
+};
+
+/// <summary>Input untuk membuat atau mengubah voucher.</summary>
+export type VoucherInput = {
+  kode: string;
+  deskripsi?: string;
+  tipe: "persen" | "nominal";
+  persen?: number;
+  nominal?: number;
+  minimumBelanja?: number;
+  validDari?: string;
+  validSampai?: string;
+  batasPemakaian?: number;
+};
+
+/// <summary>Hasil priced voucher terhadap sebuah total belanja.</summary>
+export type VoucherValidasi = {
+  voucherId: string;
+  kode: string;
+  tipe: string;
+  /** Total yang menjadi dasar perhitungan diskon. */
+  jumlahEligible: number;
+  diskon: number;
+  /** Total setelah diskon voucher. */
+  total: number;
+  minimumBelanja: number;
+  validDari: string;
+  validSampai: string;
+  batasPemakaian?: number;
+  dipakai: number;
+};
 
 /// <summary>Item penyusutan bulanan untuk satu aset.</summary>
 export type PenyusutanItem = {

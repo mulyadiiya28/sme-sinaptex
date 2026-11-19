@@ -11,8 +11,11 @@ import {
   Activity,
   CreditCard,
   BarChart3,
+  HandCoins,
 } from "lucide-react";
 import type {
+  AgedInvoice,
+  AgingReport,
   AkunSaldo,
   ArApTurnover,
   Biaya,
@@ -43,9 +46,12 @@ import { PageHeader } from "@/components/page-header";
 import { KpiSkeleton, TableSkeleton } from "@/components/skeleton";
 import { api } from "@/lib/api/client";
 import { KODE_AKUN } from "@/lib/api/live";
+import { unduhCsv } from "@/lib/csv";
 import { tanggalLokal } from "@/lib/format";
 import {
   useAkun,
+  useApAging,
+  useArAging,
   useArTurnover,
   useApTurnover,
   useBiaya,
@@ -57,10 +63,12 @@ import {
   useInventoryTurnover,
   useJurnal,
   useLabaRugi,
+  usePelanggan,
   useProfitability,
   useProductPerformance,
   useProductPerformanceRankings,
   useSolvency,
+  useSupplierList,
   useWorkingCapital,
   useWorkingCapitalTurnover,
   useProducts,
@@ -68,7 +76,7 @@ import {
   useStokGudang,
 } from "@/hooks/queries";
 
-type Tab = "penjualan" | "laba-rugi" | "neraca-saldo" | "jurnal" | "beban" | "analisis" | "gerakan-harian";
+type Tab = "penjualan" | "laba-rugi" | "neraca-saldo" | "jurnal" | "beban" | "aging" | "analisis" | "gerakan-harian";
 
 const TABS: Array<{ id: Tab; label: string; icon: React.ReactNode }> = [
   { id: "penjualan", label: "Penjualan", icon: <TrendingUp className="size-4" aria-hidden /> },
@@ -76,6 +84,7 @@ const TABS: Array<{ id: Tab; label: string; icon: React.ReactNode }> = [
   { id: "neraca-saldo", label: "Neraca Saldo", icon: <BookOpen className="size-4" aria-hidden /> },
   { id: "jurnal", label: "Jurnal", icon: <Activity className="size-4" aria-hidden /> },
   { id: "beban", label: "Beban", icon: <CreditCard className="size-4" aria-hidden /> },
+  { id: "aging", label: "Umur Piutang & Hutang", icon: <HandCoins className="size-4" aria-hidden /> },
   { id: "analisis", label: "Analisis", icon: <BarChart3 className="size-4" aria-hidden /> },
   { id: "gerakan-harian", label: "Gerakan Harian", icon: <Activity className="size-4" aria-hidden /> },
 ];
@@ -118,6 +127,12 @@ export default function LaporanPage() {
   const [dmDate, setDmDate] = useState("");
   const [dmAccount, setDmAccount] = useState(KODE_AKUN.kas);
   const dailyMovement = useDailyMovement(dmDate, dmAccount);
+  const [sisiAging, setSisiAging] = useState<"ar" | "ap">("ar");
+  const agingAr = useArAging(tglEfektif || undefined);
+  const agingAp = useApAging(tglEfektif || undefined);
+  const pelanggan = usePelanggan();
+  const supplier = useSupplierList();
+  const aging = sisiAging === "ar" ? agingAr : agingAp;
 
   // Tanggal diisi setelah mount, bukan saat render, supaya server dan klien
   // merender nilai yang sama (hindari hydration mismatch pada tanggal).
@@ -239,6 +254,106 @@ export default function LaporanPage() {
     }
   }
 
+  function eksporLabaRugi() {
+    const data = labaRugi.data;
+    if (!data) return;
+    unduhCsv(
+      `laba-rugi-${dari || "awal"}-${sampai || "akhir"}.csv`,
+      ["Komponen", "Nominal"],
+      [
+        ["Pendapatan", data.pendapatan],
+        ["Retur Penjualan", data.retur],
+        ["Harga Pokok Penjualan", data.hpp],
+        ["Beban Operasional", data.biaya],
+        ["Pajak", data.pajak],
+        ["Laba Bersih", data.laba],
+      ],
+    );
+  }
+
+  const LABEL_BUCKET: Record<AgedInvoice["bucket"], string> = {
+    CURRENT: "Lancar",
+    DAYS_30: "1-30 hari",
+    DAYS_60: "31-60 hari",
+    DAYS_90: "61-90 hari",
+    OVER_90: "> 90 hari",
+  };
+
+  function namaPihakAging(id: string | null): string {
+    if (!id) return "-";
+    if (sisiAging === "ar") {
+      return pelanggan.data?.find((p) => p.id === id)?.nama ?? id;
+    }
+    return supplier.data?.find((s) => s.id === id)?.name ?? id;
+  }
+
+  function eksporAging() {
+    const data: AgingReport | undefined = aging.data;
+    if (!data) return;
+    const labelSisi = sisiAging === "ar" ? "Piutang" : "Hutang";
+    unduhCsv(
+      `umur-${sisiAging === "ar" ? "piutang" : "hutang"}-${data.asOfDate.slice(0, 10)}.csv`,
+      ["Sisi", "Nomor", "Pihak", "Tanggal Faktur", "Jatuh Tempo", "Total", "Terbayar", "Sisa", "Hari Lewat", "Kelompok"],
+      data.invoices.map((inv) => [
+        labelSisi,
+        inv.invoiceNumber ?? inv.invoiceId,
+        namaPihakAging(inv.counterpartyId),
+        inv.invoiceDate.slice(0, 10),
+        inv.dueDate?.slice(0, 10) ?? "",
+        inv.invoiceTotal,
+        inv.allocatedTotal,
+        inv.outstandingAmount,
+        inv.daysOverdue,
+        LABEL_BUCKET[inv.bucket],
+      ]),
+    );
+  }
+
+  const kolomAging: Column<AgedInvoice>[] = [
+    {
+      key: "nomor",
+      header: "Nomor",
+      render: (r) => <span className="font-medium">{r.invoiceNumber ?? r.invoiceId.slice(0, 8)}</span>,
+    },
+    {
+      key: "pihak",
+      header: sisiAging === "ar" ? "Pelanggan" : "Pemasok",
+      render: (r) => <span className="font-medium">{namaPihakAging(r.counterpartyId)}</span>,
+    },
+    {
+      key: "tanggal",
+      header: "Tanggal",
+      render: (r) => <span className="text-xs text-muted">{new Date(r.invoiceDate).toLocaleDateString("id-ID")}</span>,
+    },
+    {
+      key: "jatuhTempo",
+      header: "Jatuh Tempo",
+      render: (r) => (
+        <span className="text-xs text-muted">{r.dueDate ? new Date(r.dueDate).toLocaleDateString("id-ID") : "—"}</span>
+      ),
+    },
+    { key: "total", header: "Total", align: "right", render: (r) => <MoneyDisplay value={r.invoiceTotal} /> },
+    { key: "terbayar", header: "Terbayar", align: "right", render: (r) => <MoneyDisplay value={r.allocatedTotal} /> },
+    {
+      key: "sisa",
+      header: "Sisa",
+      align: "right",
+      render: (r) => <MoneyDisplay value={r.outstandingAmount} className="font-bold text-brand" />,
+    },
+    {
+      key: "lewat",
+      header: "Lewat",
+      align: "right",
+      render: (r) => (r.daysOverdue > 0 ? `${r.daysOverdue} hari` : "—"),
+    },
+    {
+      key: "bucket",
+      header: "Kelompok",
+      align: "center",
+      render: (r) => <span className="text-xs font-medium">{LABEL_BUCKET[r.bucket]}</span>,
+    },
+  ];
+
   const totalDebit = akun.data?.reduce((s, a) => s + a.debit, 0) ?? 0;
   const totalKredit = akun.data?.reduce((s, a) => s + a.kredit, 0) ?? 0;
 
@@ -246,7 +361,7 @@ export default function LaporanPage() {
     <div>
       <PageHeader
         title="Laporan"
-        description="Ringkasan kinerja usaha: penjualan, laba rugi, neraca saldo, jurnal, dan beban."
+        description="Ringkasan kinerja usaha: penjualan, laba rugi, neraca saldo, jurnal, beban, umur piutang/hutang, dan analisis."
       />
 
       <div className="mb-4 flex flex-wrap items-center gap-2">
@@ -280,6 +395,16 @@ export default function LaporanPage() {
         {tab === "neraca-saldo" && (
           <button type="button" onClick={eksporNeracaSaldo} className="btn-secondary">
             <Download className="size-4" aria-hidden /> Ekspor Neraca Saldo
+          </button>
+        )}
+        {tab === "laba-rugi" && (
+          <button type="button" onClick={eksporLabaRugi} className="btn-secondary" disabled={!labaRugi.data}>
+            <Download className="size-4" aria-hidden /> Ekspor CSV
+          </button>
+        )}
+        {tab === "aging" && (
+          <button type="button" onClick={eksporAging} className="btn-secondary" disabled={!aging.data}>
+            <Download className="size-4" aria-hidden /> Ekspor {sisiAging === "ar" ? "Piutang" : "Hutang"}
           </button>
         )}
       </div>
@@ -489,6 +614,69 @@ export default function LaporanPage() {
               </div>
             </>
           )}
+        </>
+      )}
+
+      {tab === "aging" && (
+        <>
+          <div className="panel mb-4 flex flex-wrap items-center justify-between gap-3 p-4">
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setSisiAging("ar")}
+                className={sisiAging === "ar" ? "btn-primary" : "btn-secondary"}
+              >
+                Piutang (AR)
+              </button>
+              <button
+                type="button"
+                onClick={() => setSisiAging("ap")}
+                className={sisiAging === "ap" ? "btn-primary" : "btn-secondary"}
+              >
+                Hutang (AP)
+              </button>
+            </div>
+            <p className="text-xs text-muted">
+              Posisi per{" "}
+              {aging.data?.asOfDate
+                ? new Date(aging.data.asOfDate).toLocaleDateString("id-ID")
+                : tglEfektif
+                  ? new Date(tglEfektif).toLocaleDateString("id-ID")
+                  : "hari ini"}
+            </p>
+          </div>
+
+          {aging.isLoading ? (
+            <KpiSkeleton kolom={6} />
+          ) : (
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-3 xl:grid-cols-6">
+              <KpiCard
+                label="Total Sisa"
+                value={<MoneyDisplay value={aging.data?.outstandingTotal ?? 0} />}
+                tone="navy"
+                icon={<HandCoins className="size-4" aria-hidden />}
+              />
+              <KpiCard label="Lancar" value={<MoneyDisplay value={aging.data?.current ?? 0} />} tone="emerald" />
+              <KpiCard label="1-30 hari" value={<MoneyDisplay value={aging.data?.days30 ?? 0} />} tone="navy" />
+              <KpiCard label="31-60 hari" value={<MoneyDisplay value={aging.data?.days60 ?? 0} />} tone="violet" />
+              <KpiCard label="61-90 hari" value={<MoneyDisplay value={aging.data?.days90 ?? 0} />} tone="rose" />
+              <KpiCard label="> 90 hari" value={<MoneyDisplay value={aging.data?.over90 ?? 0} />} tone="rose" />
+            </div>
+          )}
+
+          <div className="mt-4 panel p-4">
+            <h2 className="mb-3 px-1 text-sm font-bold text-brand">
+              Rincian {sisiAging === "ar" ? "Piutang" : "Hutang"} per Faktur
+            </h2>
+            <DataTable
+              columns={kolomAging}
+              rows={aging.data?.invoices ?? []}
+              rowKey={(r) => r.invoiceId}
+              loading={aging.isLoading}
+              skeletonRows={6}
+              empty={`Belum ada ${sisiAging === "ar" ? "piutang" : "hutang"} terbuka.`}
+            />
+          </div>
         </>
       )}
 

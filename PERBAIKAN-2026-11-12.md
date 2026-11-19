@@ -59,7 +59,7 @@ if (pilihan) return pilihan.id;
 
 // Jika tidak ada gudang aktif, buat gudang default dulu
 
-// 3. Payment legs - baris 1580-1581
+// 3. Payment legs - sekitar baris 1539-1549
 // Sebelum:
 cashAccountId: kaki.length === 1 ? kaki[0].cashAccountId : null,
 paymentAmount: kaki.length === 1 ? kaki[0].amount : 0,
@@ -151,7 +151,7 @@ npx tsc --noEmit
 npm run build
 ```
 **Status:** ✅ **Success** (compiled successfully in 67s)
-- 20 static pages generated
+- 16 static pages generated
 - Service worker bundled
 - No breaking changes
 
@@ -189,8 +189,7 @@ Berdasarkan `CATATAN_IMPLEMENTASI.md` dan analisis kode:
 - Email settings / notifications
 
 ### 4. Dokumentasi Minor Inconsistency
-- `AGENTS.md` masih menyebut `engineBelumAda` tapi semua jalur sudah terhubung
-- **Catatan:** Tidak perlu diperbaiki, hanya catatan historis
+- ~~`AGENTS.md` masih menyebut `engineBelumAda` tapi semua jalur sudah terhubung~~ — sudah dibersihkan (2026-11-13)
 
 ---
 
@@ -209,7 +208,7 @@ Berdasarkan `CATATAN_IMPLEMENTASI.md` dan analisis kode:
 **Semua bug dan gap yang bisa diperbaiki sudah selesai.**
 
 - ✅ Typecheck bersih (0 errors)
-- ✅ Build sukses (20 halaman statis)
+- ✅ Build sukses (16 halaman statis)
 - ✅ Tidak ada breaking changes
 - ✅ Code quality meningkat (type-safe, bounds-checked)
 - ✅ Production-ready (no console pollution)

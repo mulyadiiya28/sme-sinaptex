@@ -253,7 +253,7 @@ accountCode,openingBalance
 |---------|--------|
 | Jurnal tidak seimbang | **Bug serius** → screenshot → hubungi support |
 | Stok negatif | **Normal** (kasir jual dulu, restok belakangan) |
-| Mode live tidak konek | Cek engine running (`netstat -an \| findstr 5121`), firewall, `.env.local` |
+| Mode live tidak konek | Cek engine running (`netstat -an \| findstr 5121`), firewall, dan `.env.local` yang dipakai saat build |
 | Lupa password | Edit database SQL atau bootstrap ulang (data hilang) |
 | Database corrupt | Stop engine → Restore backup terakhir |
 
@@ -269,8 +269,8 @@ accountCode,openingBalance
 
 **Go-Live:**
 - [ ] Install POS app di kasir
-- [ ] Jalankan engine (standalone atau Windows Service)
-- [ ] Config `.env.local` → `API_MODE=live`, `API_BASE_URL=http://...`
+- [ ] Jalankan engine (standalone atau Scheduled Task auto-start)
+- [ ] Sebelum `npm run build`: `.env.local` di root repo → `API_MODE=live`, `API_BASE_URL=http://...` (nilai di-bake ke installer)
 - [ ] Training owner (2 jam) + kasir (1 jam)
 - [ ] Backup otomatis aktif
 

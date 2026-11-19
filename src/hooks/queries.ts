@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api/client";
+import { useAuth } from "@/lib/store/auth";
 import { tanggalLokal } from "@/lib/format";
 import type {
   ApprovalRule,
@@ -28,6 +29,9 @@ import type {
   Supplier,
   TransferKasInput,
   User,
+  Voucher,
+  VoucherInput,
+  VoucherValidasi,
 } from "@/lib/api/types";
 
 export function useProducts() {
@@ -310,6 +314,61 @@ export function useApprovalRuleDeactivate() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["master", "approval-rules"] });
     },
+  });
+}
+
+export function useVoucherList(includeNonaktif = false) {
+  return useQuery({
+    queryKey: ["master", "vouchers", includeNonaktif],
+    queryFn: () => api.voucher.list(includeNonaktif),
+  });
+}
+
+export function useVoucherCreate() {
+  const qc = useQueryClient();
+  return useMutation<Voucher, Error, VoucherInput>({
+    mutationFn: (input: VoucherInput) => {
+      const user = useAuth.getState().user;
+      if (!user) throw new Error("Belum masuk.");
+      return api.voucher.create(input, user);
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["master", "vouchers"] });
+    },
+  });
+}
+
+export function useVoucherUpdate() {
+  const qc = useQueryClient();
+  return useMutation<Voucher, Error, { id: string; input: VoucherInput }>({
+    mutationFn: ({ id, input }) => {
+      const user = useAuth.getState().user;
+      if (!user) throw new Error("Belum masuk.");
+      return api.voucher.update(id, input, user);
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["master", "vouchers"] });
+    },
+  });
+}
+
+export function useVoucherDeactivate() {
+  const qc = useQueryClient();
+  return useMutation<Voucher, Error, string>({
+    mutationFn: (id: string) => {
+      const user = useAuth.getState().user;
+      if (!user) throw new Error("Belum masuk.");
+      return api.voucher.deactivate(id, user);
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["master", "vouchers"] });
+    },
+  });
+}
+
+export function useVoucherValidate() {
+  return useMutation<VoucherValidasi, Error, { kode: string; jumlah: number }>({
+    mutationFn: ({ kode, jumlah }) => api.voucher.validate(kode, jumlah),
   });
 }
 

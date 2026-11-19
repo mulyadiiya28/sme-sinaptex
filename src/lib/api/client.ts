@@ -80,6 +80,9 @@ import type {
   StockOpname,
   StockOpnameInput,
   StockTransferInput,
+  Voucher,
+  VoucherInput,
+  VoucherValidasi,
 } from "@/lib/api/types";
 import { mockDb, produkBaruId } from "@/lib/api/mock/db";
 import { useToko } from "@/lib/store/toko";
@@ -112,6 +115,11 @@ import {
   liveSupplierCreate,
   liveSupplierDeactivate,
   liveSupplierList,
+  liveVoucherList,
+  liveVoucherBuat,
+  liveVoucherUbah,
+  liveVoucherNonaktifkan,
+  liveVoucherValidasi,
   liveTransferKasCreate,
   liveTransferKasList,
   liveApprovalRuleCreate,
@@ -204,7 +212,11 @@ export const API_MODE = process.env.NEXT_PUBLIC_API_MODE ?? "mock";
 
 let nomorBerikut = 25;
 
-export function hitungTotal(payload: Pick<CheckoutPayload, "lines" | "diskonTransaksi" | "pajak">): number {
+export function hitungTotal(
+  payload: Pick<CheckoutPayload, "lines" | "diskonTransaksi" | "pajak"> & {
+    diskonVoucher?: number;
+  },
+): number {
   return totalParity(payload).total;
 }
 
@@ -877,6 +889,34 @@ export const api = {
       if (API_MODE === "live") return liveApprovalRuleDeactivate(id);
       await delay(350);
       return mockDb.nonaktifkanAturanApproval(id);
+    },
+  },
+
+  voucher: {
+    list: async (includeNonaktif = false): Promise<Voucher[]> => {
+      if (API_MODE === "live") return liveVoucherList(includeNonaktif);
+      await delay(120);
+      return mockDb.daftarVoucher(includeNonaktif);
+    },
+    create: async (input: VoucherInput, user: User): Promise<Voucher> => {
+      if (API_MODE === "live") return liveVoucherBuat(input);
+      await delay(350);
+      return mockDb.buatVoucher(input, user);
+    },
+    update: async (id: string, input: VoucherInput, user: User): Promise<Voucher> => {
+      if (API_MODE === "live") return liveVoucherUbah(id, input);
+      await delay(350);
+      return mockDb.ubahVoucher(id, input, user);
+    },
+    deactivate: async (id: string, user: User): Promise<Voucher> => {
+      if (API_MODE === "live") return liveVoucherNonaktifkan(id);
+      await delay(350);
+      return mockDb.nonaktifkanVoucher(id, user);
+    },
+    validate: async (kode: string, jumlah: number): Promise<VoucherValidasi> => {
+      if (API_MODE === "live") return liveVoucherValidasi(kode, jumlah);
+      await delay(120);
+      return mockDb.validasiVoucher(kode, jumlah);
     },
   },
 

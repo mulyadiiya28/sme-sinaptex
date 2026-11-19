@@ -57,6 +57,9 @@ import type {
   User,
   StockMovementRef,
   StockTransferInput,
+  Voucher,
+  VoucherInput,
+  VoucherValidasi,
 } from "@/lib/api/types";
 import { formatNilaiIndikator } from "@/lib/format";
 
@@ -284,6 +287,22 @@ export const mockDb = {
   stockMovements: [] as StockMovement[],
   stockOpnames: [] as StockOpname[],
 
+  // ===== VOUCHER =====
+  vouchers: [
+    {
+      id: "voucher-1",
+      kode: "HEMAT10",
+      deskripsi: "Potongan 10% untuk pelanggan lama",
+      tipe: "persen",
+      persen: 0.1,
+      minimumBelanja: 50000,
+      validDari: "2024-01-01",
+      validSampai: "2099-12-31",
+      dipakai: 0,
+      aktif: true,
+    },
+  ] as Voucher[],
+
   /** Isi kartu stok awal dari stok produk untuk gudang default. */
   initStockCards(): void {
     const gudangDefaultId = this.gudangDefault().id;
@@ -457,6 +476,174 @@ export const mockDb = {
 
   daftarPelanggan(): Pelanggan[] {
     return structuredClone(this.pelanggan);
+  },
+
+  /**
+   * Master voucher mode mock.
+   *
+   * Aturannya sama dengan engine: diskon dihitung dari kode yang diketik
+   * kasir, tidak pernah dari nominal yang diminta client.
+   */
+  daftarVoucher(includeNonaktif = false): Voucher[] {
+    const arr = this.vouchers.filter((v) => includeNonaktif || v.aktif);
+    return structuredClone(arr).sort((a, b) => a.kode.localeCompare(b.kode));
+  },
+
+  buatVoucher(input: VoucherInput, user: User): Voucher {
+    if (user.role !== "pemilik") throw new Error("Hanya pemilik yang boleh mengelola voucher.");
+    const kode = (input.kode ?? "").trim().toUpperCase();
+    if (!kode) throw new Error("Kode voucher wajib diisi.");
+    if (this.vouchers.some((v) => v.kode === kode)) {
+      throw new Error(`Kode voucher ${kode} sudah dipakai.`);
+    }
+
+    const voucher = this.susunVoucher({
+      id: `voucher-${Date.now().toString(36)}-${Math.random().toString(16).slice(2, 8)}`,
+      kode,
+      deskripsi: input.deskripsi,
+      tipe: input.tipe,
+      persen: input.persen,
+      nominal: input.nominal,
+      minimumBelanja: input.minimumBelanja,
+      validDari: input.validDari,
+      validSampai: input.validSampai,
+      batasPemakaian: input.batasPemakaian,
+      dipakai: 0,
+      aktif: true,
+    });
+
+    this.vouchers.push(voucher);
+    this.audit(user, "voucher_buat", `Voucher ${kode} dibuat`);
+    return structuredClone(voucher);
+  },
+
+  ubahVoucher(id: string, input: VoucherInput, user: User): Voucher {
+    if (user.role !== "pemilik") throw new Error("Hanya pemilik yang boleh mengelola voucher.");
+    const target = this.vouchers.find((v) => v.id === id);
+    if (!target) throw new Error("Voucher tidak ditemukan.");
+
+    const disusun = this.susunVoucher({
+      ...target,
+      deskripsi: input.deskripsi,
+      tipe: input.tipe,
+      persen: input.persen,
+      nominal: input.nominal,
+      minimumBelanja: input.minimumBelanja,
+      validDari: input.validDari,
+      validSampai: input.validSampai,
+      batasPemakaian: input.batasPemakaian,
+    });
+
+    target.deskripsi = disusun.deskripsi;
+    target.tipe = disusun.tipe;
+    target.persen = disusun.persen;
+    target.nominal = disusun.nominal;
+    target.minimumBelanja = disusun.minimumBelanja;
+    target.validDari = disusun.validDari;
+    target.validSampai = disusun.validSampai;
+    target.batasPemakaian = disusun.batasPemakaian;
+
+    this.audit(user, "voucher_ubah", `Voucher ${target.kode} diubah`);
+    return structuredClone(target);
+  },
+
+  nonaktifkanVoucher(id: string, user: User): Voucher {
+    if (user.role !== "pemilik") throw new Error("Hanya pemilik yang boleh mengelola voucher.");
+    const target = this.vouchers.find((v) => v.id === id);
+    if (!target) throw new Error("Voucher tidak ditemukan.");
+    target.aktif = false;
+    this.audit(user, "voucher_nonaktifkan", `Voucher ${target.kode} dinonaktifkan`);
+    return structuredClone(target);
+  },
+
+  /**
+   * Menghitung diskon voucher terhadap sebuah total, dengan alasan bila
+   * voucher tidak boleh dipakai.
+   */
+  validasiVoucher(kode: string, jumlah: number, tanggal?: string): VoucherValidasi {
+    const normalized = (kode ?? "").trim().toUpperCase();
+    if (!normalized) throw new Error("Kode voucher wajib diisi.");
+
+    const voucher = this.vouchers.find((v) => v.kode === normalized);
+    if (!voucher) throw new Error(`Voucher ${normalized} tidak ditemukan.`);
+    if (!voucher.aktif) throw new Error(`Voucher ${normalized} tidak aktif.`);
+
+    const hari = (tanggal ?? new Date().toISOString().slice(0, 10)).slice(0, 10);
+    if (hari < voucher.validDari) {
+      throw new Error(`Voucher ${normalized} belum berlaku (mulai ${voucher.validDari}).`);
+    }
+    if (hari > voucher.validSampai) {
+      throw new Error(`Voucher ${normalized} sudah kedaluwarsa (berakhir ${voucher.validSampai}).`);
+    }
+    if (jumlah < voucher.minimumBelanja) {
+      throw new Error(
+        `Voucher ${normalized} minimal belanja ${voucher.minimumBelanja.toLocaleString("id-ID")}.`,
+      );
+    }
+    if (voucher.batasPemakaian !== undefined && voucher.dipakai >= voucher.batasPemakaian) {
+      throw new Error(`Voucher ${normalized} sudah mencapai batas pemakaian.`);
+    }
+
+    const diskon =
+      voucher.tipe === "persen"
+        ? Math.round(jumlah * (voucher.persen ?? 0) * 100) / 100
+        : Math.min(voucher.nominal ?? 0, jumlah);
+
+    return {
+      voucherId: voucher.id,
+      kode: voucher.kode,
+      tipe: voucher.tipe,
+      jumlahEligible: jumlah,
+      diskon,
+      total: Math.round((jumlah - diskon) * 100) / 100,
+      minimumBelanja: voucher.minimumBelanja,
+      validDari: voucher.validDari,
+      validSampai: voucher.validSampai,
+      batasPemakaian: voucher.batasPemakaian,
+      dipakai: voucher.dipakai,
+    };
+  },
+
+  /** Mencatat satu pemakaian voucher — dipanggil setelah transaksi berhasil. */
+  pakaiVoucher(kode: string): void {
+    const voucher = this.vouchers.find((v) => v.kode === (kode ?? "").trim().toUpperCase());
+    if (!voucher) return;
+    voucher.dipakai += 1;
+  },
+
+  susunVoucher(input: VoucherInput & Pick<Voucher, "id" | "dipakai" | "aktif">): Voucher {
+    if (input.tipe === "persen") {
+      if (!input.persen || input.persen <= 0 || input.persen > 1) {
+        throw new Error("Persentase voucher harus lebih dari 0 dan maksimal 1 (10% = 0.1).");
+      }
+    } else {
+      if (!input.nominal || input.nominal <= 0) {
+        throw new Error("Nominal voucher harus lebih dari 0.");
+      }
+    }
+    if (input.minimumBelanja !== undefined && input.minimumBelanja < 0) {
+      throw new Error("Minimum belanja tidak boleh negatif.");
+    }
+    if (input.batasPemakaian !== undefined && input.batasPemakaian <= 0) {
+      throw new Error("Batas pemakaian harus lebih dari 0.");
+    }
+
+    const validDari = (input.validDari ?? new Date().toISOString().slice(0, 10)).slice(0, 10);
+    const validSampai = (input.validSampai ?? "2099-12-31").slice(0, 10);
+    if (validSampai < validDari) {
+      throw new Error("Tanggal berakhir tidak boleh sebelum tanggal mulai.");
+    }
+
+    return {
+      ...input,
+      kode: input.kode.toUpperCase(),
+      deskripsi: input.deskripsi?.trim() || undefined,
+      persen: input.tipe === "persen" ? input.persen : undefined,
+      nominal: input.tipe === "nominal" ? input.nominal : undefined,
+      minimumBelanja: input.minimumBelanja ?? 0,
+      validDari,
+      validSampai,
+    };
   },
 
   /**

@@ -1,10 +1,13 @@
 import {
   BarChart3,
+  BadgePercent,
+  BellRing,
   BookText,
   Building2,
   Calculator,
   ClipboardCheck,
   ClipboardList,
+  FileText,
   History,
   LayoutDashboard,
   Package,
@@ -40,14 +43,17 @@ export const NAV_GROUPS: NavGroup[] = [
       { href: "/aset-tetap", label: "Aset Tetap", icon: Building2, roles: ["pemilik"] },
       { href: "/pembelian", label: "Pembelian", icon: ClipboardList, roles: ["pemilik"] },
       { href: "/supplier", label: "Pemasok", icon: Truck, roles: ["pemilik"] },
+      { href: "/voucher", label: "Voucher", icon: BadgePercent, roles: ["pemilik"] },
     ],
   },
   {
     title: "Keuangan & Akuntansi",
     items: [
       { href: "/keuangan", label: "Keuangan", icon: Wallet, roles: ["pemilik"] },
+      { href: "/piutang", label: "Reminder Piutang", icon: BellRing, roles: ["pemilik"] },
       { href: "/akuntansi", label: "Akuntansi", icon: BookText, roles: ["pemilik"] },
       { href: "/laporan", label: "Laporan", icon: BarChart3, roles: ["pemilik"] },
+      { href: "/pph", label: "PPh", icon: FileText, roles: ["pemilik"] },
     ],
   },
   {

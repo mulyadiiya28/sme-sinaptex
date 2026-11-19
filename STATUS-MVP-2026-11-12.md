@@ -103,7 +103,7 @@ Menurut `docs/rencana-desain-ui-ux.md`:
 | Status pembayaran | ✅ | lunas \| menunggu_pembayaran \| dibayar_sebagian |
 | Alokasi pembayaran | ✅ | `payments[]` ke engine (1 kaki per metode) |
 
-**File:** `src/components/kasir/payment-dialog.tsx`, `src/lib/api/live.ts` baris 1526-1587
+**File:** `src/components/kasir/payment-dialog.tsx`, `src/lib/api/live.ts` baris 1491-1560
 
 ---
 
@@ -404,9 +404,9 @@ Yang belum adalah **P1 (Operasional)** — fitur penyempurnaan yang tidak memblo
 |-------|--------|
 | Fitur MVP | ✅ **100%** (95/95) |
 | Typecheck | ✅ **Bersih** |
-| Build | ✅ **Sukses** (20 pages) |
+| Build | ✅ **Sukses** (16 pages) |
 | Test Backend | ✅ **1242 lulus** |
-| Test Frontend | ✅ **20k property test** |
+| Test Frontend | ✅ **20k kasus paritas (ad-hoc)** |
 | Dokumentasi | ✅ **Lengkap** |
 
 ### 🎯 Rekomendasi

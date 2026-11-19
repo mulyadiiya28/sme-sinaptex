@@ -23,6 +23,9 @@ npx tauri build      # Windows installer (nsis + msi)
 npx tsc --noEmit     # Typecheck — no lint/test tooling in the POS repo
 ```
 
+Backup harian (Scheduled Task, butuh Administrator; lihat `docs/DEPLOYMENT-GUIDE.md`):
+`powershell -ExecutionPolicy Bypass -File scripts\install-backup-task.ps1 -RunNow`
+
 No ESLint/Prettier, no test runner in the POS repo. The engine repo has xUnit unit + integration suites.
 
 ### Engine (backend/, nested git repo)
@@ -53,22 +56,29 @@ src/
     login/page.tsx       → login (no shell; auto-buka shift untuk role kasir)
     kasir/page.tsx       → full-screen POS, intentionally outside (app) group
     (app)/               → AppShell group + AuthGuard: dashboard (/), produk, riwayat, shift,
-                           pembelian, supplier, keuangan, akuntansi, laporan,
+                           pembelian, supplier, keuangan, piutang (reminder), akuntansi, laporan,
                            approval-rules, pengaturan
   components/            → shared UI (app-shell, sidebar, data-table, money-display,
-                           status-badge, form-field, page-header, auth-guard) + kasir/ + produk/
+                           status-badge, form-field, page-header, auth-guard) + kasir/ + produk/ +
+                           pengaturan/printer-settings.tsx
   hooks/queries.ts       → ALL TanStack Query hooks (queries + mutation groups)
   lib/
     api/types.ts         → domain types (single source of truth / C# contract)
     api/client.ts        → `api` facade, API_MODE mock|live switch
     api/live.ts          → live client: fetch ke engine C# + pemetaan DTO→domain
     api/mock/db.ts       → in-memory mock engine (double-entry journal, GL, P&L)
-    store/               → zustand: auth.ts (persist), cart.ts, toko.ts (persist)
+    reminder.ts          → helper reminder piutang (tahap H-1/H+3/H+7, template, tautan WA)
+    gateway/client.ts    → client payment gateway (Midtrans/Xendit/REST umum): buat tagihan + status
+    store/               → zustand: auth.ts (persist), cart.ts, toko.ts (persist),
+                           printer.ts (persist), reminder.ts (persist), gateway.ts (persist)
+    printer/             → escpos.ts (builder struk/kuitansi) + printer.ts (invoke Tauri)
     csv.ts, format.ts, nav.ts, struk.ts, utils.ts
   sw.ts                  → Serwist service worker
-src-tauri/               → Rust shell (tauri-plugin-log saja; belum ada native API)
+src-tauri/               → Rust shell: log plugin + printer.rs (raw ESC/POS via Windows spooler)
 backend/                 → nested git repo (gitignored di root): Accounting Engine (.NET 10)
 tools/                   → bootstrap-backend.py (tenant + owner + RBAC + kas + periode)
+scripts/                 → install-backend-service.ps1, setup-client-env.ps1,
+                           install-backup-task.ps1 + backup-auto.ps1 + restore-backup.ps1
 ```
 
 ### Layer rules
@@ -77,7 +87,7 @@ tools/                   → bootstrap-backend.py (tenant + owner + RBAC + kas +
   `mock/db.ts` langsung.
 - `API_MODE === "live"` memakai `src/lib/api/live.ts` (fetch ke engine C# + pemetaan DTO→domain);
   jalur HTTP (header, JWT, refresh, idempotensi) hanya boleh disentuh di file itu. Alur yang engine-nya
-  belum punya endpoint melempar `engineBelumAda(...)` — pesan eksplisit, bukan data mock.
+  belum punya endpoint ditolak dengan pesan eksplisit, bukan data mock.
 - Engine (`backend/`) adalah nested git repo: perubahan di sana **tidak** ikut commit repo POS.
 - Business/accounting logic (stok, saldo, jurnal) milik engine layer, bukan komponen. Di mode mock,
   `mock/db.ts` adalah "engine"-nya; `api/client.ts` hanya orkestrasi + rekap total checkout.
@@ -236,6 +246,74 @@ Perilaku live yang menyimpang dari mock:
   tetap tampil. Pembayaran campuran QRIS + transfer boleh berbagi batch: tiap metode jadi kaki sendiri,
   dan konfirmasi QRIS hanya memindahkan kaki gateway-nya.
 
+## Printer ESC/POS
+
+- `@tauri-apps/plugin-printer` tidak ada di npm; printer memakai command Tauri sendiri di
+  `src-tauri/src/printer.rs` (`printers`, `print_raw`) dengan Windows spooler datatype `RAW`.
+- Frontend: `src/lib/printer/escpos.ts` (builder byte ESC/POS), `src/lib/printer/printer.ts`
+  (invoke; mengembalikan `[]`/gagal bila bukan Tauri), store `usePrinter` (key
+  `pos-sinaptex-printer`). Pengaturan di tab **Printer**.
+- `cetakStruk`/`cetakKuitansi` di `src/lib/struk.ts` mencoba native dulu lalu fallback ke
+  dialog browser bila nonaktif/gagal. Auto-print dipicu di `payment-dialog.tsx` setelah checkout
+  sukses, kecuali transaksi `menunggu_persetujuan`/`menunggu_pembayaran`.
+- Verifikasi Rust: `cargo check --release --manifest-path src-tauri/Cargo.toml` (build debug
+  dari nol bisa gagal di proc-macro pada mesin ini; profile release memakai cache yang valid).
+- Sidik perangkat aktivasi: command `machine_id` (`src-tauri/src/machine.rs`) = FNV-1a nama
+  komputer + serial volume `C:`. Di browser (bukan Tauri) jatuh ke UUID di `localStorage`.
+
+## Splash & Aktivasi
+
+- `ActivationGate` (`src/components/activation-gate.tsx`) di `Providers`: splash singkat, lalu
+  syarat & ketentuan sekali, lalu dialog key. Store `useAktivasi` (`pos-sinaptex-aktivasi`).
+- Format key: `SNTX-XXXXX-XXXXX-CCCCC` (tanpa 0/O/1/I). Grup terakhir = checksum FNV-1a
+  dua grup pertama, jadi key acak ditolak. Jenis lisensi dari karakter pertama.
+  2 karakter terakhir grup kedua bisa menyandi bulan kedaluwarsa sejak Jan 2026 (base32);
+  nilai 0 atau penuh = tanpa batas.
+- Key dicatat lokal per perangkat (`pos-sinaptex-key-terpakai`) dan dicocokkan ke `machine_id`.
+  **Bukan** penegakan server: engine belum punya endpoint lisensi, jadi key yang sama tetap bisa
+  dipakai di PC lain yang belum pernah menyimpan catatan itu. Jangan anggap ini anti-pembajakan.
+- Instalasi yang sudah punya sesi `pos-sinaptex-auth` ditandai `instalasi-lama` dan tidak dikunci.
+  Mode mock boleh melewati key ("mode demo"); mode live mewajibkan key pada perangkat baru.
+- Tab **Lisensi** di Pengaturan hanya menampilkan status (jenis, key tersamar, kedaluwarsa, sidik).
+
+## Payment Gateway
+
+- **Tidak ada kredensial gateway yang hardcode.** Semua konfigurasi (provider, base URL, API key, merchant,
+  mode sandbox/produksi, jenis auth, interval polling, timeout, kode akun kas penampung) ada di
+  **Pengaturan → Gateway** dan disimpan lokal per perangkat di store `useGateway`
+  (key `pos-sinaptex-gateway`). API key tidak dikirim ke engine.
+- Client HTTP: `src/lib/gateway/client.ts` (`buatTagihan`, `statusTagihan`, `tesKoneksi`) dengan adapter
+  Midtrans (`/v2/charge` QRIS + status `/v2/qr_code/{id}/status`), Xendit (`/v2/qr_codes`), dan REST umum
+  (path buat/status bebas, `{id}` sebagai penanda). Semua error → `GatewayError` berBahasa Indonesia.
+- Default baru: provider **Midtrans** mode sandbox (`https://api.sandbox.midtrans.com`), auth Basic
+  (server key). Form otomatis mengisi base URL saat provider/mode diganti, tetapi tetap bisa diedit manual.
+- Kasir: `src/components/kasir/gateway-panel.tsx` membuat tagihan, menampilkan QR (paket `qrcode`, diimpor
+  dinamis agar tidak masuk bundle awal), lalu polling status. Saat status lunas, POS mencatat penjualan
+  dengan kaki QRIS → engine menerima dana di akun penampung gateway (status `menunggu_pembayaran`), dan
+  pemilik memindahkannya ke bank lewat tombol Konfirmasi yang sudah ada.
+- Kode akun kas penampung dibaca runtime oleh `live.ts` lewat `kodeAkunGateway()` (store dulu, env
+  `NEXT_PUBLIC_ENGINE_GATEWAY` sebagai fallback) sehingga bisa diganti per toko tanpa rebuild.
+- Id tagihan gateway disimpan pada deskripsi penjualan (`... · gateway <id>`) untuk rekonsiliasi manual.
+- Yang belum ada: webhook status (butuh endpoint publik), auto-cancel timeout, refund via API.
+
+## Reminder Piutang
+
+- Halaman `/piutang` (owner, menu **Reminder Piutang**) memakai data aging AR dari
+  `api.aging.ar` (`useArAging`), bukan daftar transaksi.
+- Helper `src/lib/reminder.ts`: `tahapReminder` (jatuh tempo hari ini / H-1 / H+3 / H+7),
+  `selisihHariJatuhTempo`, `perluReminder`, `susunPesan`, `normalisasiTelepon`, `tautanWhatsApp`.
+- Jatuh tempo efektif = `dueDate` invoice; bila kosong dipakai tanggal invoice (mem sesuai engine:
+  tanpa termin = jatuh tempo saat invoice dibuat).
+- Pengiriman reminder **manual**: tombol WA membuka `https://wa.me/<no>?text=<pesan>` (dibuka di
+  browser/POS, bukan API provider), tombol salin menyalin pesan, tombol centang menandai
+  "sudah dietingatkan". Tidak ada kredensial WA/SMS/Email yang disimpan.
+- Template pesan (4 tahap) + riwayat reminder disimpan lokal di store `useReminder`
+  (key `pos-sinaptex-reminder`, maks. 500 entri). Placeholder: `{nama}`, `{nomor}`, `{nominal}`,
+  `{jatuhTempo}`, `{toko}`.
+- Dashboard menampilkan peringatan "Reminder piutang" berisi jumlah faktur yang jatuh
+  tempo/terlambat dan belum ada log reminder untuk tahap tersebut.
+- Karena log bersifat lokal per mesin, riwayat tidak ikut tersinkron ke engine.
+
 ## Conventions
 
 - TypeScript strict mode. `type` aliases over `interface`; named exports; default export only
@@ -259,7 +337,11 @@ Perilaku live yang menyimpang dari mock:
   per halaman; `StatusBadge` punya `TONES` bersama (`neutral|info|success|warning|danger`).
 - Zustand: satu store per concern, `type XState` eksplisit, `persist` seperlunya
   (`auth` = `pos-sinaptex-auth`, menyimpan `user` + `refreshToken` + `kedaluwarsa`, access token di-exclude
-  via `partialize`; `toko` = `pos-sinaptex-toko`; `cart` tidak pernah dipersist).
+  via `partialize`; `toko` = `pos-sinaptex-toko`; `printer` = `pos-sinaptex-printer`;
+  `reminder` = `pos-sinaptex-reminder` (template + riwayat reminder piutang);
+  `gateway` = `pos-sinaptex-gateway` (konfigurasi payment gateway per perangkat);
+  `aktivasi` = `pos-sinaptex-aktivasi` (syarat disetujui, key lisensi, atau pengecualian demo/instalasi lama);
+  `cart` tidak pernah dipersist).
   Total keranjang memakai helper di `src/lib/store/cart.ts` (`subtotalLines`, `pajakNominal`,
   `totalTransaksi`); `api/client.ts` menghitung ulang total di sisi "server" (`hitungTotal`).
 - React Query: query key berupa array string pendek (`["products"]`, `["pelanggan"]`, `["shift"]`,
@@ -353,15 +435,18 @@ python ../tools/bootstrap-backend.py
 
 ### Peta Kode Singkat
 ```
-src/app/           layout, login, kasir (full-screen), (app)/ grup → dashboard, produk, riwayat, shift, pembelian, supplier, keuangan, akuntansi, laporan, approval-rules, pengaturan
-src/components/    shared UI + kasir/ + produk/
+src/app/           layout, login, kasir (full-screen), (app)/ grup → dashboard, produk, riwayat, shift, pembelian, supplier, keuangan, piutang (reminder), akuntansi, laporan, approval-rules, pengaturan
+src/components/    shared UI + kasir/ + produk/ + pengaturan/printer-settings
 src/hooks/queries.ts   SEMUA TanStack Query hooks
 src/lib/api/       types.ts (kontrak), client.ts (facade + switch), live.ts (HTTP engine), mock/db.ts (engine mock)
-src/lib/store/     auth.ts, toko.ts (persist), cart.ts (no persist)
-src/lib/           csv, format, nav, struk, utils (cn)
-src-tauri/         Rust shell minimal
+src/lib/store/     auth.ts, toko.ts (persist), cart.ts (no persist), printer.ts (persist), reminder.ts (persist), gateway.ts (persist)
+src/lib/printer/   escpos.ts (builder), printer.ts (invoke Tauri)
+src/lib/gateway/   client.ts (buat tagihan + status: Midtrans/Xendit/REST umum)
+src/lib/           csv, format, nav, reminder (tahap reminder piutang), struk, utils (cn)
+src-tauri/         Rust shell minimal + printer.rs (raw print Windows spooler)
 backend/           nested git repo (Accounting Engine .NET 10)
 tools/             bootstrap-backend.py
+scripts/           backend task, client env, backup harian + restore
 ```
 
 ### Aturan Lapisan (Wajib)
@@ -381,7 +466,7 @@ tools/             bootstrap-backend.py
 - Validasi: Zod hanya `product-form-dialog.tsx`; sisanya hand-roll + pesan ID
 - Dialog: overlay buatan sendiri, ikon `aria-hidden`, tombol ikon wajib `aria-label`
 - React Query key: array string pendek (`["products"]`, `["transaksi"]`, `["shift"]`, …)
-- Zustand: 1 store/concern, persist `auth` & `toko` saja
+- Zustand: 1 store/concern, persist `auth`, `toko`, `printer`, `reminder`
 
 ### Domain Rules Ringkas
 - Kasir **tidak transaksi sebelum shift buka** (panel pemblokir)

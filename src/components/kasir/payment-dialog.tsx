@@ -1,14 +1,19 @@
 "use client";
 
 import { useMemo, useRef, useState } from "react";
-import { BadgePercent, CheckCircle2, Clock3, Plus, ReceiptText, XCircle } from "lucide-react";
+import { BadgePercent, CheckCircle2, Clock3, Plus, QrCode, ReceiptText, XCircle } from "lucide-react";
 import type { CheckoutResult, PaymentMethod, ProfilToko } from "@/lib/api/types";
 import { MoneyDisplay } from "@/components/money-display";
 import { StatusBadge } from "@/components/status-badge";
 import { pajakNominal, totalTransaksi, useCart } from "@/lib/store/cart";
 import { useToko } from "@/lib/store/toko";
-import { cetakStruk } from "@/lib/struk";
+import { usePrinter } from "@/lib/store/printer";
+import { useGateway } from "@/lib/store/gateway";
+import { GatewayPanel } from "@/components/kasir/gateway-panel";
+import { cetakStruk, cetakStrukOtomatis } from "@/lib/struk";
 import { useCheckout } from "@/hooks/queries";
+import { api } from "@/lib/api/client";
+import { formatIDR } from "@/lib/format";
 import { API_BASE_URL } from "@/lib/api/live";
 
 const METODE: Array<{ id: PaymentMethod; label: string; digital: boolean }> = [
@@ -51,14 +56,22 @@ export function PaymentDialog({
   const profil = useToko((s) => s.profil);
   const pajakPersen = hitungPajakEfektif(profil);
   const izinkanKredit = useToko((s) => s.kebijakan.izinkanKredit);
+  const gateway = useGateway((s) => s.config);
   const [sukses, setSukses] = useState<CheckoutResult | null>(null);
   const [midtransLoading, setMidtransLoading] = useState(false);
   const [midtransError, setMidtransError] = useState("");
+  const [gatewayBuka, setGatewayBuka] = useState(false);
+  const [nominalGateway, setNominalGateway] = useState(0);
+  const [gatewayRef, setGatewayRef] = useState<string | null>(null);
+  const [pesanGateway, setPesanGateway] = useState<string | null>(null);
+  const [kodeVoucher, setKodeVoucher] = useState("");
+  const [validasiPending, setValidasiPending] = useState(false);
+  const [pesanVoucher, setPesanVoucher] = useState<string | null>(null);
   const kunciIdempotensi = useRef<string>(
     typeof crypto !== "undefined" && "randomUUID" in crypto ? crypto.randomUUID() : `chk-${Date.now()}-${Math.random()}`,
   );
 
-  const total = totalTransaksi(cart.lines, cart.diskonTransaksi, pajakNominal(cart.lines, cart.diskonTransaksi, pajakPersen));
+  const total = totalTransaksi(cart.lines, cart.diskonTransaksi, pajakNominal(cart.lines, cart.diskonTransaksi, pajakPersen), cart.voucher?.diskon ?? 0);
 
   const hitungan = useMemo(() => {
     let belum = total;
@@ -75,37 +88,20 @@ export function PaymentDialog({
     return { baris, kembalian, sisa: Math.max(0, belum) };
   }, [total, cart.allocations]);
 
-  const mutation = useCheckout((result) => setSukses(result));
+  const mutation = useCheckout((result) => {
+    setSukses(result);
+    const pengaturan = usePrinter.getState();
+    if (!pengaturan.aktif || !pengaturan.autoPrint) return;
+    if (result.menungguPersetujuan || result.status === "menunggu_pembayaran") return;
+    void cetakStrukOtomatis(
+      useToko.getState().profil,
+      susunStruk(result.nomor, result.total, result.kembalian, result.piutang),
+    );
+  });
 
-  // Penjualan kredit penuh (tidak ada satu rupiah pun yang dibayar) sah: sisa
-  // seluruhnya menjadi piutang. Yang tidak sah hanya baris pembayaran yang
-  // melebihi sisa (khusus digital) dan penjualan sisa yang tidak ditandai
-  // sebagai piutang.
-  const canConfirm =
-    cart.lines.length > 0 &&
-    !hitungan.baris.some((b) => b.over) &&
-    (hitungan.sisa === 0
-      ? cart.allocations.length > 0 && !hitungan.baris.some((b) => b.nominal <= 0)
-      : cart.gunakanPiutang);
-
-  function confirm() {
-    mutation.mutate({
-      lines: cart.lines,
-      diskonTransaksi: cart.diskonTransaksi,
-      pajak: pajakNominal(cart.lines, cart.diskonTransaksi, pajakPersen),
-      allocations: cart.allocations,
-      gunakanPiutang: cart.gunakanPiutang,
-      pelanggan: cart.pelanggan,
-      kasir,
-      shiftId,
-      idempotensiKunci: kunciIdempotensi.current,
-    });
-  }
-
-  if (sukses) {
-    const toko = useToko.getState().profil;
-    const dataStruk = {
-      nomor: sukses.nomor,
+  function susunStruk(nomor: string, total: number, kembalian: number, piutang: number) {
+    return {
+      nomor,
       waktu: new Date().toISOString(),
       kasir,
       shiftId,
@@ -118,11 +114,105 @@ export function PaymentDialog({
       })),
       diskonTransaksi: cart.diskonTransaksi,
       pajak: pajakNominal(cart.lines, cart.diskonTransaksi, pajakPersen),
-      total: sukses.total,
-      kembalian: sukses.kembalian,
-      piutang: sukses.piutang,
+      total,
+      kembalian,
+      piutang,
       pembayaran: cart.allocations,
     };
+  }
+
+  // Penjualan kredit penuh (tidak ada satu rupiah pun yang dibayar) sah: sisa
+  // seluruhnya menjadi piutang. Yang tidak sah hanya baris pembayaran yang
+  // melebihi sisa (khusus digital) dan penjualan sisa yang tidak ditandai
+  // sebagai piutang.
+  const canConfirm =
+    cart.lines.length > 0 &&
+    !hitungan.baris.some((b) => b.over) &&
+    (hitungan.sisa === 0
+      ? cart.allocations.length > 0 && !hitungan.baris.some((b) => b.nominal <= 0)
+      : cart.gunakanPiutang);
+
+  function kirimCheckout(referensiGateway?: string) {
+    mutation.mutate({
+      lines: cart.lines,
+      diskonTransaksi: cart.diskonTransaksi,
+      pajak: pajakNominal(cart.lines, cart.diskonTransaksi, pajakPersen),
+      allocations: cart.allocations,
+      gunakanPiutang: cart.gunakanPiutang,
+      pelanggan: cart.pelanggan,
+      kasir,
+      shiftId,
+      idempotensiKunci: kunciIdempotensi.current,
+      gatewayRef: referensiGateway,
+      voucherCode: cart.voucher?.kode,
+      diskonVoucher: cart.voucher?.diskon,
+    });
+  }
+
+  function confirm() {
+    kirimCheckout(gatewayRef ?? undefined);
+  }
+
+  function sisaTanpaGateway() {
+    let belum = total;
+    for (const a of cart.allocations) {
+      if (a.metode === "qris") continue;
+      belum = Math.max(0, belum - Math.min(a.nominal, belum));
+    }
+    return belum;
+  }
+
+  function mulaiGateway() {
+    setPesanGateway(null);
+    const nominal = sisaTanpaGateway();
+    if (nominal <= 0) {
+      setPesanGateway("Tidak ada sisa pembayaran yang perlu dibayar lewat gateway.");
+      return;
+    }
+    const index = cart.allocations.findIndex((a) => a.metode === "qris");
+    if (index >= 0) cart.updateAllocation(index, nominal);
+    else cart.addAllocation("qris", nominal);
+    setNominalGateway(nominal);
+    setGatewayBuka(true);
+  }
+
+  function gatewayTerbayar(chargeId: string) {
+    setGatewayBuka(false);
+    setGatewayRef(chargeId);
+    kirimCheckout(chargeId);
+  }
+
+  function gatewayManual() {
+    setGatewayBuka(false);
+    kirimCheckout(gatewayRef ?? undefined);
+  }
+
+  async function pakaiVoucher() {
+    const kode = kodeVoucher.trim();
+    if (!kode) return;
+    setValidasiPending(true);
+    setPesanVoucher(null);
+    try {
+      const hasil = await api.voucher.validate(kode, total);
+      cart.setVoucher({ kode: hasil.kode, diskon: hasil.diskon });
+      setPesanVoucher(`Voucher ${hasil.kode} dipakai: diskon ${formatIDR(hasil.diskon)}.`);
+    } catch (err) {
+      cart.clearVoucher();
+      setPesanVoucher(err instanceof Error ? err.message : "Voucher tidak valid.");
+    } finally {
+      setValidasiPending(false);
+    }
+  }
+
+  function hapusVoucher() {
+    cart.clearVoucher();
+    setKodeVoucher("");
+    setPesanVoucher(null);
+  }
+
+  if (sukses) {
+    const toko = useToko.getState().profil;
+    const dataStruk = susunStruk(sukses.nomor, sukses.total, sukses.kembalian, sukses.piutang);
 
     return (
       <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink/50 p-4 backdrop-blur-sm">
@@ -286,6 +376,46 @@ export function PaymentDialog({
               ) : null}
             </div>
           ) : null}
+          <div className="mt-3 rounded-xl border border-line p-3">
+            <p className="mb-2 text-xs font-semibold text-muted">Voucher diskon</p>
+            {cart.voucher ? (
+              <div className="flex items-center justify-between gap-2">
+                <span className="font-mono text-xs font-bold">{cart.voucher.kode}</span>
+                <span className="text-sm font-semibold text-emerald-700">-{formatIDR(cart.voucher.diskon)}</span>
+                <button type="button" className="btn-secondary rounded-lg px-2 py-1 text-xs" onClick={hapusVoucher}>
+                  Hapus
+                </button>
+              </div>
+            ) : (
+              <div className="flex gap-2">
+                <input
+                  className="input flex-1 font-mono uppercase"
+                  placeholder="KODE-VOUCHER"
+                  value={kodeVoucher}
+                  onChange={(e) => setKodeVoucher(e.target.value.toUpperCase())}
+                />
+                <button type="button" className="btn-primary rounded-lg px-3 py-2 text-xs" disabled={validasiPending || !kodeVoucher} onClick={() => void pakaiVoucher()}>
+                  {validasiPending ? "..." : "Pakai"}
+                </button>
+              </div>
+            )}
+            {pesanVoucher && <p className="mt-2 text-xs text-muted">{pesanVoucher}</p>}
+          </div>
+
+          {gateway.aktif && (
+            <button
+              type="button"
+              onClick={mulaiGateway}
+              disabled={hitungan.sisa <= 0}
+              className="btn-primary mt-2 w-full disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              <QrCode className="size-4" aria-hidden /> Bayar via Gateway
+              {hitungan.sisa > 0 && <span className="tabular-nums">({hitungan.sisa.toLocaleString("id-ID")})</span>}
+            </button>
+          )}
+          {pesanGateway && (
+            <p className="mt-2 rounded-xl bg-amber-50 px-3 py-2 text-xs text-amber-700">{pesanGateway}</p>
+          )}
         </div>
 
         {hitungan.kembalian > 0 && (
@@ -334,6 +464,16 @@ export function PaymentDialog({
           </p>
         )}
       </div>
+
+      {gatewayBuka && (
+        <GatewayPanel
+          nominal={nominalGateway}
+          pelanggan={cart.pelanggan ? { nama: cart.pelanggan } : undefined}
+          onTerbayar={gatewayTerbayar}
+          onBatal={() => setGatewayBuka(false)}
+          onManual={gatewayManual}
+        />
+      )}
     </div>
   );
 }

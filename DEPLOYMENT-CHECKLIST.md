@@ -11,9 +11,9 @@
 ### 1. Frontend (Next.js + Tauri)
 
 - [x] **TypeScript clean** → `npx tsc --noEmit` (0 errors)
-- [x] **Build sukses** → `npm run build` (20 static pages)
+- [x] **Build sukses** → `npm run build` (16 static pages)
 - [x] **Bug fixes complete** → 20 lokasi diperbaiki (console.error, array bounds)
-- [ ] **Environment variables** → setup `.env.production`
+- [ ] **Environment variables** → isi `.env.production`/`.env.local` **di root repo sebelum build** (nilai di-bake saat `npm run build`)
 - [ ] **Icon assets** → verifikasi `src-tauri/icons/` lengkap
 - [ ] **Tauri build test** → `npx tauri build` sekali untuk test installer
 
@@ -24,7 +24,7 @@
 - [ ] **Bootstrap tenant** → `python tools/bootstrap-backend.py`
 - [ ] **Seed chart** → `POST /api/accounts/seed`
 - [ ] **Production config** → `appsettings.Production.json` (connection string, JWT secret)
-- [ ] **Windows Service setup** → (optional, bisa jalan biasa dulu via `dotnet run`)
+- [ ] **Startup otomatis** → Task Scheduler / shortcut Startup (engine **bukan** Windows Service)
 
 ### 3. Environment Configuration
 
@@ -95,9 +95,9 @@ NEXT_PUBLIC_ENGINE_BIAYA=6900
 ### 5. Database Backup Strategy
 
 **Sebelum production:**
-- [ ] Setup backup otomatis (gunakan menu Pengaturan → Backup)
-- [ ] Test restore dari backup
-- [ ] Dokumentasikan lokasi backup (`backend/src/AccountingEngine.Api/backups/`)
+- [ ] Setup backup otomatis: `powershell -ExecutionPolicy Bypass -File scripts\install-backup-task.ps1 -KeepDays 30 -RunNow`
+- [ ] Test restore dari backup: `scripts\restore-backup.ps1 -ListOnly` lalu restore interaktif
+- [ ] Dokumentasikan lokasi backup (`C:\POS-Sinaptex\Engine\backups\`) dan log (`C:\POS-Sinaptex\logs\`)
 
 ### 6. User Accounts Setup
 
@@ -142,13 +142,10 @@ dotnet publish src/AccountingEngine.Api/AccountingEngine.Api.csproj `
 # Output: publish/engine/AccountingEngine.Api.exe
 ```
 
-**Option B: Windows Service (untuk server LAN multi-cabang)**
+**Option B: Server LAN (bukan Windows Service)**
 
-```powershell
-# Install as service (requires admin)
-sc create "POS-Sinaptex Engine" binPath="C:\path\to\AccountingEngine.Api.exe" start=auto
-sc start "POS-Sinaptex Engine"
-```
+Engine adalah aplikasi ASP.NET Core biasa (tanpa `AddWindowsService`). Jalankan EXE-nya saat startup
+lewat Task Scheduler, shortcut Startup, atau wrapper seperti NSSM — jangan pakai `sc create`.
 
 ### Step 3: Setup Database
 
@@ -189,12 +186,8 @@ dotnet run --project src/AccountingEngine.Api --configuration Release
 
 **Setup:**
 1. **Server toko** → install engine + database
-2. **Kasir 1, 2, ...** → install POS app
-3. **Config kasir** → `.env.local` tiap kasir:
-   ```env
-   NEXT_PUBLIC_API_MODE=live
-   NEXT_PUBLIC_API_BASE_URL=http://<IP-SERVER>:5121
-   ```
+2. **Build installer** dengan `NEXT_PUBLIC_API_BASE_URL=http://<IP-SERVER>:5121` di root repo
+3. **Kasir 1, 2, ...** → install installer yang sama (env sudah ter-bake; tidak bisa diedit di client)
 
 **Catatan:**
 - Engine harus binding `0.0.0.0` (bukan `localhost`), edit `appsettings.json`:
@@ -212,7 +205,7 @@ dotnet run --project src/AccountingEngine.Api --configuration Release
 
 **Setup:**
 1. Install engine + POS di PC yang sama
-2. Config `.env.local` → `API_BASE_URL=http://localhost:5121`
+2. Config build `.env.local` → `API_BASE_URL=http://localhost:5121` (di root repo, lalu build installer)
 3. Jalankan engine otomatis saat startup (Windows Task Scheduler)
 
 ---
@@ -220,7 +213,7 @@ dotnet run --project src/AccountingEngine.Api --configuration Release
 ## 🔧 Post-Deployment Maintenance
 
 ### Daily
-- [ ] Backup database (via menu Pengaturan)
+- [ ] Cek log backup (`C:\POS-Sinaptex\logs\backup-yyyyMMdd.log`) dan status task `POS-Sinaptex Backup`
 - [ ] Cek audit log (error, void, approval)
 
 ### Weekly

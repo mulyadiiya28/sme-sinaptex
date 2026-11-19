@@ -8,14 +8,18 @@ import { MoneyDisplay } from "@/components/money-display";
 import { PanelKesehatan } from "@/components/panel-kesehatan";
 import { KpiSkeleton, Skeleton } from "@/components/skeleton";
 import { StatusBadge } from "@/components/status-badge";
-import { useActiveShift, useProducts, useRiwayatTransaksi } from "@/hooks/queries";
+import { useActiveShift, useArAging, useProducts, useRiwayatTransaksi } from "@/hooks/queries";
 import type { TransaksiRiwayat } from "@/lib/api/types";
 import { tanggalLokal } from "@/lib/format";
+import { perluReminder } from "@/lib/reminder";
+import { useReminder } from "@/lib/store/reminder";
 
 export default function DashboardPage() {
   const products = useProducts();
   const shift = useActiveShift();
   const riwayat = useRiwayatTransaksi();
+  const aging = useArAging();
+  const reminderLog = useReminder((s) => s.log);
 
   if (products.isLoading || riwayat.isLoading) {
     return <DashboardSkeleton />;
@@ -28,6 +32,7 @@ export default function DashboardPage() {
   const omzetHariIni = hariIni.reduce((s, t) => s + t.total, 0);
   const menipis = (products.data ?? []).filter((p) => p.stok <= p.stokMinimum);
   const piutangHariIni = hariIni.reduce((s, t) => s + t.piutang, 0);
+  const perluDiingatkan = perluReminder(aging.data?.invoices ?? [], reminderLog, hari);
 
   return (
     <div>
@@ -107,7 +112,18 @@ export default function DashboardPage() {
                 </p>
               </li>
             ) : null}
-            {transaksi.some((t) => t.piutang > 0 && t.status !== "dibatalkan") ? (
+            {perluDiingatkan.length > 0 ? (
+              <li className="rounded-2xl border border-line/70 bg-slate-50/60 p-3">
+                <StatusBadge label="Reminder piutang" tone="danger" />
+                <p className="mt-1.5 text-sm text-ink">
+                  {perluDiingatkan.length} faktur jatuh tempo/terlambat belum diingatkan —{" "}
+                  <Link href="/piutang" className="font-semibold text-brand underline">
+                    kirim reminder
+                  </Link>
+                  .
+                </p>
+              </li>
+            ) : transaksi.some((t) => t.piutang > 0 && t.status !== "dibatalkan") ? (
               <li className="rounded-2xl border border-line/70 bg-slate-50/60 p-3">
                 <StatusBadge label="Piutang" tone="danger" />
                 <p className="mt-1.5 text-sm text-ink">Ada penjualan kredit yang belum lunas.</p>

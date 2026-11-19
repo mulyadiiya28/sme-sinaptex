@@ -50,14 +50,15 @@ npm run dev
 
 | Area | Fitur |
 |------|-------|
-| **Kasir** | Katalog produk (cari/barcode/keyboard), keranjang, diskon item & transaksi, pelanggan, pembayaran tunai/transfer/QRIS/campuran, kembalian, piutang, idempotensi, cetak struk |
+| **Kasir** | Katalog produk (cari/barcode/keyboard), keranjang, diskon item & transaksi, pelanggan, pembayaran tunai/transfer/QRIS/campuran, QRIS via gateway (Midtrans/Xendit/REST sendiri, QR + polling status), kembalian, piutang, idempotensi, cetak struk |
 | **Shift** | Buka shift (saldo awal dari pengaturan), kas masuk/keluar, tutup shift (selisih fisik vs sistem), riwayat shift |
 | **Produk** | CRUD (Zod validasi), kategori, satuan, harga beli/jual, stok min, impor CSV/XLSX (mock: per baris; live: all-or-nothing), penyesuaian stok (owner) |
 | **Pembelian** | Faktur pembelian (pemasok wajib), item, metode tunai/bank/hutang, stok & hargaBeli ter-update otomatis, jurnal otomatis |
 | **Keuangan** | 4 tab: Kas & Bank (rekonsiliasi), Biaya (catat + tabel), Piutang (pelunasan), Hutang (pelunasan ke pemasok) |
+| **Reminder Piutang** | Faktur jatuh tempo/terlambat dari aging AR, tahap H-1/H+3/H+7, template pesan (4 tahap, bisa diedit), kirim via WhatsApp (`wa.me`), salin pesan, tandai sudah reminding, riwayat reminder (lokal), peringatan di dashboard |
 | **Akuntansi** | Neraca saldo (Saldo awal \| Debit \| Kredit \| Saldo berjalan), Jurnal otomatis expandable, Buku besar, Laba-rugi |
-| **Laporan** | Omzet & rata-rata, penjualan per hari, nilai persediaan, analisis keuangan (12 endpoint engine), gerakan harian, ekspor CSV |
-| **Pengaturan** | Profil toko (sync ke engine), logo (unggah ke engine), kebijakan operasional, periode fiscal, aturan approval, master pemasok, pengguna & audit log |
+| **Laporan** | Omzet & rata-rata, penjualan per hari, nilai persediaan, laba rugi, neraca saldo, jurnal, beban, umur piutang & hutang (aging), analisis keuangan (12 endpoint engine), gerakan harian, ekspor CSV |
+| **Pengaturan** | Profil toko (sync ke engine), logo (unggah ke engine), kebijakan operasional, periode fiscal, aturan approval, master pemasok, pengguna & audit log, printer thermal ESC/POS (pilih printer, 58/80 mm, salinan, auto-print, cut, laci, halaman tes), payment gateway (provider/base URL/API key/merchant/mode, polling, kode akun kas penampung — semua configurable, tanpa hardcode) |
 | **Auth & Akses** | Login (demo: `pemilik`/`pemilik123`, `kasir`/`kasir123`), role `pemilik` (full) & `kasir` (Kasir/Riwayat/Shift), sidebar & route guard per role, JWT access token (memory) + refresh token |
 
 ---
@@ -144,27 +145,27 @@ tools/bootstrap-backend.py
 - Impor produk live all-or-nothing, `satuan` harus ada di master unit, stok awal tidak diimpor
 - Profil toko sync ke `/api/settings/company-profile`; field POS (`mataUang`, `zonaWaktu`, `footerStruk`, `pajakPersen`) di localStorage
 - Logo diunggah ke engine (mock menolak)
-- QRIS bukan konsep engine; konfirmasi lewat `POST /api/sales/{id}/confirm-payment` hanya untuk batch tertahan approval
+- QRIS punya akun gateway sendiri (`1130`); konfirmasi = transfer gateway→bank bertanda `[QRIS <nomor>]`, fallback ke `POST /api/sales/{id}/confirm-payment` bila tidak ada kaki gateway
 - Batch tertahan approval: `/persetujuan` → `GET /api/transactions?status=SUBMITTED` → approve per kaki → `POST /api/cash-batches/{batchId}/post`
 
 ---
 
 ## Verifikasi
 
-- Frontend: `npx tsc --noEmit` bersih + `npm run build` sukses (20 halaman statis + 82 file)
+- Frontend: `npx tsc --noEmit` bersih + `npm run build` sukses (16 halaman statis, 17 HTML dengan 404, 82 file)
 - Backend: `dotnet build AccountingEngine.slnx` (0 warning) + `dotnet test` (490 unit + 752 integration lulus = 1242 passing)
-- Deployment: ✅ MVP 1.0 production-ready, Tauri installer 2.4 MB, Backend 5121 port running
+- Deployment: ✅ MVP 1.0 production-ready, Tauri installer 2.4 MB, backend siap dijalankan di port 5121
 
 ## Status Deployment
 
 | Komponen | Status | Keterangan |
 |----------|--------|------------|
-| Frontend Build | ✅ | 20 pages, 82 files |
+| Frontend Build | ✅ | 16 pages, 82 files |
 | Tauri NSIS | ✅ | `POS-Sinaptex_0.1.0_x64-setup.exe` (2.4 MB) |
 | Backend Build | ✅ | 0 warnings, 1242 tests passing |
 | Database | ✅ | Migrated + Seeded (37 accounts) |
-| Backend Server | ✅ | Running on port 5121 |
-| Documentation | ✅ | 130+ halaman |
+| Backend Server | ✅ | Build OK — jalankan `dotnet run` di server toko (port 5121) |
+| Documentation | ✅ | 158+ halaman |
 
 **Repository:** https://github.com/mulyadiiya28/sme-sinaptex
 
@@ -193,11 +194,11 @@ tools/bootstrap-backend.py
 Lihat `docs/TODO-NEXT-PHASE.md` untuk roadmap lengkap:
 
 **P1 (Operasional) - High Priority:**
-1. Printer ESC/POS (2 minggu) - Spec ready, implement segera
-2. Gateway Payment API (2 minggu) - Butuh API keys Midtrans/Xendit
-3. Auto Backup (1 minggu) - Simple implementation
-4. Reminder Piutang (1 minggu) - Cron + notification
-5. Export Laporan (1 minggu) - Excel/PDF export
+1. Printer ESC/POS ✅ (2026-11-13)
+2. Gateway Payment API ✅ (2026-11-13) - Midtrans/Xendit/REST sendiri, konfigurasi di Pengaturan
+3. Auto Backup ✅ (2026-11-13)
+4. Reminder Piutang ✅ (2026-11-13) - manual via WA + template + riwayat (provider API menyusul)
+5. Export Laporan ✅ (2026-11-13) - CSV Excel-compatible + tab aging
 
 **P2 (Branding) - High Priority:**
 - Splash Screen & Activation (2 minggu) - Spec ready, 807 lines

@@ -24,7 +24,7 @@ POS-Sinaptex memiliki 2 komponen utama:
 ┌────────────────────────────────────────────────────────────┐
 │ SERVER (Accounting Engine)                                 │
 │ ┌──────────────────────────────────────────────────────┐  │
-│ │ • Windows Service (auto-startup)                    │  │
+│ │ • Scheduled Task (auto-startup)                     │  │
 │ │ • Port: 5121                                        │  │
 │ │ • Database: SQLite                                  │  │
 │ │ • Endpoint: REST API (JWT)                          │  │
@@ -36,7 +36,7 @@ POS-Sinaptex memiliki 2 komponen utama:
 │ CLIENT (POS-Sinaptex App)                                  │
 │ ┌──────────────────────────────────────────────────────┐  │
 │ │ • Windows Desktop App (Tauri)                       │  │
-│ │ • Config: .env.local (API URL)                      │  │
+│ │ • Build: env NEXT_PUBLIC_* di-bake                    │  │
 │ │ • Mode: Live (connect ke server)                    │  │
 │ └──────────────────────────────────────────────────────┘  │
 └────────────────────────────────────────────────────────────┘
@@ -68,9 +68,10 @@ POS-Sinaptex memiliki 2 komponen utama:
 
 ## Install Backend (Server)
 
-### Opsi 1: Windows Service (RECOMMENDED) ⭐
+### Opsi 1: Scheduled Task (RECOMMENDED) ⭐
 
-Cara paling robust — backend otomatis jalan saat komputer dinyalakan.
+Engine adalah aplikasi ASP.NET Core biasa — **bukan Windows Service** (tidak ada
+`AddWindowsService`). Auto-start dibuat lewat Scheduled Task saat boot.
 
 #### Langkah 1: Jalankan Script Installation
 
@@ -81,23 +82,23 @@ cd "e:\IYA MULYADI\MYAPP\sme-sinaptex"
 ```
 
 Script akan:
-1. ✅ Build backend (jika belum)
+1. ✅ Publish backend (jika belum)
 2. ✅ Copy ke `C:\POS-Sinaptex\Engine\`
-3. ✅ Install Windows Service: "POS-Sinaptex Engine"
-4. ✅ Start service
+3. ✅ Daftarkan Scheduled Task "POS-Sinaptex Engine" (SYSTEM, AtStartup, port 5121)
+4. ✅ Start task
 5. ✅ Test endpoint API
 
-#### Langkah 2: Verifikasi Service
+#### Langkah 2: Verifikasi Task
 
 ```powershell
-# Cek status service
-Get-Service "POS-Sinaptex Engine"
+# Cek status task
+Get-ScheduledTask -TaskName "POS-Sinaptex Engine" | Get-ScheduledTaskInfo
 
-# Atau via Services.msc
-# Start → ketik "services.msc" → cari "POS-Sinaptex Engine"
+# Atau via Task Scheduler
+# Start → ketik "taskschd.msc" → Task Scheduler Library → "POS-Sinaptex Engine"
 ```
 
-**Expected:** Status = **Running**, Startup Type = **Automatic**
+**Expected:** Last Run Result = `0x0` (berhasil) dan port 5121 listening.
 
 #### Langkah 3: Test API
 
@@ -163,14 +164,18 @@ src-tauri/target/release/bundle/nsis/POS-Sinaptex_0.1.0_x64-setup.exe
 5. Tunggu proses selesai
 6. Klik **Finish**
 
-### Langkah 3: Konfigurasi .env.local
+### Langkah 3: Konfigurasi Build-Time (WAJIB sebelum build installer)
 
-**Lokasi file:**
-```
-C:\Users\<username>\AppData\Roaming\pos-sinaptex-ui\.env.local
+**Penting:** `NEXT_PUBLIC_*` di-bake saat `npm run build`. Mengubah file `.env.local`
+di PC kasir setelah aplikasi ter-install **tidak berefek**.
+
+**Opsi A — script interaktif (dari root repo):**
+```powershell
+.\scripts\setup-client-env.ps1
+# Masukkan URL, misal: http://192.168.1.100:5121
 ```
 
-**Isi file:**
+**Opsi B — manual:** buat `.env.local` di **root repo** (bukan AppData):
 ```env
 NEXT_PUBLIC_API_MODE=live
 NEXT_PUBLIC_API_BASE_URL=http://<IP-SERVER>:5121
@@ -188,9 +193,16 @@ NEXT_PUBLIC_ENGINE_PAJAK=2402
 NEXT_PUBLIC_ENGINE_BIAYA=6900
 ```
 
+Lalu build ulang installer:
+```powershell
+npm run build
+npx tauri build
+```
+
 **⚠️ PENTING:**
 - Ganti `<IP-SERVER>` dengan **IP address server** (misal: `192.168.1.100`)
 - Jika server & client di PC yang sama, gunakan `localhost`
+- IP server berubah → build ulang installer (env tidak bisa diedit di client)
 
 ### Langkah 4: Jalankan POS
 
@@ -263,12 +275,12 @@ Test-NetConnection -ComputerName <IP-SERVER> -Port 5121
 # 1. Cek backend running
 netstat -an | findstr :5121
 
-# 2. Cek service (jika pakai Windows Service)
-Get-Service "POS-Sinaptex Engine"
+# 2. Cek Scheduled Task
+Get-ScheduledTask -TaskName "POS-Sinaptex Engine" | Get-ScheduledTaskInfo
 
-# 3. Restart service
-net stop "POS-Sinaptex Engine"
-net start "POS-Sinaptex Engine"
+# 3. Restart task
+Stop-ScheduledTask -TaskName "POS-Sinaptex Engine"
+Start-ScheduledTask -TaskName "POS-Sinaptex Engine"
 
 # 4. Test API
 Invoke-RestMethod -Uri "http://localhost:5121/api/auth/login" -Method POST -ContentType "application/json" -Body '{"username":"pemilik","password":"pemilik123"}'
@@ -285,8 +297,8 @@ cd "e:\IYA MULYADI\MYAPP\sme-sinaptex\backend"
 python ../tools/bootstrap-backend.py
 
 # Restart backend
-net stop "POS-Sinaptex Engine"
-net start "POS-Sinaptex Engine"
+Stop-ScheduledTask -TaskName "POS-Sinaptex Engine"
+Start-ScheduledTask -TaskName "POS-Sinaptex Engine"
 ```
 
 ### Error: "Token expired"
@@ -319,15 +331,42 @@ net start "POS-Sinaptex Engine"
 
 ### Backup Database
 
-**Manual:**
+**Manual (lewat API engine — JANGAN copy file `accounting.db` saat engine jalan; copy bisa merobek page):**
 ```powershell
-# Copy file database
-Copy-Item "C:\POS-Sinaptex\Engine\accounting.db" `
-  -Destination "C:\Backup\accounting_$(Get-Date -Format 'yyyyMMdd').db"
+$headers = @{
+  "X-Business-Id" = "toko-utama"
+  "X-Actor-Id"    = "pemilik"
+  "X-Actor-Level" = "99"
+}
+Invoke-RestMethod -Uri "http://localhost:5121/api/backup" -Method POST -Headers $headers
 ```
 
-**Otomatis:**
-- Setup Windows Task Scheduler (lihat `docs/DEPLOYMENT-CHECKLIST.md`)
+Hasilnya berkas `accounting-yyyyMMdd-HHmmssZ.db` di folder backup engine
+(`C:\POS-Sinaptex\Engine\backups`).
+
+**Otomatis (harian 23:00):**
+```powershell
+# Administrator
+powershell -ExecutionPolicy Bypass -File scripts\install-backup-task.ps1 -KeepDays 30 -RunNow
+```
+- Task `POS-Sinaptex Backup` (SYSTEM) menjalankan `scripts\backup-auto.ps1`.
+- Retensi engine: `Backup:RetentionCount` (installer backend baru mengisi 30).
+  Script juga memangkas berkas `accounting-*.db` lebih tua dari `-KeepDays`;
+  `pre-restore-*.db` tidak pernah dihapus.
+- Log: `C:\POS-Sinaptex\logs\backup-yyyyMMdd.log`.
+- Kegagalan: Event Log Application (source `POS-Sinaptex Backup`) dan
+  opsional webhook (`-WebhookUrl`).
+
+**Test restore:**
+```powershell
+# Lihat daftar saja
+powershell -ExecutionPolicy Bypass -File scripts\restore-backup.ps1 -ListOnly
+
+# Restore interaktif (engine otomatis membuat pre-restore sebagai jalan balik)
+powershell -ExecutionPolicy Bypass -File scripts\restore-backup.ps1
+```
+Restore menimpa seluruh database. Bila hasilnya salah, pilih berkas
+`pre-restore-*.db` yang dilaporkan saat restore untuk kembali.
 
 ### Log Backend
 
@@ -340,9 +379,9 @@ Get-EventLog -LogName Application -Source "POS-Sinaptex Engine" -Newest 20
 
 ### Update Backend
 
-1. Stop service: `net stop "POS-Sinaptex Engine"`
+1. Stop task: `Stop-ScheduledTask -TaskName "POS-Sinaptex Engine"`
 2. Copy file baru ke `C:\POS-Sinaptex\Engine\`
-3. Start service: `net start "POS-Sinaptex Engine"`
+3. Start task: `Start-ScheduledTask -TaskName "POS-Sinaptex Engine"`
 
 ---
 

@@ -18,6 +18,9 @@ import type {
 } from "@/lib/api/types";
 import { DataTable, type Column } from "@/components/data-table";
 import { FormField } from "@/components/form-field";
+import { PrinterSettings } from "@/components/pengaturan/printer-settings";
+import { GatewaySettings } from "@/components/pengaturan/gateway-settings";
+import { LisensiSettings } from "@/components/pengaturan/lisensi-settings";
 import { MoneyDisplay } from "@/components/money-display";
 import { PageHeader } from "@/components/page-header";
 import { StatusBadge, type StatusTone } from "@/components/status-badge";
@@ -30,16 +33,19 @@ import { useAuth } from "@/lib/store/auth";
 import { useToko } from "@/lib/store/toko";
 import { cn } from "@/lib/utils";
 
-type Tab = "profil" | "migrasi" | "operasional" | "akuntansi" | "keamanan" | "backup" | "cabang";
+type Tab = "profil" | "migrasi" | "operasional" | "printer" | "gateway" | "akuntansi" | "keamanan" | "backup" | "cabang" | "lisensi";
 
 const TABS: Array<{ id: Tab; label: string }> = [
   { id: "profil", label: "Profil Toko" },
   { id: "migrasi", label: "Impor & Migrasi" },
   { id: "operasional", label: "Operasional" },
+  { id: "printer", label: "Printer" },
+  { id: "gateway", label: "Gateway" },
   { id: "akuntansi", label: "Akuntansi" },
   { id: "keamanan", label: "Keamanan" },
   { id: "backup", label: "Backup Database" },
   { id: "cabang", label: "Cabang" },
+  { id: "lisensi", label: "Lisensi" },
 ];
 
 export default function PengaturanPage() {
@@ -70,10 +76,13 @@ export default function PengaturanPage() {
       {tab === "profil" && <PanelProfil />}
       {tab === "migrasi" && <PanelMigrasi />}
       {tab === "operasional" && <PanelInfo grup="Operasional" />}
+      {tab === "printer" && <PrinterSettings />}
+      {tab === "gateway" && <GatewaySettings />}
       {tab === "akuntansi" && <PanelInfo grup="Akuntansi" />}
       {tab === "keamanan" && <PanelKeamanan />}
       {tab === "backup" && <PanelBackup />}
       {tab === "cabang" && <PanelCabang />}
+      {tab === "lisensi" && <LisensiSettings />}
     </div>
   );
 }

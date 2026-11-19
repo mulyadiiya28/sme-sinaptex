@@ -22,16 +22,18 @@
 ### 1. Printer ESC/POS (P1.1) ⭐⭐⭐⭐
 **File:** `docs/SPEC-PRINTER-ESC-POS.md`
 
-**Status:** Spec sudah dibuat, siap implement
+**Status:** ✅ Implemented (2026-11-13) — menunggu uji printer fisik
 
 **Tasks:**
-- [ ] Install Tauri printer plugin: `@tauri-apps/plugin-printer`
-- [ ] Create `lib/printer/printer.ts` - Printer detection & management
-- [ ] Create `lib/printer/escpos.ts` - ESC/POS command builder
-- [ ] Create `components/pengaturan/printer-settings.tsx` - Settings UI
-- [ ] Update `components/kasir/checkout-dialog.tsx` - Auto-print toggle
-- [ ] Update `src/lib/struk.ts` - Print service integration
-- [ ] Testing: 7 test cases (TC-1 sampai TC-7)
+- [x] Command Tauri native `printers` + `print_raw` (`src-tauri/src/printer.rs`, windows-sys/spooler)
+- [x] `@tauri-apps/api` untuk invoke (plugin `@tauri-apps/plugin-printer` tidak ada di npm)
+- [x] `src/lib/printer/printer.ts` - Deteksi printer & raw print
+- [x] `src/lib/printer/escpos.ts` - ESC/POS command builder (struk + kuitansi + test page)
+- [x] `src/lib/store/printer.ts` - Pengaturan persist (`pos-sinaptex-printer`)
+- [x] `src/components/pengaturan/printer-settings.tsx` - Tab Printer (pilih printer, lebar, salinan, auto-print, cut, drawer, tes)
+- [x] `src/components/kasir/payment-dialog.tsx` - Auto-print setelah checkout sukses
+- [x] `src/lib/struk.ts` - Cetak native + fallback dialog browser
+- [ ] Testing hardware: 7 test case (TC-1 sampai TC-7)
 
 **Expected:**
 - Auto-print struk tanpa klik browser dialog
@@ -41,33 +43,37 @@
 ---
 
 ### 2. Gateway Payment API (P1.2) ⭐⭐⭐
-**Status:** QRIS manual sudah jalan, butuh integrasi API
+**Status:** ✅ Implementasi sisi POS selesai (2026-11-13) — kredensial & provider diatur di Pengaturan → Gateway, tidak hardcode
 
 **Tasks:**
-- [ ] Pilih provider: Midtrans / Xendit / Doku
-- [ ] Daftar akun provider & dapat API keys
-- [ ] Sandbox testing
-- [ ] Implement QR code generator
-- [ ] Webhook handler untuk payment status
+- [x] Pengaturan Gateway (provider Midtrans/Xendit/umum, base URL, API key, merchant, mode sandbox/produksi, jenis auth, polling, timeout, kode akun kas penampung)
+- [x] Adapter Midtrans (QRIS `/v2/charge` + status `/v2/qr_code/{id}/status`)
+- [x] Adapter Xendit (QRIS `/v2/qr_codes` + status)
+- [x] Adapter REST umum (path buat/status bebas, `{id}` sebagai penanda)
+- [x] QR code generator lokal (paket `qrcode`, QRIS string → gambar di perangkat, tanpa layanan pihak ketiga)
+- [x] Polling status di layar kasir + tagihan otomatis tercatat ke engine sebagai pembayaran QRIS (menunggu konfirmasi pemilik)
+- [x] Referensi id tagihan gateway ditulis pada deskripsi penjualan untuk rekonsiliasi
+- [ ] Webhook handler untuk payment status (butuh endpoint publik di server)
 - [ ] Auto-cancel timeout (15 menit)
 - [ ] Refund API integration
 
-**Expected:**
-- Kasir tidak perlu tunggu konfirmasi manual
-- Customer experience lebih baik (real-time)
-- Auto-refund jika timeout
+**Catatan:** Semua nilai gateway dibaca dari store lokal (`pos-sinaptex-gateway`), jadi tiap toko memakai akun
+provider sendiri. Kode akun kas penampung dapat diubah di Pengaturan dan dipakai runtime oleh `live.ts`
+(env `NEXT_PUBLIC_ENGINE_GATEWAY` hanya jadi fallback). Pengiriman dana ke bank tetap memakai alur konfirmasi
+pemilik yang sudah ada.
 
 ---
 
 ### 3. Backup Database Otomatis (P1.3)
-**Status:** Manual backup sudah ada, butuh auto-backup
+**Status:** ✅ Implemented (2026-11-13) — tinggal verifikasi restore di mesin produksi
 
 **Tasks:**
-- [ ] Setup Windows Task Scheduler
-- [ ] Schedule backup harian (jam 23:00)
-- [ ] Retention policy: 30 hari
-- [ ] Notification jika backup gagal
-- [ ] Test restore from backup
+- [x] Setup Windows Task Scheduler (`scripts/install-backup-task.ps1`, harian 23:00)
+- [x] Script backup via API engine (`scripts/backup-auto.ps1`, SQLite backup API — bukan copy file)
+- [x] Retention policy: 30 hari (`Backup:RetentionCount` + pemangkasan `accounting-*.db`; `pre-restore-*.db` dikecualikan)
+- [x] Notification jika backup gagal (Event Log `POS-Sinaptex Backup` + log file + webhook opsional)
+- [x] Script restore + test restore (`scripts/restore-backup.ps1`; interaktif, `-ListOnly`, pre-restore otomatis)
+- [ ] Test restore from backup di data produksi
 
 **Expected:**
 - Backup otomatis setiap hari
@@ -80,12 +86,14 @@
 ### 4. Splash Screen & Activation (P2) ⭐⭐⭐⭐
 **File:** `docs/SPEC-SPLASH-ACTIVATION.md`
 
+**Status:** ✅ Sisi POS selesai (2026-11-19) — tanpa API lisensi di engine
+
 **Tasks:**
-- [ ] Create splash screen component
-- [ ] Implement copyright & Terms & Conditions dialog
-- [ ] Activation key system (one-time use)
-- [ ] License validation API
-- [ ] Machine ID tracking
+- [x] Create splash screen component
+- [x] Implement copyright & Terms & Conditions dialog
+- [x] Activation key system (checksum + ikat ke sidik perangkat lokal)
+- [ ] License validation API (engine belum punya endpoint; key belum ditegakkan server)
+- [x] Machine ID tracking (`machine_id` di Tauri; UUID localStorage di browser)
 
 **Expected:**
 - Professional branding saat startup
@@ -95,31 +103,40 @@
 ---
 
 ### 5. Reminder Piutang Otomatis (P1.4)
-**Status:** Pelunasan sudah, reminder belum
+**Status:** ✅ Selesai versi manual (2026-11-13) — kirim via WhatsApp `wa.me`, template + riwayat lokal
 
 **Tasks:**
-- [ ] Background job / cron schedule
-- [ ] Check piutang jatuh tempo (H-1, H+3, H+7)
-- [ ] Template reminder (WA / SMS / Email)
-- [ ] History reminder per pelanggan
-- [ ] Dashboard notification
+- [x] Check piutang jatuh tempo (H-1, H+3, H+7) dari data aging AR (`api.aging.ar`)
+- [x] Template reminder (WA / SMS / Email) — 4 template (jatuh tempo, H-1, H+3, H+7), placeholder `{nama}`, `{nomor}`, `{nominal}`, `{jatuhTempo}`, `{toko}`, disimpan di store `useReminder`
+- [x] History reminder per pelanggan (maks. 500 entri, lokal per mesin)
+- [x] Dashboard notification (peringatan "Reminder piutang" + link ke `/piutang`)
+- [x] Kirim manual: tombol WA membuka `https://wa.me/<no>?text=<pesan>`, tombol salin, tombol tandai sudah remind
+- [ ] Background job / cron schedule (butuh provider API + service di server; belum)
+- [ ] Provider otomatis (WhatsApp Business API / Twilio / SMTP) — butuh kredensial & biaya
+
+**Catatan:** Tidak ada kredensial WA/SMS/Email yang disimpan di POS. Riwayat reminder lokal per mesin
+(tidak ikut sinkron engine). Faktur tanpa `dueDate` dianggap jatuh tempo pada tanggal invoice (sesuai
+semantik engine).
 
 **Expected:**
-- Reminder otomatis ke pelanggan
+- Reminder ke pelanggan via WhatsApp (link manual)
 - Notifikasi di dashboard
 - History tracking
 
 ---
 
 ### 6. Import/Export Laporan (P1.5)
-**Status:** Laporan ada, tapi belum bisa export ke Excel/PDF
+**Status:** ✅ Sebagian besar selesai (2026-11-13) — ekspor CSV client-side, tanpa library baru
 
 **Tasks:**
-- [ ] Export Neraca Saldo ke Excel
-- [ ] Export Laba-Rugi ke Excel
-- [ ] Export AR Aging ke Excel
-- [ ] Export AP Aging ke Excel
-- [ ] Export Struk ke PDF
+- [x] Export Neraca Saldo ke Excel (CSV BOM dari engine `/api/reports/trial-balance/export`)
+- [x] Export Laba-Rugi ke Excel (CSV `Komponen, Nominal` dari tab Laba Rugi)
+- [x] Export AR Aging ke Excel (CSV rincian faktur + bucket dari tab Umur Piutang & Hutang)
+- [x] Export AP Aging ke Excel (CSV rincian faktur + bucket dari tab Umur Piutang & Hutang)
+- [x] Export Struk ke PDF (tombol Cetak → dialog browser → "Save as PDF" saat printer native nonaktif; faktur penjualan live sudah punya PDF engine)
+- [x] Tab **Umur Piutang & Hutang** menampilkan ringkasan bucket (Lancar/1-30/31-60/61-90/>90) + tabel per faktur
+
+**Catatan:** CSV dibuka Excel dengan BOM UTF-8; angka ditulis tanpa format mata uang agar tetap numerik. Belum ada endpoint export P&L/aging di engine, jadi ekspor dilakukan di sisi POS dari data `api.akuntansi.labaRugi` dan `api.aging.ar/ap`.
 
 **Expected:**
 - Laporan bisa di-print ke Excel
@@ -132,10 +149,12 @@
 ### 7. Voucher/Kupon (P1.6)
 **File:** `PRIORITAS-P1-DETAIL.md`
 
+**Status:** 🟡 Sebagian — master voucher CRUD + halaman `/voucher` (2026-11-19); validasi di checkout belum dihubungkan
+
 **Tasks:**
-- [ ] Master voucher (CRUD)
-- [ ] Type: nominal / percentage
-- [ ] Validasi di checkout
+- [x] Master voucher (CRUD) — halaman `/voucher` (list/create/update/deactivate)
+- [x] Type: nominal / percentage
+- [x] Validasi di checkout (kode voucher di payment-dialog, diskon dihitung engine, voucherCode + diskonVoucher dikirim)
 - [ ] Usage limit & history
 - [ ] Promo bundle
 
@@ -146,13 +165,13 @@
 ---
 
 ### 8. PPh (Pajak Penghasilan) (P1.7)
-**Status:** PPN sudah, PPh belum
+**Status:** 🟡 Sebagian — laporan PPh + rate konfigurable (2026-11-19); input per faktur & bukti potong belum
 
 **Tasks:**
 - [ ] Form input PPh rate di pembelian
-- [ ] PPh 23 (2% jasa/sewa)
-- [ ] PPh 4 ayat 2 (potong supplier)
-- [ ] Laporan PPh
+- [x] PPh 23 (2% jasa/sewa) — estimasi dari total faktur, rate konfigurable
+- [x] PPh 4 ayat 2 (potong supplier) — estimasi dari total faktur, rate konfigurable
+- [x] Laporan PPh — halaman `/pph` + ekspor CSV
 - [ ] Bukti potong
 
 **Expected:**
@@ -162,11 +181,13 @@
 ---
 
 ### 9. Filter & Search Lanjutan (P1.8)
+**Status:** ✅ Sebagian besar selesai (2026-11-13)
+
 **Tasks:**
-- [ ] Filter transaksi multi-kriteria
-- [ ] Export filtered data
-- [ ] Saved filter preset
-- [ ] Quick filter (last 7 days, this month, etc.)
+- [x] Filter transaksi multi-kriteria (keyword, rentang tanggal, status, metode pembayaran)
+- [x] Export filtered data (ekspor CSV mengikuti filter aktif)
+- [x] Quick filter (hari ini, 7 hari terakhir, bulan ini, belum lunas)
+- [ ] Saved filter preset (disimpan user's sendiri — belum ada)
 
 **Expected:**
 - Search lebih powerful
@@ -194,7 +215,7 @@
 - [ ] Branch master (CRUD)
 - [ ] Stock per branch
 - [ ] Report per branch
-- [ [Branch ID] header di API calls
+- [ ] `[Branch ID]` header di API calls
 
 **Expected:**
 - Multi-cabang support
@@ -231,12 +252,12 @@
 
 | # | Task | Priority | Estimasi | Status |
 |---|------|----------|----------|--------|
-| 1 | Printer ESC/POS | ⭐⭐⭐⭐ | 2 minggu | Ready to implement |
+| 1 | Printer ESC/POS | ⭐⭐⭐⭐ | 2 minggu | ✅ Selesai |
 | 2 | Gateway API | ⭐⭐⭐ | 2 minggu | Waiting for API keys |
-| 3 | Auto Backup | ⭐⭐⭐ | 1 minggu | Simple implementation |
-| 4 | Splash & Activation | ⭐⭐⭐⭐ | 2 minggu | Spec ready |
-| 5 | Reminder Piutang | ⭐⭐⭐ | 1 minggu | Medium complexity |
-| 6 | Export Laporan | ⭐⭐⭐ | 1 minggu | Simple implementation |
+| 3 | Auto Backup | ⭐⭐⭐ | 1 minggu | ✅ Selesai |
+| 4 | Splash & Activation | ⭐⭐⭐⭐ | 2 minggu | ✅ POS (API server menyusul) |
+| 5 | Reminder Piutang | ⭐⭐⭐ | 1 minggu | ✅ Manual (provider API menyusul) |
+| 6 | Export Laporan | ⭐⭐⭐ | 1 minggu | ✅ Selesai |
 | 7 | Voucher | ⭐⭐ | 2 minggu | Medium complexity |
 | 8 | PPh | ⭐ | 1 minggu | Low complexity |
 | 9 | Filter Lanjutan | ⭐⭐ | 1 minggu | Medium complexity |
@@ -272,10 +293,10 @@ Implement dulu yang mudah & bermanfaat:
 
 | Task | Effort | Impact | Status |
 |------|--------|--------|--------|
-| Export laporan ke Excel | Low | High | Ready |
-| Auto backup harian | Low | High | Ready |
-| Filter transaksi | Low | High | Ready |
-| Quick filter presets | Low | Medium | Ready |
+| Export laporan ke Excel | Low | High | ✅ Done |
+| Auto backup harian | Low | High | ✅ Done |
+| Filter transaksi | Low | High | ✅ Done |
+| Quick filter presets | Low | Medium | ✅ Done |
 
 **Estimasi:** 2-3 minggu untuk 4 quick win
 

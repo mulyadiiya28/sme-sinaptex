@@ -1,4 +1,5 @@
 import { useAuth } from "@/lib/store/auth";
+import { useGateway } from "@/lib/store/gateway";
 import { bulat2, totalParity } from "@/lib/uang";
 import type {
   AkunSaldo,
@@ -86,6 +87,9 @@ import type {
   StockOpname,
   StockOpnameInput,
   StockTransferInput,
+  Voucher,
+  VoucherInput,
+  VoucherValidasi,
 } from "@/lib/api/types";
 
 export const API_BASE_URL = (process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:5121").replace(/\/+$/, "");
@@ -106,6 +110,16 @@ const KODE = {
 };
 
 export const KODE_AKUN = KODE;
+
+/**
+ * Kode akun kas penampung gateway. Nilai default berasal dari env build-time,
+ * tetapi dapat ditimpa dari Pengaturan → Gateway (kodeAkunGateway) supaya
+ * setiap toko bisa memakai kode akunnya sendiri tanpa rebuild aplikasi.
+ */
+function kodeAkunGateway(): string {
+  const configured = useGateway.getState().config.kodeAkunGateway.trim();
+  return configured || KODE.gateway;
+}
 
 export class LiveApiError extends Error {
   readonly status: number;
@@ -897,7 +911,7 @@ export async function liveKonfirmasiDigital(nomor: string): Promise<TransaksiRiw
   const sale = await cariPenjualanByNomor(nomor);
 
   const kaki = await minta<BtSalePayment[]>(`/api/sales/${sale.id}/payments`);
-  const qris = kaki.filter((k) => k.cashAccountCode === KODE.gateway);
+  const qris = kaki.filter((k) => k.cashAccountCode === kodeAkunGateway());
   const nominal = qris.reduce((s, k) => s + k.amount, 0);
 
   // Pembayaran QRIS sudah duduk di akun penampung gateway; konfirmasi berarti
@@ -908,7 +922,7 @@ export async function liveKonfirmasiDigital(nomor: string): Promise<TransaksiRiw
 
   if (nominal > 0) {
     const [gatewayId, bankId] = await Promise.all([
-      pastikanAkunKas(KODE.gateway, "Penampung Gateway QRIS"),
+      pastikanAkunKas(kodeAkunGateway(), "Penampung Gateway QRIS"),
       pastikanAkunKas(KODE.bank, "Bank"),
     ]);
 
@@ -1518,7 +1532,10 @@ function alokasiMasuk(payload: CheckoutPayload, total: number): {
 
 export async function liveCheckout(payload: CheckoutPayload): Promise<CheckoutResult> {
   const gudang = await gudangDefault();
-  const { total, baris, diskonPerBaris } = totalParity(payload);
+  const { total, baris, diskonPerBaris } = totalParity({
+    ...payload,
+    diskonVoucher: payload.diskonVoucher,
+  });
 
   // Total yang dibayar kasir adalah total yang akan dibukukan engine, jadi
   // sisa pembayaran tidak pernah menyisakan selisih pembulatan.
@@ -1543,7 +1560,7 @@ export async function liveCheckout(payload: CheckoutPayload): Promise<CheckoutRe
       metode === "tunai"
         ? await akunKasDefault(KODE.kas)
         : metode === "qris"
-          ? await pastikanAkunKas(KODE.gateway, "Penampung Gateway QRIS")
+          ? await pastikanAkunKas(kodeAkunGateway(), "Penampung Gateway QRIS")
           : await pastikanAkunKas(KODE.bank, "Bank");
     kaki.push({ cashAccountId, amount: nominal });
   }
@@ -1589,9 +1606,12 @@ export async function liveCheckout(payload: CheckoutPayload): Promise<CheckoutRe
       revenueAccountCode: KODE.pendapatan,
       cogsAccountCode: KODE.hpp,
       inventoryAccountCode: KODE.persediaan,
-      description: `Kasir ${payload.kasir} · shift ${payload.shiftId}`,
+      description: `Kasir ${payload.kasir} · shift ${payload.shiftId}${payload.gatewayRef ? ` · gateway ${payload.gatewayRef}` : ""}`,
       taxable: payload.pajak > 0,
       taxAmount: payload.pajak > 0 ? payload.pajak : null,
+      // Hanya KODE voucher yang dikirim: engine yang menghitung diskonnya,
+      // sehingga angka yang masuk ke invoice bukan angka yang diminta client.
+      voucherCode: payload.voucherCode ?? null,
       lines: linesApi,
     },
   });
@@ -1631,7 +1651,7 @@ async function cariPelangganId(nama: string): Promise<string | null> {
  * default menandai tunai; sisanya (bank) transfer.
  */
 function metodeDariAkun(kode: string | null): PaymentMethod {
-  if (kode === KODE.gateway) return "qris";
+  if (kode === kodeAkunGateway()) return "qris";
   if (kode === KODE.kas) return "tunai";
   return "transfer";
 }
@@ -1655,7 +1675,7 @@ export async function liveTransaksiRiwayat(): Promise<TransaksiRiwayat[]> {
 
   const kakiPerPenjualan = new Map(kakiSemua.map((k) => [k.saleId, k.payments]));
   const akunGateway = daftarKas.find(
-    (a) => a.accountCode === KODE.gateway && a.isActive,
+    (a) => a.accountCode === kodeAkunGateway() && a.isActive,
   );
   const sudahDikonfirmasi = await nomorQrisTerkonfirmasi(akunGateway?.id);
 
@@ -1665,7 +1685,7 @@ export async function liveTransaksiRiwayat(): Promise<TransaksiRiwayat[]> {
     const dibatalkan = sale.status === "VOIDED" || sale.status === "CANCELLED";
     const piutang = dibatalkan ? 0 : (sisaPiutang.get(nomor) ?? 0);
     const kaki = kakiPerPenjualan.get(sale.id) ?? [];
-    const adaQris = kaki.some((k) => k.cashAccountCode === KODE.gateway);
+    const adaQris = kaki.some((k) => k.cashAccountCode === kodeAkunGateway());
     const qrisTerkonfirmasi = sudahDikonfirmasi.has(nomor);
 
     const dasar: TransaksiRiwayat["status"] = dibatalkan
@@ -1694,7 +1714,7 @@ export async function liveTransaksiRiwayat(): Promise<TransaksiRiwayat[]> {
             metode: metodeDariAkun(k.cashAccountCode),
             nominal: k.amount,
             status:
-              k.cashAccountCode === KODE.gateway && !qrisTerkonfirmasi
+              k.cashAccountCode === kodeAkunGateway() && !qrisTerkonfirmasi
                 ? "MENUNGGU_KONFIRMASI"
                 : k.status,
           }));
@@ -2530,6 +2550,130 @@ export async function liveSupplierDeactivate(id: string): Promise<Supplier> {
     body: {},
   });
   return data;
+}
+
+type BtVoucher = {
+  id: string;
+  code: string;
+  description: string | null;
+  discountType: string;
+  percentageRate: number | null;
+  fixedAmount: number | null;
+  minimumPurchaseAmount: number;
+  validFrom: string;
+  validUntil: string;
+  usageLimit: number | null;
+  usedCount: number;
+  isActive: boolean;
+};
+
+type BtVoucherValidasi = {
+  voucherId: string;
+  code: string;
+  discountType: string;
+  eligibleAmount: number;
+  discountAmount: number;
+  netAmount: number;
+  minimumPurchaseAmount: number;
+  validFrom: string;
+  validUntil: string;
+  usageLimit: number | null;
+  usedCount: number;
+};
+
+function petakanVoucher(v: BtVoucher): Voucher {
+  return {
+    id: v.id,
+    kode: v.code,
+    deskripsi: v.description ?? undefined,
+    tipe: v.discountType === "NOMINAL" ? "nominal" : "persen",
+    persen: v.percentageRate ?? undefined,
+    nominal: v.fixedAmount ?? undefined,
+    minimumBelanja: v.minimumPurchaseAmount,
+    validDari: v.validFrom.slice(0, 10),
+    validSampai: v.validUntil.slice(0, 10),
+    batasPemakaian: v.usageLimit ?? undefined,
+    dipakai: v.usedCount,
+    aktif: v.isActive,
+  };
+}
+
+export async function liveVoucherList(includeNonaktif = false): Promise<Voucher[]> {
+  const qs = includeNonaktif ? "?includeInactive=true" : "";
+  const data = await minta<BtVoucher[]>(`/api/vouchers${qs}`);
+  return data.map(petakanVoucher);
+}
+
+export async function liveVoucherBuat(input: VoucherInput): Promise<Voucher> {
+  const data = await minta<BtVoucher>("/api/vouchers", {
+    method: "POST",
+    body: {
+      code: input.kode,
+      description: input.deskripsi,
+      discountType: input.tipe === "nominal" ? "NOMINAL" : "PERCENT",
+      percentageRate: input.tipe === "persen" ? input.persen : null,
+      fixedAmount: input.tipe === "nominal" ? input.nominal : null,
+      minimumPurchaseAmount: input.minimumBelanja ?? 0,
+      validFrom: input.validDari ?? null,
+      validUntil: input.validSampai ?? null,
+      usageLimit: input.batasPemakaian ?? null,
+    },
+  });
+  return petakanVoucher(data);
+}
+
+export async function liveVoucherUbah(id: string, input: VoucherInput): Promise<Voucher> {
+  const data = await minta<BtVoucher>(`/api/vouchers/${id}`, {
+    method: "PUT",
+    body: {
+      description: input.deskripsi,
+      discountType: input.tipe === "nominal" ? "NOMINAL" : "PERCENT",
+      percentageRate: input.tipe === "persen" ? input.persen : null,
+      fixedAmount: input.tipe === "nominal" ? input.nominal : null,
+      minimumPurchaseAmount: input.minimumBelanja ?? 0,
+      validFrom: input.validDari ?? null,
+      validUntil: input.validSampai ?? null,
+      usageLimit: input.batasPemakaian ?? null,
+    },
+  });
+  return petakanVoucher(data);
+}
+
+export async function liveVoucherNonaktifkan(id: string): Promise<Voucher> {
+  const data = await minta<BtVoucher>(`/api/vouchers/${id}/deactivate`, {
+    method: "POST",
+    body: {},
+  });
+  return petakanVoucher(data);
+}
+
+/**
+ * Menghitung diskon voucher tanpa memakainya.
+ *
+ * Nominal diskon selalu dari engine — POS hanya menampilkan angkanya.
+ */
+export async function liveVoucherValidasi(kode: string, jumlah: number): Promise<VoucherValidasi> {
+  const data = await minta<BtVoucherValidasi>("/api/vouchers/validate", {
+    method: "POST",
+    body: {
+      code: kode,
+      amount: jumlah,
+      saleDate: new Date().toISOString().slice(0, 10),
+    },
+  });
+  return {
+    voucherId: data.voucherId,
+    kode: data.code,
+    tipe: data.discountType === "NOMINAL" ? "nominal" : "persen",
+    jumlahEligible: data.eligibleAmount,
+    diskon: data.discountAmount,
+    total: data.netAmount,
+    minimumBelanja: data.minimumPurchaseAmount,
+    validDari: data.validFrom.slice(0, 10),
+    validSampai: data.validUntil.slice(0, 10),
+    batasPemakaian: data.usageLimit ?? undefined,
+    dipakai: data.usedCount,
+  };
 }
 
 type BtTransaksiPersetujuan = {

@@ -7,8 +7,8 @@
 ## Ringkasan Status
 
 ### Backend (`acc-sinaptex`, nested repo)
-**Status:** semua endpoint yang dibutuhkan POS sudah ada; build 0 warning, tes **1229 lulus**
-(485 unit + 744 integration).
+**Status:** semua endpoint yang dibutuhkan POS sudah ada; build 0 warning, tes **1242 lulus**
+(490 unit + 752 integration).
 
 - ✅ **Sudah ada:** Auth (JWT + refresh), Products (+import, deactivate), Customers (+import),
   Shifts, Sales, Purchases, Returns (sales & purchases), Journal, Expenses, Audit log,
@@ -153,10 +153,10 @@ Hanya dua store yang persist:
 - ✅ Piutang = total penuh, tetap terbuka
 
 ### Implementasi
-**Kode:** `src/lib/api/live.ts` baris 1526-1587 (fungsi `alokasiMasuk` + `liveCheckout`)
+**Kode:** `src/lib/api/live.ts` baris 1491-1560 (fungsi `alokasiMasuk` + `liveCheckout`)
 
 **Test Backend:** 1242 lulus (490 unit + 752 integration)  
-**Test Frontend:** 20.000 property test — 0 mismatch total vs engine
+**Verifikasi Frontend:** paritas 20.000 kasus acak dijalankan ad-hoc (repo POS tidak punya test runner; skrip tidak disimpan) — 0 mismatch total vs engine
 
 **Dokumentasi:** `AGENTS.md`, `CATATAN_IMPLEMENTASI.md`, `README.md` (sudah update)
 
@@ -221,7 +221,7 @@ split payment menulis satu cash movement per akun kas, satu jurnal settlement se
 ditahan approval memposting ulang tiap kaki dari `PostingPlans.PaymentLegsJson`; total kaki
 melebihi invoice tetap 409.
 
-**Test paritas pembulatan (POS):** property test 20.000 kasus acak (qty desimal, harga
+**Test paritas pembulatan (POS):** verifikasi ad-hoc 20.000 kasus acak (qty desimal, harga
 desimal, diskon baris + diskon transaksi, pajak 0/11%) membandingkan `totalParity()`
 (`src/lib/uang.ts`) dengan perhitungan engine (qty 4dp, gross 2dp, diskon 2dp, sebaran
 diskon proporsional dengan sisa ke baris terakhir) — **0 mismatch base dan 0 selisih total**.

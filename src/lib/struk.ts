@@ -1,6 +1,9 @@
 import type { ProfilToko } from "@/lib/api/types";
 import { formatIDR } from "@/lib/format";
 import { urlLogoAbsolut } from "@/lib/api/live";
+import { buildKuitansiEscPos, buildStrukEscPos } from "@/lib/printer/escpos";
+import { cetakMentah, printerNativeTersedia } from "@/lib/printer/printer";
+import { usePrinter } from "@/lib/store/printer";
 
 export type DataStruk = {
   nomor: string;
@@ -86,8 +89,33 @@ export function buildStrukHtml(toko: ProfilToko, d: DataStruk): string {
   </body></html>`;
 }
 
-export function cetakStruk(toko: ProfilToko, d: DataStruk): void {
+async function cobaCetakNative(data: Uint8Array): Promise<boolean> {
+  const { aktif, namaPrinter } = usePrinter.getState();
+  if (!aktif || !namaPrinter || !printerNativeTersedia()) return false;
+  try {
+    await cetakMentah(namaPrinter, data);
+    return true;
+  } catch (error) {
+    console.warn("Cetak ESC/POS gagal, memakai dialog browser:", error);
+    return false;
+  }
+}
+
+export async function cetakStruk(toko: ProfilToko, d: DataStruk): Promise<void> {
+  if (await cetakStrukOtomatis(toko, d)) return;
   cetakHtml(buildStrukHtml(toko, d));
+}
+
+export async function cetakStrukOtomatis(toko: ProfilToko, d: DataStruk): Promise<boolean> {
+  const pengaturan = usePrinter.getState();
+  if (!pengaturan.aktif) return false;
+  const bytes = buildStrukEscPos(toko, d, {
+    lebar: pengaturan.lebarKertas,
+    salinan: pengaturan.salinan,
+    potong: pengaturan.potongKertas,
+    bukaLaci: pengaturan.bukaLaci,
+  });
+  return cobaCetakNative(bytes);
 }
 
 export type DataKuitansi = {
@@ -147,7 +175,16 @@ export function buildKuitansiHtml(toko: ProfilToko, d: DataKuitansi): string {
   </body></html>`;
 }
 
-export function cetakKuitansi(toko: ProfilToko, d: DataKuitansi): void {
+export async function cetakKuitansi(toko: ProfilToko, d: DataKuitansi): Promise<void> {
+  const pengaturan = usePrinter.getState();
+  if (pengaturan.aktif) {
+    const bytes = buildKuitansiEscPos(toko, d, {
+      lebar: pengaturan.lebarKertas,
+      potong: pengaturan.potongKertas,
+      bukaLaci: pengaturan.bukaLaci,
+    });
+    if (await cobaCetakNative(bytes)) return;
+  }
   cetakHtml(buildKuitansiHtml(toko, d));
 }
 

@@ -1,234 +1,172 @@
+﻿# ============================================
+# Script: Install POS-Sinaptex Backend (auto-start)
 # ============================================
-# Script: Install POS-Sinaptex Backend Service
-# ============================================
-# Deskripsi: Install backend Accounting Engine sebagai Windows Service
+# Deskripsi: Publish backend Accounting Engine lalu daftarkan Scheduled Task
+#            yang jalan saat Windows startup. Engine adalah aplikasi ASP.NET Core
+#            biasa, BUKAN Windows Service (tidak ada AddWindowsService).
 # Cara pakai: powershell -ExecutionPolicy Bypass -File install-backend-service.ps1
 # ============================================
 
+param(
+    [string]$BackendPath = (Join-Path $PSScriptRoot "..\backend"),
+    [string]$InstallPath = "C:\POS-Sinaptex\Engine",
+    [string]$Urls = "http://0.0.0.0:5121",
+    [string]$TaskName = "POS-Sinaptex Engine"
+)
+
 Write-Host "============================================" -ForegroundColor Cyan
-Write-Host "POS-Sinaptex Backend Service Installer" -ForegroundColor Cyan
+Write-Host "POS-Sinaptex Backend Installer (Scheduled Task)" -ForegroundColor Cyan
 Write-Host "============================================" -ForegroundColor Cyan
 Write-Host ""
 
-# Cek apakah script dijalankan sebagai Administrator
 $isAdmin = ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
 if (-not $isAdmin) {
     Write-Host "❌ ERROR: Script harus dijalankan sebagai Administrator!" -ForegroundColor Red
     Write-Host "   Klik kanan PowerShell → 'Run as Administrator'" -ForegroundColor Yellow
-    Write-Host ""
-    Write-Host "Script dihentikan." -ForegroundColor Red
     exit 1
 }
 
-# Konfigurasi
-$serviceName = "POS-Sinaptex Engine"
-$serviceDisplayName = "POS-Sinaptex Accounting Engine"
-$backendPath = "e:\IYA MULYADI\MYAPP\sme-sinaptex\backend"
-$installPath = "C:\POS-Sinaptex\Engine"
+$backendPath = [System.IO.Path]::GetFullPath($BackendPath)
 $publishFolder = Join-Path $backendPath "publish\engine"
 
 Write-Host "📍 Konfigurasi:" -ForegroundColor White
 Write-Host "   Backend Path: $backendPath" -ForegroundColor Gray
-Write-Host "   Install Path: $installPath" -ForegroundColor Gray
-Write-Host "   Service Name: $serviceName" -ForegroundColor Gray
+Write-Host "   Install Path: $InstallPath" -ForegroundColor Gray
+Write-Host "   Task Name:    $TaskName" -ForegroundColor Gray
+Write-Host "   Listen URL:   $Urls" -ForegroundColor Gray
 Write-Host ""
 
-# Step 1: Check if backend exists
-Write-Host "[1/5] Checking backend files..." -ForegroundColor Yellow
 if (-not (Test-Path $backendPath)) {
     Write-Host "❌ ERROR: Backend path tidak ditemukan: $backendPath" -ForegroundColor Red
-    Write-Host "   Pastikan folder backend ada di lokasi yang benar" -ForegroundColor Yellow
     exit 1
 }
 
-if (-not (Test-Path $publishFolder)) {
-    Write-Host "⚠️  WARNING: Publish folder tidak ditemukan!" -ForegroundColor Yellow
-    Write-Host "   Memulai build backend..." -ForegroundColor Yellow
-    
-    Write-Host "   - Restoring dependencies..." -ForegroundColor Gray
-    dotnet restore "$backendPath\AccountingEngine.slnx"
-    
-    Write-Host "   - Building backend..." -ForegroundColor Gray
-    dotnet build "$backendPath\AccountingEngine.slnx" -c Release
-    
-    Write-Host "   - Publishing backend..." -ForegroundColor Gray
-    dotnet publish "$backendPath\src\AccountingEngine.Api\AccountingEngine.Api.csproj" `
-        -c Release -r win-x64 --self-contained true -o "$publishFolder"
-    
+Write-Host "[1/5] Checking backend files..." -ForegroundColor Yellow
+if (-not (Test-Path (Join-Path $publishFolder "AccountingEngine.Api.exe"))) {
+    Write-Host "   Publish folder belum ada, build backend..." -ForegroundColor Yellow
+
+    dotnet restore (Join-Path $backendPath "AccountingEngine.slnx")
+    dotnet build (Join-Path $backendPath "AccountingEngine.slnx") -c Release
+    dotnet publish (Join-Path $backendPath "src\AccountingEngine.Api\AccountingEngine.Api.csproj") `
+        -c Release -r win-x64 --self-contained true -o $publishFolder
+
     if ($LASTEXITCODE -ne 0) {
         Write-Host "❌ ERROR: Build/publish backend gagal!" -ForegroundColor Red
         exit 1
     }
 }
-
 Write-Host "   ✅ Backend files found" -ForegroundColor Green
 Write-Host ""
 
-# Step 2: Copy files to install location
-Write-Host "[2/5] Installing to $installPath..." -ForegroundColor Yellow
-
-# Create install directory if not exists
-if (-not (Test-Path $installPath)) {
-    New-Item -ItemType Directory -Path $installPath | Out-Null
+Write-Host "[2/5] Installing to $InstallPath..." -ForegroundColor Yellow
+if (-not (Test-Path $InstallPath)) {
+    New-Item -ItemType Directory -Path $InstallPath | Out-Null
 }
+Copy-Item -Path (Join-Path $publishFolder "*") -Destination $InstallPath -Recurse -Force
 
-# Copy all files
-Copy-Item -Path "$publishFolder\*" -Destination $installPath -Recurse -Force
-
+$appsettingsPath = Join-Path $InstallPath "appsettings.json"
+if (Test-Path $appsettingsPath) {
+    $settings = Get-Content $appsettingsPath -Raw | ConvertFrom-Json
+    $berubah = $false
+    if (-not $settings.ConnectionStrings -or -not $settings.ConnectionStrings.DefaultConnection) {
+        $connectionStrings = [ordered]@{ DefaultConnection = "Data Source=accounting.db" }
+        $settings | Add-Member -MemberType NoteProperty -Name "ConnectionStrings" -Value $connectionStrings -Force
+        $berubah = $true
+        Write-Host "   ✅ ConnectionStrings.DefaultConnection ditambahkan ke appsettings.json" -ForegroundColor Green
+    }
+    if (-not $settings.Backup -or -not $settings.Backup.RetentionCount) {
+        $backup = [ordered]@{ RetentionCount = 30 }
+        $settings | Add-Member -MemberType NoteProperty -Name "Backup" -Value $backup -Force
+        $berubah = $true
+        Write-Host "   ✅ Backup.RetentionCount = 30 ditambahkan ke appsettings.json" -ForegroundColor Green
+    }
+    if ($berubah) {
+        $settings | ConvertTo-Json -Depth 10 | Set-Content $appsettingsPath -Encoding UTF8
+    }
+}
 Write-Host "   ✅ Files copied" -ForegroundColor Green
 Write-Host ""
 
-# Step 3: Check if service already exists
-Write-Host "[3/5] Checking service status..." -ForegroundColor Yellow
-
-$existingService = Get-Service -Name $serviceName -ErrorAction SilentlyContinue
-
-if ($existingService) {
-    Write-Host "   Service '$serviceName' sudah ada!" -ForegroundColor Yellow
-    
-    $choice = Read-Host "Apakah ingin menghentikan dan menghapus service lama? (Y/N)"
-    if ($choice -eq "Y" -or $choice -eq "y") {
-        Write-Host "   - Menghentikan service..." -ForegroundColor Gray
-        Stop-Service -Name $serviceName -Force -ErrorAction SilentlyContinue
-        
-        Write-Host "   - Menghapus service..." -ForegroundColor Gray
-        sc.exe delete $serviceName
-        
-        Start-Sleep -Seconds 2
-    } else {
-        Write-Host "   Service tidak diubah. Keluar." -ForegroundColor Yellow
-        exit 0
-    }
+Write-Host "[3/5] Membersihkan instalasi lama..." -ForegroundColor Yellow
+$legacyService = Get-Service -Name $TaskName -ErrorAction SilentlyContinue
+if ($legacyService) {
+    Write-Host "   Menghapus Windows Service lama (tidak didukung engine)..." -ForegroundColor Gray
+    Stop-Service -Name $TaskName -Force -ErrorAction SilentlyContinue
+    sc.exe delete $TaskName | Out-Null
 }
-
-Write-Host "   ✅ Service ready to install" -ForegroundColor Green
+if (Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue) {
+    Write-Host "   Menghapus Scheduled Task lama..." -ForegroundColor Gray
+    Stop-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
+    Unregister-ScheduledTask -TaskName $TaskName -Confirm:$false
+}
+Write-Host "   ✅ Bersih" -ForegroundColor Green
 Write-Host ""
 
-# Step 4: Install Windows Service
-Write-Host "[4/5] Installing Windows Service..." -ForegroundColor Yellow
+Write-Host "[4/5] Mendaftarkan Scheduled Task (auto-start saat boot)..." -ForegroundColor Yellow
+$exePath = Join-Path $InstallPath "AccountingEngine.Api.exe"
+$action = New-ScheduledTaskAction -Execute $exePath -Argument "--urls $Urls" -WorkingDirectory $InstallPath
+$trigger = New-ScheduledTaskTrigger -AtStartup
+$principal = New-ScheduledTaskPrincipal -UserId "SYSTEM" -LogonType ServiceAccount -RunLevel Highest
+$settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries `
+    -StartWhenAvailable -RestartCount 3 -RestartInterval (New-TimeSpan -Minutes 1) `
+    -ExecutionTimeLimit ([TimeSpan]::Zero)
 
-$exePath = Join-Path $installPath "AccountingEngine.Api.exe"
-$escapedExePath = $exePath -replace '\\', '\\'
+Register-ScheduledTask -TaskName $TaskName -Action $action -Trigger $trigger -Principal $principal `
+    -Settings $settings -Description "POS-Sinaptex Accounting Engine (ASP.NET Core)" | Out-Null
 
-# Install service
-sc.exe create $serviceName `
-    binPath="$escapedExePath" `
-    start=auto `
-    displayName="$serviceDisplayName"
-
-if ($LASTEXITCODE -ne 0) {
-    Write-Host "❌ ERROR: Gagal install service!" -ForegroundColor Red
-    Write-Host "   Kode error: $LASTEXITCODE" -ForegroundColor Gray
-    exit 1
-}
-
-Write-Host "   ✅ Service installed successfully" -ForegroundColor Green
+Write-Host "   ✅ Scheduled Task terdaftar" -ForegroundColor Green
 Write-Host ""
 
-# Step 5: Start service
-Write-Host "[5/5] Starting service..." -ForegroundColor Yellow
-
-Start-Sleep -Seconds 2
-
-Start-Service -Name $serviceName
-
-Start-Sleep -Seconds 2
-
-# Check service status
-$service = Get-Service -Name $serviceName
-if ($service.Status -eq "Running") {
-    Write-Host "   ✅ Service started successfully" -ForegroundColor Green
-} else {
-    Write-Host "⚠️  WARNING: Service status: $($service.Status)" -ForegroundColor Yellow
-    Write-Host "   Coba restart: net stop $serviceName && net start $serviceName" -ForegroundColor Gray
-}
-
+Write-Host "[5/5] Menjalankan backend..." -ForegroundColor Yellow
+Start-ScheduledTask -TaskName $TaskName
+Start-Sleep -Seconds 5
+Write-Host "   ✅ Task dijalankan" -ForegroundColor Green
 Write-Host ""
 
-# ============================================
-# Verifikasi
-# ============================================
+$port = if ($Urls -match ":(\d+)") { [int]$Matches[1] } else { 5121 }
+
 Write-Host "============================================" -ForegroundColor Cyan
 Write-Host "VERIFIKASI" -ForegroundColor Cyan
 Write-Host "============================================" -ForegroundColor Cyan
 Write-Host ""
 
-# Check service status
-$service = Get-Service -Name $serviceName
-Write-Host "Service: $serviceName" -ForegroundColor White
-Write-Host "Status: $($service.Status)" -ForegroundColor $(if ($service.Status -eq "Running") { "Green" } else { "Yellow" })
-Write-Host "Startup Type: Automatic" -ForegroundColor White
-Write-Host ""
-
-# Check if port is listening
-Write-Host "Checking port 5121..." -ForegroundColor Yellow
-$connection = Get-NetTCPConnection -LocalPort 5121 -ErrorAction SilentlyContinue
+$connection = Get-NetTCPConnection -LocalPort $port -State Listen -ErrorAction SilentlyContinue
 if ($connection) {
-    Write-Host "   ✅ Port 5121 is listening" -ForegroundColor Green
-    Write-Host "   State: $($connection.State)" -ForegroundColor Gray
+    Write-Host "   ✅ Port $port listening" -ForegroundColor Green
 } else {
-    Write-Host "   ⚠️  Port 5121 tidak terdeteksi (service mungkin butuh waktu)" -ForegroundColor Yellow
-    Write-Host "   Tunggu 10 detik dan coba lagi" -ForegroundColor Gray
+    Write-Host "   ⚠️  Port $port belum listening (cek Task Scheduler → Last Run Result)" -ForegroundColor Yellow
 }
 
-Write-Host ""
-
-# Test API (if port is open)
-if ($connection) {
-    Write-Host "Testing API endpoint..." -ForegroundColor Yellow
-    try {
-        $response = Invoke-RestMethod -Uri "http://localhost:5121/api/auth/login" `
-            -Method POST -ContentType "application/json" `
-            -Body '{"username":"pemilik","password":"pemilik123"}' `
-            -UseBasicParsing -TimeoutSec 5 -ErrorAction SilentlyContinue
-        
-        if ($response.accessToken) {
-            Write-Host "   ✅ API is working!" -ForegroundColor Green
-            Write-Host "   Token received: $($response.accessToken.Substring(0, 50))..." -ForegroundColor Gray
-        } else {
-            Write-Host "   ⚠️  API response tidak mengandung token" -ForegroundColor Yellow
-        }
-    } catch {
-        Write-Host "   ⚠️  Gagal test API: $($_.Exception.Message)" -ForegroundColor Yellow
+try {
+    $body = '{"username":"pemilik","password":"pemilik123"}'
+    $response = Invoke-RestMethod -Uri "http://localhost:$port/api/auth/login" `
+        -Method POST -ContentType "application/json" -Body $body -TimeoutSec 5
+    if ($response.accessToken) {
+        Write-Host "   ✅ API login OK" -ForegroundColor Green
+    } else {
+        Write-Host "   ⚠️  API merespons tanpa accessToken" -ForegroundColor Yellow
     }
+} catch {
+    Write-Host "   ⚠️  Gagal test API: $($_.Exception.Message)" -ForegroundColor Yellow
 }
 
 Write-Host ""
-
-# ============================================
-# Ringkasan
-# ============================================
 Write-Host "============================================" -ForegroundColor Cyan
 Write-Host "RINGKASAN" -ForegroundColor Cyan
 Write-Host "============================================" -ForegroundColor Cyan
+Write-Host "   Task:      $TaskName (SYSTEM, AtStartup)" -ForegroundColor Gray
+Write-Host "   Path:      $InstallPath" -ForegroundColor Gray
+Write-Host "   Database:  $InstallPath\accounting.db" -ForegroundColor Gray
+Write-Host "   Listen:    $Urls" -ForegroundColor Gray
 Write-Host ""
-Write-Host "Backend Accounting Engine sudah di-install sebagai Windows Service!" -ForegroundColor Green
+Write-Host "Perintah berguna:" -ForegroundColor White
+Write-Host "   Start:   Start-ScheduledTask -TaskName `"$TaskName`"" -ForegroundColor Gray
+Write-Host "   Stop:    Stop-ScheduledTask -TaskName `"$TaskName`"" -ForegroundColor Gray
+Write-Host "   Status:  Get-ScheduledTask -TaskName `"$TaskName`" | Get-ScheduledTaskInfo" -ForegroundColor Gray
+Write-Host "   Log:     Event Viewer → Applications and Services Logs → Microsoft → Windows → TaskScheduler" -ForegroundColor Gray
 Write-Host ""
-Write-Host "Informasi Service:" -ForegroundColor White
-Write-Host "   Nama: $serviceName" -ForegroundColor Gray
-Write-Host "   Display Name: $serviceDisplayName" -ForegroundColor Gray
-Write-Host "   Status: $($service.Status)" -ForegroundColor Gray
-Write-Host "   Startup: Automatic" -ForegroundColor Gray
-Write-Host "   Path: $exePath" -ForegroundColor Gray
+Write-Host "Setelah backend jalan, bootstrap (sekali):" -ForegroundColor White
+Write-Host "   python tools\bootstrap-backend.py" -ForegroundColor Gray
+Write-Host "   POST http://localhost:$port/api/accounts/seed (dengan token login)" -ForegroundColor Gray
 Write-Host ""
-Write-Host "Konfigurasi Backend:" -ForegroundColor White
-Write-Host "   Location: $installPath" -ForegroundColor Gray
-Write-Host "   API Port: 5121" -ForegroundColor Gray
-Write-Host "   Database: $installPath\accounting.db" -ForegroundColor Gray
-Write-Host ""
-Write-Host "Untuk Client (POS):" -ForegroundColor White
-Write-Host "   Install: POS-Sinaptex_0.1.0_x64-setup.exe" -ForegroundColor Gray
-Write-Host "   Config: .env.local dengan API_BASE_URL=http://localhost:5121" -ForegroundColor Gray
-Write-Host ""
-Write-Host "Perintah Useful:" -ForegroundColor White
-Write-Host "   Start service: net start $serviceName" -ForegroundColor Gray
-Write-Host "   Stop service: net stop $serviceName" -ForegroundColor Gray
-Write-Host "   Restart service: net stop $serviceName && net start $serviceName" -ForegroundColor Gray
-Write-Host "   Check status: Get-Service $serviceName" -ForegroundColor Gray
-Write-Host "   View logs: Get-EventLog -LogName Application -Source $serviceName -Newest 10" -ForegroundColor Gray
-Write-Host ""
-
-Write-Host "============================================" -ForegroundColor Cyan
-Write-Host "INSTALLASI SELESAI!" -ForegroundColor Green
-Write-Host "Backend akan otomatis jalan saat komputer dinyalakan." -ForegroundColor White
-Write-Host "============================================" -ForegroundColor Cyan
+Write-Host "INSTALASI SELESAI!" -ForegroundColor Green
