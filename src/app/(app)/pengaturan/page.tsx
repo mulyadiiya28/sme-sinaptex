@@ -643,21 +643,8 @@ function PanelProfil() {
 }
 
 function PanelInfo({ grup }: { grup: string }) {
-  const daftar =
-    grup === "Operasional"
-      ? ["Printer & scanner barcode", "Multi outlet / gudang", "Queue mutasi offline (P2)"]
-      : ["Kebijakan HPP", "Periode akuntansi", "Konfigurasi pajak lanjutan"];
   return (
     <div className="panel p-6">
-      <h2 className="text-sm font-bold text-brand">{grup}</h2>
-      <ul className="mt-3 space-y-2 text-sm text-muted">
-        {daftar.map((t) => (
-          <li key={t} className="flex items-center justify-between border-b border-line/60 pb-2">
-            <span>{t}</span>
-            <StatusBadge label="Menyusul (P2)" tone="neutral" />
-          </li>
-        ))}
-      </ul>
       {grup === "Operasional" && <PanelKebijakanOperasional />}
       {grup === "Akuntansi" && (
         <>
