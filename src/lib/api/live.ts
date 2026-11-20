@@ -537,6 +537,10 @@ type BtPembelian = {
   totalAmount: number;
   payableAmount: number;
   taxAmount: number;
+  pphAmount: number;
+  pphType: string | null;
+  pphRate: number | null;
+  pphBaseAmount: number;
   items: BtPembelianItem[];
 };
 type BtAkun = {
@@ -1368,7 +1372,12 @@ export async function liveBayarHutang(input: {
     items: [],
     total,
     metode: sisaHutang > 0 ? "hutang" : "tunai",
-    terbayar: Math.max(0, total - sisaHutang),
+    terbayar: Math.max(0, (dokumen?.payableAmount ?? total) - sisaHutang),
+    pphAmount: dokumen?.pphAmount ?? 0,
+    pphType: dokumen?.pphType === "PPH42" ? "PPH42" : dokumen?.pphType === "PPH23" ? "PPH23" : null,
+    pphRate: dokumen?.pphRate ?? null,
+    pphBaseAmount: dokumen?.pphBaseAmount ?? 0,
+    payableAmount: dokumen?.payableAmount ?? total,
   };
 }
 
@@ -1781,7 +1790,14 @@ export async function livePembelianList(): Promise<Pembelian[]> {
       })),
       total: p.totalAmount,
       metode: outstanding > 0 ? "hutang" : "tunai",
-      terbayar: Math.max(0, p.totalAmount - outstanding),
+      // `outstanding` adalah sisa net payable, jadi yang sudah dibayar dihitung
+      // dari payable — bukan dari total faktur yang masih memuat PPh.
+      terbayar: Math.max(0, p.payableAmount - outstanding),
+      pphAmount: p.pphAmount ?? 0,
+      pphType: p.pphType === "PPH42" ? "PPH42" : p.pphType === "PPH23" ? "PPH23" : null,
+      pphRate: p.pphRate ?? null,
+      pphBaseAmount: p.pphBaseAmount ?? 0,
+      payableAmount: p.payableAmount,
     };
   });
 }
@@ -1791,6 +1807,16 @@ export async function livePembelianBuat(input: PembelianInput): Promise<Pembelia
   const actor = useAuth.getState().user?.id ?? ENGINE_APPROVER;
   const total = input.items.reduce((sum, i) => sum + i.hargaBeli * i.qty, 0);
   const hutang = input.metode === "hutang";
+
+  // Engine yang menghitung dan menyimpan PPh; POS hanya perlu tahu berapa yang
+  // benar-benar keluar dari laci, karena pembayaran divalidasi terhadap net
+  // payable. Tarif yang sama dipakai di sini supaya angkanya identik.
+  const pphType = input.pphType ?? "PPH23";
+  const pphRatePersen = input.pphRatePersen ?? (pphType === "PPH42" ? 10 : 2);
+  const pphRate = pphRatePersen / 100;
+  const pphPotongan = input.pphPotongan === true;
+  const pphAmount = pphPotongan ? Math.round(total * pphRate) : 0;
+  const payable = total - pphAmount;
 
   // Pembelian hutang pays nothing now: engine writes the document alone, so
   // the payable stays open and no till is touched.
@@ -1810,11 +1836,14 @@ export async function livePembelianBuat(input: PembelianInput): Promise<Pembelia
       approvedBy: actor === ENGINE_APPROVER ? `${ENGINE_APPROVER}-otorisasi` : ENGINE_APPROVER,
       supplierId: input.supplierId,
       cashAccountId,
-      paymentAmount: hutang ? 0 : total,
+      paymentAmount: hutang ? 0 : payable,
       costingMethod: "AVERAGE",
       payableAccountCode: KODE.hutang,
       inventoryAccountCode: KODE.persediaan,
       description: input.supplierId ? `Pembelian ${input.pemasok}` : "Pembelian tanpa pemasok",
+      isPphPotongan: pphPotongan,
+      pphType: pphPotongan ? pphType : null,
+      pphRate: pphPotongan ? pphRate : null,
       lines: input.items.map((i) => ({
         productId: i.productId,
         warehouseId: gudang,
@@ -1834,7 +1863,12 @@ export async function livePembelianBuat(input: PembelianInput): Promise<Pembelia
     items: input.items,
     total: hasil.documentTotal,
     metode: input.metode === "bank" ? "bank" : hutang ? "hutang" : "tunai",
-    terbayar: hutang ? 0 : hasil.documentTotal,
+    terbayar: hutang ? 0 : payable,
+    pphAmount,
+    pphType: pphPotongan ? pphType : null,
+    pphRate: pphPotongan ? pphRate : null,
+    pphBaseAmount: pphPotongan ? total : 0,
+    payableAmount: payable,
   };
 }
 

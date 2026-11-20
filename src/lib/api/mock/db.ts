@@ -83,6 +83,7 @@ const DAFTAR_AKUN = [
   "Piutang usaha",
   "Persediaan",
   "Hutang usaha",
+  "Hutang PPh",
   "Modal",
   "Penjualan",
   "Retur penjualan",
@@ -101,6 +102,7 @@ const KODE_AKUN: Record<string, string> = {
   "Piutang usaha": "1200",
   Persediaan: "1300",
   "Hutang usaha": "2101",
+  "Hutang PPh": "2201",
   "Pajak keluaran": "2402",
   Modal: "3100",
   Penjualan: "4000",
@@ -1213,8 +1215,18 @@ export const mockDb = {
   registerPembelian(input: PembelianInput): Pembelian {
     const total = input.items.reduce((s, i) => s + i.qty * i.hargaBeli, 0);
     if (total <= 0) throw new Error("Total pembelian harus lebih besar dari nol.");
-    if (input.metode === "tunai" && total > this.kas.tunai) throw new Error("Saldo kas tunai tidak cukup.");
-    if (input.metode === "bank" && total > this.kas.bank) throw new Error("Saldo bank tidak cukup.");
+
+    // PPh dipotong dari pembayaran ke pemasok, bukan dari nilai faktur. Tarif
+    // bawaan mengikuti jenisnya, sama seperti engine.
+    const pphType = input.pphType ?? "PPH23";
+    const pphRatePersen = input.pphRatePersen ?? (pphType === "PPH42" ? 10 : 2);
+    const pphAmount = input.pphPotongan
+      ? Math.round((total * pphRatePersen) / 100)
+      : 0;
+    const payable = total - pphAmount;
+
+    if (input.metode === "tunai" && payable > this.kas.tunai) throw new Error("Saldo kas tunai tidak cukup.");
+    if (input.metode === "bank" && payable > this.kas.bank) throw new Error("Saldo bank tidak cukup.");
 
     pembelianCounter += 1;
     const pembelian: Pembelian = {
@@ -1226,7 +1238,12 @@ export const mockDb = {
       items: input.items.map((item, idx) => ({ ...item, id: `PBI-${pembelianCounter}-${idx + 1}` })),
       total,
       metode: input.metode,
-      terbayar: input.metode === "hutang" ? 0 : total,
+      terbayar: input.metode === "hutang" ? 0 : payable,
+      pphAmount,
+      pphType: pphAmount > 0 ? pphType : null,
+      pphRate: pphAmount > 0 ? pphRatePersen / 100 : null,
+      pphBaseAmount: pphAmount > 0 ? total : 0,
+      payableAmount: payable,
     };
     this.pembelian.unshift(pembelian);
 
@@ -1249,14 +1266,18 @@ export const mockDb = {
     }
 
     const akunSumber = input.metode === "tunai" ? "Kas" : input.metode === "bank" ? "Bank" : "Hutang usaha";
+    const barisJurnal = [
+      { akun: "Persediaan", debit: total, kredit: 0 },
+      { akun: akunSumber, debit: 0, kredit: payable },
+    ];
+    if (pphAmount > 0) {
+      barisJurnal.push({ akun: "Hutang PPh", debit: 0, kredit: pphAmount });
+    }
     this.jurnal.unshift(
-      buatJurnal(input.supplierId ? `Pembelian dari ${input.pemasok}` : "Pembelian tanpa pemasok", pembelian.nomor, [
-        { akun: "Persediaan", debit: total, kredit: 0 },
-        { akun: akunSumber, debit: 0, kredit: total },
-      ]),
+      buatJurnal(input.supplierId ? `Pembelian dari ${input.pemasok}` : "Pembelian tanpa pemasok", pembelian.nomor, barisJurnal),
     );
-    if (input.metode === "tunai") this.kas.tunai -= total;
-    if (input.metode === "bank") this.kas.bank -= total;
+    if (input.metode === "tunai") this.kas.tunai -= payable;
+    if (input.metode === "bank") this.kas.bank -= payable;
 
     return structuredClone(pembelian);
   },
@@ -1264,7 +1285,7 @@ export const mockDb = {
   bayarHutang(pembelianId: string, nominal: number, metode: "tunai" | "transfer"): Pembelian {
     const p = this.pembelian.find((x) => x.id === pembelianId);
     if (!p) throw new Error("Faktur pembelian tidak ditemukan.");
-    const sisa = p.total - p.terbayar;
+    const sisa = Math.max(0, p.payableAmount - p.terbayar);
     if (sisa <= 0) throw new Error("Faktur ini sudah lunas.");
     if (nominal > sisa) throw new Error(`Nominal melebihi sisa hutang (${sisa}).`);
     const sumber = metode === "tunai" ? "Kas" : "Bank";
@@ -1314,9 +1335,11 @@ export const mockDb = {
     }
 
     // Retur memperkecil nilai faktur; hutang yang sudah dibayar ikut menyusut
-    // supaya `sisa = total - terbayar` tidak pernah negatif.
+    // supaya `sisa = payable - terbayar` tidak pernah negatif. Snapshot PPh
+    // sengaja tidak disentuh: retur adalah dokumen sendiri, sama seperti engine.
     p.total = Math.max(0, p.total - nilaiRetur);
-    p.terbayar = Math.min(p.terbayar, p.total);
+    p.payableAmount = Math.max(0, p.payableAmount - nilaiRetur);
+    p.terbayar = Math.min(p.terbayar, p.payableAmount);
 
     returPembelianCounter += 1;
     const retur: ReturPembelian = {

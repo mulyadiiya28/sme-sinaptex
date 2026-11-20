@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { Plus, ReceiptText, RotateCcw, Trash2 } from "lucide-react";
-import type { Pembelian, PembelianItem, PembelianMetode, Product, ReturPembelianInput } from "@/lib/api/types";
+import type { Pembelian, PembelianItem, PembelianMetode, PphType, Product, ReturPembelianInput } from "@/lib/api/types";
 import { DataTable, type Column } from "@/components/data-table";
 import { FormField } from "@/components/form-field";
 import { MoneyDisplay } from "@/components/money-display";
@@ -28,9 +28,12 @@ export default function PembelianPage() {
     { key: "total", header: "Total", align: "right", render: (r) => <MoneyDisplay value={r.total} /> },
     { key: "metode", header: "Pembayaran", align: "center", render: (r) => {
       if (r.metode === "hutang") {
-        return r.terbayar >= r.total
+        // Yang dihutang adalah net payable (faktur dikurangi PPh), bukan total
+        // faktur: PPh tidak pernah menjadi bagian utang ke pemasok.
+        const sisa = Math.max(0, r.payableAmount - r.terbayar);
+        return sisa === 0
           ? <StatusBadge label="Lunas" tone="success" />
-          : <StatusBadge label={`Hutang · sisa ${new Intl.NumberFormat("id-ID").format(r.total - r.terbayar)}`} tone="warning" />;
+          : <StatusBadge label={`Hutang · sisa ${new Intl.NumberFormat("id-ID").format(sisa)}`} tone="warning" />;
       }
       return <StatusBadge label={r.metode === "tunai" ? "Tunai" : "Bank"} tone="info" />;
     } },
@@ -92,11 +95,18 @@ function PembelianFormDialog({ onClose }: { onClose: () => void }) {
   const [produkId, setProdukId] = useState("");
   const [qty, setQty] = useState(0);
   const [harga, setHarga] = useState(0);
+  const [pphPotongan, setPphPotongan] = useState(false);
+  const [pphType, setPphType] = useState<PphType>("PPH23");
+  const [pphRate, setPphRate] = useState(2);
   const [error, setError] = useState<string | null>(null);
 
   const produkDipilih: Product | undefined = products.data?.find((p) => p.id === produkId);
   const suppliersAktif = (suppliers.data ?? []).filter((s) => s.isActive);
   const total = items.reduce((s, i) => s + i.qty * i.hargaBeli, 0);
+  // Engine yang menghitung ulang saat submit; angka ini hanya pratinjau dan
+  // dasar pembayaran tunai/bank (yang divalidasi terhadap net payable).
+  const pphAmount = pphPotongan ? Math.round((total * pphRate) / 100) : 0;
+  const payable = total - pphAmount;
 
   function tambahItem() {
     setError(null);
@@ -142,7 +152,15 @@ function PembelianFormDialog({ onClose }: { onClose: () => void }) {
     if (!nama) pemasok = "Tanpa pemasok";
 
     buat.mutate(
-      { pemasok, supplierId, items, metode },
+      {
+        pemasok,
+        supplierId,
+        items,
+        metode,
+        pphPotongan,
+        pphType,
+        pphRatePersen: pphRate,
+      },
       { onSuccess: onClose, onError: (err) => setError(String(err)) },
     );
   }
@@ -242,9 +260,67 @@ function PembelianFormDialog({ onClose }: { onClose: () => void }) {
             </table>
           )}
 
-          <div className="flex items-baseline justify-between border-t border-dashed border-line pt-3 text-sm">
-            <span className="font-bold text-ink">Total</span>
-            <MoneyDisplay value={total} className="text-lg font-black text-brand" />
+          <div className="rounded-2xl border border-line bg-slate-50/70 p-3.5">
+            <label className="flex items-center gap-2 text-sm font-semibold text-ink">
+              <input
+                type="checkbox"
+                checked={pphPotongan}
+                onChange={(e) => setPphPotongan(e.target.checked)}
+                className="size-4 accent-brand"
+              />
+              Potong PPh dari pembayaran pemasok
+            </label>
+            {pphPotongan && (
+              <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <FormField label="Jenis PPh">
+                  <select
+                    className="input"
+                    value={pphType}
+                    onChange={(e) => {
+                      const jenis = e.target.value as PphType;
+                      setPphType(jenis);
+                      setPphRate(jenis === "PPH42" ? 10 : 2);
+                    }}
+                  >
+                    <option value="PPH23">PPh 23 — jasa/sewa (2%)</option>
+                    <option value="PPH42">PPh 4 ayat 2 (10%)</option>
+                  </select>
+                </FormField>
+                <FormField label="Rate PPh (%)">
+                  <input
+                    type="number"
+                    min={0}
+                    step="0.01"
+                    className="input text-right tabular-nums"
+                    value={pphRate}
+                    onChange={(e) => setPphRate(Number(e.target.value))}
+                  />
+                </FormField>
+                <p className="sm:col-span-2 text-xs text-muted">
+                  Engine menghitung PPh dari total baris sebelum PPN dan menyimpannya di faktur. Yang dibayar ke
+                  pemasok adalah total dikurangi PPh.
+                </p>
+              </div>
+            )}
+          </div>
+
+          <div className="space-y-1.5 border-t border-dashed border-line pt-3 text-sm">
+            <div className="flex items-baseline justify-between">
+              <span className="font-bold text-ink">Total faktur</span>
+              <MoneyDisplay value={total} className="text-lg font-black text-brand" />
+            </div>
+            {pphAmount > 0 && (
+              <>
+                <div className="flex items-baseline justify-between text-muted">
+                  <span>PPh dipotong ({pphType === "PPH42" ? "PPh 4(2)" : "PPh 23"})</span>
+                  <MoneyDisplay value={pphAmount} />
+                </div>
+                <div className="flex items-baseline justify-between">
+                  <span className="font-semibold text-ink">Dibayar ke pemasok</span>
+                  <MoneyDisplay value={payable} className="font-black text-brand" />
+                </div>
+              </>
+            )}
           </div>
 
           {error && <p className="rounded-xl bg-rose-50 px-3 py-2 text-xs text-rose-700">{error}</p>}

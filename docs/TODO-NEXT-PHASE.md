@@ -165,14 +165,15 @@ semantik engine).
 ---
 
 ### 8. PPh (Pajak Penghasilan) (P1.7)
-**Status:** 🟡 Sebagian — laporan PPh + rate konfigurable (2026-11-19); input per faktur & bukti potong belum
+**Status:** ✅ Selesai — PPh per faktur disimpan engine + laporan dari snapshot (2026-11-20)
 
 **Tasks:**
-- [ ] Form input PPh rate di pembelian
-- [x] PPh 23 (2% jasa/sewa) — estimasi dari total faktur, rate konfigurable
-- [x] PPh 4 ayat 2 (potong supplier) — estimasi dari total faktur, rate konfigurable
-- [x] Laporan PPh — halaman `/pph` + ekspor CSV
-- [ ] Bukti potong
+- [x] Form input PPh rate di pembelian — centang PPh, pilih jenis (PPh 23 / PPh 4 ayat 2), isi rate
+- [x] PPh 23 (2% jasa/sewa) — dihitung engine dari DPP, disimpan di faktur
+- [x] PPh 4 ayat 2 (potong supplier) — dihitung engine dari DPP, disimpan di faktur
+- [x] Laporan PPh — halaman `/pph` membaca snapshot engine + ekspor CSV
+- [x] Bukti potong — cetak per faktur dari halaman `/pph` (dialog cetak browser)
+- [x] Endpoint engine `GET /api/reports/pph` (rekap per jenis)
 
 **Expected:**
 - Pajak penghasilan terhitung

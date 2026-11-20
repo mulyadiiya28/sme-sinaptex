@@ -162,6 +162,13 @@ Perilaku live yang menyimpang dari mock:
   Faktur **tunai/bank** boleh tanpa pemasok (`supplierId` null) untuk pembelian pasar; faktur **hutang**
   wajib menunjuk master pemasok supaya hutang tertelusur per pemasok di laporan AP ageing
   (`counterpartyId`). Form pembelian bisa membuat pemasok baru langsung dari nama (kode dibuat otomatis).
+- **PPh per faktur**: form pembelian mengirim `isPphPotongan`, `pphType` (`PPH23`/`PPH42`) dan
+  `pphRate` (pecahan) ke `POST /api/cash-batches/purchases`; engine menghitung PPh dari DPP (total
+  baris sebelum PPN) dan menyimpannya di dokumen. `livePembelianList` membaca balikan
+  `pphAmount`/`pphType`/`pphRate`/`pphBaseAmount`/`payableAmount`, dan halaman `/pph` menampilkan
+  snapshot itu (bukan estimasi tarif global). POS menghitung pembayaran tunai/bank sebagai
+  `total − PPh` karena engine memvalidasi pembayaran terhadap net payable. Rekap per jenis tersedia
+  lewat `GET /api/reports/pph?fromDate=&toDate=`.
 - Master pemasok sengaja hanya list/create/nonaktifkan (engine tidak menyediakan update kode/nama) —
   menjaga integritas nama pemasok pada faktur lama. `liveSupplierList` memakai
   `?includeInactive=true` supaya pemasok nonaktif tetap muncul di master dan namanya masih bisa

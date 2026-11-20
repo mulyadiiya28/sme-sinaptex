@@ -480,6 +480,9 @@ export type PembelianItem = {
 
 export type PembelianMetode = "tunai" | "bank" | "hutang";
 
+/** Jenis PPh yang dipotong engine dari pembayaran ke pemasok. */
+export type PphType = "PPH23" | "PPH42";
+
 export type Pembelian = {
   id: string;
   nomor: string;
@@ -490,6 +493,18 @@ export type Pembelian = {
   total: number;
   metode: PembelianMetode;
   terbayar: number;
+  /**
+   * PPh yang dipotong engine saat faktur disubmit. 0 berarti tidak ada
+   * pemotongan; angkanya snapshot dokumen, bukan hitungan ulang dari rate hari ini.
+   */
+  pphAmount: number;
+  pphType: PphType | null;
+  /** Rate sebagai pecahan (0.02 = 2%). Null bila engine tidak mencatatnya. */
+  pphRate: number | null;
+  /** Dasar pengenaan PPh: total baris sebelum PPN. */
+  pphBaseAmount: number;
+  /** Yang benar-benar dibayar ke pemasok: total faktur dikurangi PPh. */
+  payableAmount: number;
 };
 
 export type ReturPembelianInput = {
@@ -518,6 +533,12 @@ export type PembelianInput = {
   supplierId: string | null;
   items: PembelianItem[];
   metode: PembelianMetode;
+  /** Potong PPh dari pembayaran ke pemasok. Default false. */
+  pphPotongan?: boolean;
+  /** Jenis PPh; default PPH23. */
+  pphType?: PphType;
+  /** Rate dalam persen (2 = 2%). Bila kosong, engine memakai tarif jenisnya. */
+  pphRatePersen?: number;
 };
 
 export type Biaya = {
