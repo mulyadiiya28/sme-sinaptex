@@ -1,13 +1,18 @@
 "use client";
 
+import { useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { LogOut, Store } from "lucide-react";
+import { Building2, LogOut, Store } from "lucide-react";
 import { api } from "@/lib/api/client";
 import { urlLogoAbsolut } from "@/lib/api/live";
 import { useAuth } from "@/lib/store/auth";
+import { useCabang } from "@/lib/store/cabang";
 import { useToko } from "@/lib/store/toko";
+import { useCabangList } from "@/hooks/queries";
+import { useQueryClient } from "@tanstack/react-query";
 import { GlobalSearch } from "@/components/global-search";
 import { NotifButton } from "@/components/notif-button";
+import { cn } from "@/lib/utils";
 
 export function Topbar() {
   const user = useAuth((s) => s.user);
@@ -15,6 +20,27 @@ export function Topbar() {
   const logoUrl = useToko((s) => s.profil.logoUrl ?? "");
   const clearSession = useAuth((s) => s.clearSession);
   const router = useRouter();
+  const qc = useQueryClient();
+
+  const cabangList = useCabangList();
+  const cabangAktif = useCabang((s) => s.cabangAktif);
+  const setCabangAktif = useCabang((s) => s.setCabangAktif);
+  const setDaftar = useCabang((s) => s.setDaftar);
+
+  // Sinkronkan daftar cabang ke store supaya selector selalu terisi.
+  useEffect(() => {
+    if (cabangList.data) setDaftar(cabangList.data);
+  }, [cabangList.data, setDaftar]);
+
+  function gantiCabang(id: string) {
+    setCabangAktif(id === "" ? null : id);
+    qc.invalidateQueries();
+  }
+
+  const namaCabangAktif =
+    cabangAktif === null
+      ? "Pusat (semua)"
+      : cabangList.data?.find((c) => c.id === cabangAktif)?.nama ?? "Cabang";
 
   async function keluar() {
     if (user) await api.auth.logout(user);
@@ -43,6 +69,24 @@ export function Topbar() {
         )}
         {namaToko}
       </div>
+      {cabangList.data && cabangList.data.length > 1 ? (
+        <label className="hidden items-center gap-2 sm:flex">
+          <Building2 className="size-4 text-muted" aria-hidden />
+          <select
+            className="rounded-xl border border-line bg-white px-2.5 py-1.5 text-xs font-semibold text-ink focus:border-brand focus:outline-none"
+            value={cabangAktif ?? ""}
+            onChange={(e) => gantiCabang(e.target.value)}
+            aria-label="Cabang aktif"
+          >
+            <option value="">Pusat (semua)</option>
+            {cabangList.data.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.kode} — {c.nama}
+              </option>
+            ))}
+          </select>
+        </label>
+      ) : null}
       <GlobalSearch />
       <NotifButton />
       <div className="flex items-center gap-2.5">

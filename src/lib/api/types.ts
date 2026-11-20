@@ -632,6 +632,7 @@ export type JurnalEntry = {
 export type JurnalParams = {
   from?: string;
   to?: string;
+  branchId?: string;
 };
 
 export type AkunSaldo = {
@@ -648,6 +649,7 @@ export type AkunSaldo = {
 export type NeracaParams = {
   from?: string;
   to?: string;
+  branchId?: string;
 };
 
 export type LabaRugi = {

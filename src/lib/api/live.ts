@@ -1,4 +1,5 @@
 import { useAuth } from "@/lib/store/auth";
+import { useCabang } from "@/lib/store/cabang";
 import { useGateway } from "@/lib/store/gateway";
 import { bulat2, totalParity } from "@/lib/uang";
 import type {
@@ -199,15 +200,14 @@ async function perbaruiSesi(refreshToken: string): Promise<{
 
 function headerLive(opsi: { json?: boolean; idempotensiKunci?: string } = {}): Record<string, string> {
   const state = useAuth.getState();
+  const cabang = useCabang.getState().cabangAktif;
   const headers: Record<string, string> = { "X-Business-Id": BUSINESS_ID };
+  if (cabang) headers["X-Branch-Id"] = cabang;
   if (opsi.json) headers["Content-Type"] = "application/json";
   if (state.user) {
     headers["X-Actor-Id"] = state.user.id;
     headers["X-Actor-Level"] = state.user.role === "pemilik" ? "99" : "2";
   }
-  // Catatan: POS sengaja TIDAK mengirim X-Branch-Id. Engine menjaga stok per
-  // cabang, jadi menunjuk cabang aktif tanpa gudang yang terikat ke cabang itu
-  // akan menolak penjualan. Gudang POS masih terikat ke pusat.
   if (state.accessToken) headers.Authorization = `Bearer ${state.accessToken}`;
   if (opsi.idempotensiKunci) headers["Idempotency-Key"] = opsi.idempotensiKunci;
   return headers;
@@ -1151,6 +1151,8 @@ export async function liveAkun(params: NeracaParams = {}): Promise<AkunSaldo[]> 
     fromDate: params.from || "1900-01-01",
     toDate: params.to || "2999-12-31",
   });
+  const cabang = useCabang.getState().cabangAktif;
+  if (cabang) query.set("branchId", cabang);
   const neraca = await minta<BtNeraca>(
     `/api/reports/trial-balance?${query.toString()}`,
   );
@@ -1168,13 +1170,16 @@ export async function liveAkun(params: NeracaParams = {}): Promise<AkunSaldo[]> 
 
 export async function liveNeracaSaldoExport(dari: string, sampai: string): Promise<Blob> {
   const query = new URLSearchParams({ fromDate: dari, toDate: sampai, format: "csv" });
+  const cabang = useCabang.getState().cabangAktif;
+  if (cabang) query.set("branchId", cabang);
   return ambilBerkas(`/api/reports/trial-balance/export?${query.toString()}`);
 }
 
 export async function liveLabaRugi(): Promise<LabaRugi> {
-  const neraca = await minta<BtNeraca>(
-    `/api/reports/trial-balance?fromDate=1900-01-01&toDate=2999-12-31`,
-  );
+  const cabang = useCabang.getState().cabangAktif;
+  const qs = new URLSearchParams({ fromDate: "1900-01-01", toDate: "2999-12-31" });
+  if (cabang) qs.set("branchId", cabang);
+  const neraca = await minta<BtNeraca>(`/api/reports/trial-balance?${qs.toString()}`);
   let pendapatan = 0;
   let hpp = 0;
   let biaya = 0;
@@ -1210,6 +1215,8 @@ export async function liveJurnal(params: JurnalParams = {}): Promise<JurnalEntry
     });
     if (params.from) query.set("from", params.from);
     if (params.to) query.set("to", params.to);
+    const cabang = useCabang.getState().cabangAktif;
+    if (cabang) query.set("branchId", cabang);
 
     const rows = await minta<BtJurnal[]>(`/api/journal?${query.toString()}`);
 
@@ -1418,9 +1425,10 @@ async function gudangDefault(): Promise<string> {
   if (pilihan) return pilihan.id;
   
   // Jika tidak ada gudang aktif, buat gudang default dulu
+  const cabang = useCabang.getState().cabangAktif;
   const dibuat = await minta<BtGudang>("/api/warehouses", {
     method: "POST",
-    body: { code: "GUDANG-UTAMA", name: "Gudang Utama", isDefault: true },
+    body: { code: "GUDANG-UTAMA", name: "Gudang Utama", isDefault: true, branchId: cabang ?? undefined },
   });
   return dibuat.id;
 }
@@ -2605,6 +2613,8 @@ export async function liveApprovalRuleDeactivate(id: string): Promise<ApprovalRu
 
 export async function liveDailyMovement(date: string, accountCode: string): Promise<DailyMovementReport> {
   const qs = new URLSearchParams({ date, accountCode });
+  const cabang = useCabang.getState().cabangAktif;
+  if (cabang) qs.set("branchId", cabang);
   const data = await minta<DailyMovementReport>(`/api/reports/daily-movement?${qs.toString()}`);
   return data;
 }
@@ -3214,6 +3224,7 @@ export async function liveBuatGudang(
       name: input.nama,
       address: input.alamat ?? null,
       isDefault: input.isDefault,
+      branchId: useCabang.getState().cabangAktif ?? undefined,
     },
   });
   return petakanGudang(data);

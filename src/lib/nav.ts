@@ -61,6 +61,7 @@ export const NAV_GROUPS: NavGroup[] = [
     items: [
       { href: "/persetujuan", label: "Persetujuan", icon: ClipboardCheck, roles: ["pemilik"] },
       { href: "/approval-rules", label: "Aturan Approval", icon: ShieldCheck, roles: ["pemilik"] },
+      { href: "/cabang", label: "Cabang", icon: Building2, roles: ["pemilik"] },
       { href: "/pengaturan", label: "Pengaturan", icon: Settings, roles: ["pemilik"] },
     ],
   },
