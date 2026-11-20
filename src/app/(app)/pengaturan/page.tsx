@@ -75,10 +75,15 @@ export default function PengaturanPage() {
 
       {tab === "profil" && <PanelProfil />}
       {tab === "migrasi" && <PanelMigrasi />}
-      {tab === "operasional" && <PanelInfo grup="Operasional" />}
+      {tab === "operasional" && <PanelKebijakanOperasional />}
       {tab === "printer" && <PrinterSettings />}
       {tab === "gateway" && <GatewaySettings />}
-      {tab === "akuntansi" && <PanelInfo grup="Akuntansi" />}
+      {tab === "akuntansi" && (
+        <>
+          <DaftarAkunInfo />
+          <PanelFiscalPeriods />
+        </>
+      )}
       {tab === "keamanan" && <PanelKeamanan />}
       {tab === "backup" && <PanelBackup />}
       {tab === "cabang" && <PanelCabang />}
@@ -638,20 +643,6 @@ function PanelProfil() {
           {logoError && <p className="mt-2 text-xs font-semibold text-rose-600">{logoError}</p>}
         </div>
       </div>
-    </div>
-  );
-}
-
-function PanelInfo({ grup }: { grup: string }) {
-  return (
-    <div className="panel p-6">
-      {grup === "Operasional" && <PanelKebijakanOperasional />}
-      {grup === "Akuntansi" && (
-        <>
-          <DaftarAkunInfo />
-          <PanelFiscalPeriods />
-        </>
-      )}
     </div>
   );
 }
