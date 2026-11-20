@@ -9,9 +9,16 @@ import type {
   CreateApprovalRuleRequest,
   CreateSupplierRequest,
   Gudang,
+  HargaLoyalty,
   ImporPelangganBaris,
   ImporProdukBaris,
   ImporSaldoAwalBaris,
+  LoyaltyPolicy,
+  Member,
+  MemberInput,
+  MemberTier,
+  MemberTierInput,
+  MemberUpdate,
   MutasiAset,
   NeracaParams,
   PembelianInput,
@@ -381,6 +388,133 @@ export function useVoucherDeactivate() {
 export function useVoucherValidate() {
   return useMutation<VoucherValidasi, Error, { kode: string; jumlah: number }>({
     mutationFn: ({ kode, jumlah }) => api.voucher.validate(kode, jumlah),
+  });
+}
+
+export function useMemberList(includeNonaktif = false) {
+  return useQuery({
+    queryKey: ["master", "members", includeNonaktif],
+    queryFn: () => api.member.list(includeNonaktif),
+  });
+}
+
+export function useTierList(includeNonaktif = false) {
+  return useQuery({
+    queryKey: ["master", "member-tiers", includeNonaktif],
+    queryFn: () => api.member.tiers.list(includeNonaktif),
+  });
+}
+
+export function useLoyaltyPolicy() {
+  return useQuery({ queryKey: ["master", "loyalty-policy"], queryFn: api.member.policy.get });
+}
+
+export function useRiwayatPoin(memberId?: string) {
+  return useQuery({
+    queryKey: ["master", "point-transactions", memberId],
+    queryFn: () => api.member.riwayatPoin(memberId!),
+    enabled: Boolean(memberId),
+  });
+}
+
+export function useMemberMutations() {
+  const qc = useQueryClient();
+  const invalidas = () => {
+    qc.invalidateQueries({ queryKey: ["master", "members"] });
+    qc.invalidateQueries({ queryKey: ["master", "member-tiers"] });
+    qc.invalidateQueries({ queryKey: ["master", "point-transactions"] });
+  };
+
+  const create = useMutation<Member, Error, MemberInput>({
+    mutationFn: (input) => {
+      const user = useAuth.getState().user;
+      if (!user) throw new Error("Belum masuk.");
+      return api.member.create(input, user);
+    },
+    onSuccess: invalidas,
+  });
+  const update = useMutation<Member, Error, { id: string; input: MemberUpdate }>({
+    mutationFn: ({ id, input }) => {
+      const user = useAuth.getState().user;
+      if (!user) throw new Error("Belum masuk.");
+      return api.member.update(id, input, user);
+    },
+    onSuccess: invalidas,
+  });
+  const deactivate = useMutation<Member, Error, string>({
+    mutationFn: (id) => {
+      const user = useAuth.getState().user;
+      if (!user) throw new Error("Belum masuk.");
+      return api.member.deactivate(id, user);
+    },
+    onSuccess: invalidas,
+  });
+  const adjust = useMutation<
+    Member,
+    Error,
+    { kode: string; poin: number; deskripsi?: string }
+  >({
+    mutationFn: ({ kode, poin, deskripsi }) => {
+      const user = useAuth.getState().user;
+      if (!user) throw new Error("Belum masuk.");
+      return api.member.sesuaikanPoin(kode, poin, deskripsi, user);
+    },
+    onSuccess: invalidas,
+  });
+
+  return { create, update, deactivate, adjust };
+}
+
+export function useTierMutations() {
+  const qc = useQueryClient();
+  const invalidas = () => {
+    qc.invalidateQueries({ queryKey: ["master", "member-tiers"] });
+    qc.invalidateQueries({ queryKey: ["master", "members"] });
+  };
+
+  const create = useMutation<MemberTier, Error, MemberTierInput>({
+    mutationFn: (input) => {
+      const user = useAuth.getState().user;
+      if (!user) throw new Error("Belum masuk.");
+      return api.member.tiers.create(input, user);
+    },
+    onSuccess: invalidas,
+  });
+  const update = useMutation<MemberTier, Error, { id: string; input: MemberTierInput }>({
+    mutationFn: ({ id, input }) => {
+      const user = useAuth.getState().user;
+      if (!user) throw new Error("Belum masuk.");
+      return api.member.tiers.update(id, input, user);
+    },
+    onSuccess: invalidas,
+  });
+  const deactivate = useMutation<MemberTier, Error, string>({
+    mutationFn: (id) => {
+      const user = useAuth.getState().user;
+      if (!user) throw new Error("Belum masuk.");
+      return api.member.tiers.deactivate(id, user);
+    },
+    onSuccess: invalidas,
+  });
+
+  return { create, update, deactivate };
+}
+
+export function useLoyaltyPolicyMutation() {
+  const qc = useQueryClient();
+  return useMutation<LoyaltyPolicy, Error, LoyaltyPolicy>({
+    mutationFn: (input) => {
+      const user = useAuth.getState().user;
+      if (!user) throw new Error("Belum masuk.");
+      return api.member.policy.save(input, user);
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["master", "loyalty-policy"] }),
+  });
+}
+
+export function useMemberHarga() {
+  return useMutation<HargaLoyalty, Error, { kode: string; poin: number; jumlah: number }>({
+    mutationFn: ({ kode, poin, jumlah }) => api.member.harga(kode, poin, jumlah),
   });
 }
 
@@ -828,6 +962,8 @@ export function useCheckout(onSuccess: (data: Awaited<ReturnType<typeof api.tran
       qc.invalidateQueries({ queryKey: ["transaksi"] });
       qc.invalidateQueries({ queryKey: ["products"] });
       qc.invalidateQueries({ queryKey: ["shift"] });
+      qc.invalidateQueries({ queryKey: ["master", "members"] });
+      qc.invalidateQueries({ queryKey: ["master", "point-transactions"] });
       onSuccess(data);
     },
   });

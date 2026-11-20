@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import type { CartLine, Product, PaymentAllocation, PaymentMethod } from "@/lib/api/types";
+import type { CartLine, HargaLoyalty, Product, PaymentAllocation, PaymentMethod } from "@/lib/api/types";
 import { bulat2, totalParity, pajakNominal as pajakNominalUang } from "@/lib/uang";
 
 /** Voucher yang sedang dipakai keranjang, beserta diskon yang dihitung engine. */
@@ -8,6 +8,9 @@ export type VoucherKeranjang = {
   diskon: number;
 };
 
+/** Member beserta harga loyalty yang dihitung engine untuk keranjang ini. */
+export type MemberKeranjang = HargaLoyalty & { nama: string };
+
 type CartState = {
   lines: CartLine[];
   diskonTransaksi: number;
@@ -15,6 +18,7 @@ type CartState = {
   gunakanPiutang: boolean;
   pelanggan?: string;
   voucher?: VoucherKeranjang;
+  member?: MemberKeranjang;
   add: (product: Product) => void;
   setQty: (productId: string, qty: number) => void;
   removeLine: (productId: string) => void;
@@ -26,6 +30,8 @@ type CartState = {
   setPelanggan: (nama?: string) => void;
   setVoucher: (voucher: VoucherKeranjang) => void;
   clearVoucher: () => void;
+  setMember: (member: MemberKeranjang) => void;
+  clearMember: () => void;
   reset: () => void;
 };
 
@@ -69,6 +75,8 @@ export const useCart = create<CartState>((set) => ({
   setPelanggan: (nama) => set({ pelanggan: nama }),
   setVoucher: (voucher) => set({ voucher }),
   clearVoucher: () => set({ voucher: undefined }),
+  setMember: (member) => set({ member }),
+  clearMember: () => set({ member: undefined }),
   reset: () =>
     set({
       lines: [],
@@ -77,6 +85,7 @@ export const useCart = create<CartState>((set) => ({
       gunakanPiutang: false,
       pelanggan: undefined,
       voucher: undefined,
+      member: undefined,
     }),
 }));
 
@@ -89,8 +98,9 @@ export function totalTransaksi(
   diskonTransaksi: number,
   pajakNominal = 0,
   diskonVoucher = 0,
+  diskonLoyalty = 0,
 ): number {
-  return totalParity({ lines, diskonTransaksi, pajak: 0, diskonVoucher }).baseVoucher + pajakNominal;
+  return totalParity({ lines, diskonTransaksi, pajak: 0, diskonVoucher, diskonLoyalty }).baseAkhir + pajakNominal;
 }
 
 export function pajakNominal(
@@ -98,9 +108,10 @@ export function pajakNominal(
   diskonTransaksi: number,
   persen: number,
   diskonVoucher = 0,
+  diskonLoyalty = 0,
 ): number {
-  const { baseVoucher } = totalParity({ lines, diskonTransaksi, pajak: 0, diskonVoucher });
-  return pajakNominalUang(baseVoucher, persen);
+  const { baseAkhir } = totalParity({ lines, diskonTransaksi, pajak: 0, diskonVoucher, diskonLoyalty });
+  return pajakNominalUang(baseAkhir, persen);
 }
 
 /**
@@ -114,14 +125,31 @@ export function rekapKeranjang(
   diskonTransaksi: number,
   diskonVoucher: number,
   persenPajak: number,
-): { base: number; diskonVoucher: number; baseVoucher: number; pajak: number; total: number } {
-  const { base, baseVoucher } = totalParity({ lines, diskonTransaksi, pajak: 0, diskonVoucher });
-  const pajak = pajakNominalUang(baseVoucher, persenPajak);
+  diskonLoyalty = 0,
+): {
+  base: number;
+  diskonVoucher: number;
+  baseVoucher: number;
+  diskonLoyalty: number;
+  baseAkhir: number;
+  pajak: number;
+  total: number;
+} {
+  const { base, baseVoucher, baseAkhir } = totalParity({
+    lines,
+    diskonTransaksi,
+    pajak: 0,
+    diskonVoucher,
+    diskonLoyalty,
+  });
+  const pajak = pajakNominalUang(baseAkhir, persenPajak);
   return {
     base,
     diskonVoucher: bulat2(Math.max(0, diskonVoucher)),
     baseVoucher,
+    diskonLoyalty: bulat2(Math.max(0, diskonLoyalty)),
+    baseAkhir,
     pajak,
-    total: bulat2(baseVoucher + pajak),
+    total: bulat2(baseAkhir + pajak),
   };
 }

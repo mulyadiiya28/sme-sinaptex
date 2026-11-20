@@ -19,6 +19,7 @@ import type {
   Expense,
   HealthIndicator,
   HasilAktivasiLisensi,
+  HargaLoyalty,
   HealthSummary,
   ImportResult,
   ImporPelangganBaris,
@@ -31,6 +32,12 @@ import type {
   LabaRugi,
   LiquidityRatio,
   LoginResult,
+  LoyaltyPolicy,
+  Member,
+  MemberInput,
+  MemberTier,
+  MemberTierInput,
+  MemberUpdate,
   NeracaParams,
   PenyesuaianStokInput,
   Pelanggan,
@@ -60,6 +67,7 @@ import type {
   StatusLisensi,
   Solvency,
   TransaksiRiwayat,
+  TransaksiPoin,
   TransferKas,
   TransferKasInput,
   User,
@@ -1584,6 +1592,7 @@ export async function liveCheckout(payload: CheckoutPayload): Promise<CheckoutRe
   const { total, baris, diskonPerBaris } = totalParity({
     ...payload,
     diskonVoucher: payload.diskonVoucher,
+    diskonLoyalty: payload.diskonLoyalty,
   });
 
   // Total yang dibayar kasir adalah total yang akan dibukukan engine, jadi
@@ -1661,6 +1670,8 @@ export async function liveCheckout(payload: CheckoutPayload): Promise<CheckoutRe
       // Hanya KODE voucher yang dikirim: engine yang menghitung diskonnya,
       // sehingga angka yang masuk ke invoice bukan angka yang diminta client.
       voucherCode: payload.voucherCode ?? null,
+      memberCode: payload.memberCode ?? null,
+      redeemPoints: payload.poinDipakai ?? 0,
       lines: linesApi,
     },
   });
@@ -3769,4 +3780,238 @@ export async function liveLisensiStatus(machineId: string): Promise<StatusLisens
   const qs = new URLSearchParams({ machineId });
   const data = await minta<StatusLisensi>(`/api/licenses/status?${qs.toString()}`);
   return data;
+}
+
+type BtMember = {
+  id: string;
+  code: string;
+  name: string;
+  phone: string | null;
+  memberTierId: string | null;
+  pointsBalance: number;
+  lifetimePoints: number;
+  joinedAt: string;
+  isActive: boolean;
+};
+
+type BtMemberTier = {
+  id: string;
+  code: string;
+  name: string;
+  minPoints: number;
+  discountRate: number;
+  pointsMultiplier: number;
+  isActive: boolean;
+};
+
+type BtLoyaltyPolicy = {
+  enabled: boolean;
+  pointsPerThousand: number;
+  pointValue: number;
+  autoTier: boolean;
+};
+
+type BtTransaksiPoin = {
+  id: string;
+  memberId: string;
+  type: string;
+  points: number;
+  saleId: string | null;
+  description: string | null;
+  createdAt: string;
+};
+
+type BtHargaLoyalty = {
+  memberId: string;
+  memberCode: string;
+  tierId: string | null;
+  tierDiscountAmount: number;
+  redeemedPoints: number;
+  redemptionDiscountAmount: number;
+  earnedPoints: number;
+  totalDiscountAmount: number;
+};
+
+function petakanMember(m: BtMember): Member {
+  return {
+    id: m.id,
+    kode: m.code,
+    nama: m.name,
+    telepon: m.phone ?? undefined,
+    tierId: m.memberTierId ?? undefined,
+    poin: m.pointsBalance,
+    poinSeumurHidup: m.lifetimePoints,
+    bergabungPada: m.joinedAt,
+    aktif: m.isActive,
+  };
+}
+
+function petakanTier(t: BtMemberTier): MemberTier {
+  return {
+    id: t.id,
+    kode: t.code,
+    nama: t.name,
+    minPoin: t.minPoints,
+    diskonPersen: t.discountRate,
+    pengaliPoin: t.pointsMultiplier,
+    aktif: t.isActive,
+  };
+}
+
+function petakanTransaksiPoin(t: BtTransaksiPoin): TransaksiPoin {
+  return {
+    id: t.id,
+    memberId: t.memberId,
+    tipe: t.type === "REDEEM" ? "REDEEM" : t.type === "ADJUST" ? "ADJUST" : "EARN",
+    poin: t.points,
+    penjualanId: t.saleId ?? undefined,
+    deskripsi: t.description ?? undefined,
+    waktu: t.createdAt,
+  };
+}
+
+export async function liveMemberList(includeNonaktif = false): Promise<Member[]> {
+  const qs = includeNonaktif ? "?includeInactive=true" : "";
+  const data = await minta<BtMember[]>(`/api/members${qs}`);
+  return data.map(petakanMember);
+}
+
+export async function liveMemberBuat(input: MemberInput): Promise<Member> {
+  const data = await minta<BtMember>("/api/members", {
+    method: "POST",
+    body: {
+      code: input.kode,
+      name: input.nama,
+      phone: input.telepon ?? null,
+      memberTierId: input.tierId ?? null,
+    },
+  });
+  return petakanMember(data);
+}
+
+export async function liveMemberUbah(id: string, input: MemberUpdate): Promise<Member> {
+  const data = await minta<BtMember>(`/api/members/${id}`, {
+    method: "PUT",
+    body: {
+      phone: input.telepon ?? null,
+      memberTierId: input.tierId ?? null,
+    },
+  });
+  return petakanMember(data);
+}
+
+export async function liveMemberNonaktifkan(id: string): Promise<Member> {
+  const data = await minta<BtMember>(`/api/members/${id}/deactivate`, {
+    method: "POST",
+    body: {},
+  });
+  return petakanMember(data);
+}
+
+export async function liveMemberRiwayatPoin(id: string): Promise<TransaksiPoin[]> {
+  const data = await minta<BtTransaksiPoin[]>(`/api/members/${id}/points`);
+  return data.map(petakanTransaksiPoin);
+}
+
+export async function liveMemberSesuaikanPoin(
+  kode: string,
+  poin: number,
+  deskripsi?: string,
+): Promise<Member> {
+  const data = await minta<BtMember>(`/api/members/${encodeURIComponent(kode)}/points/adjust`, {
+    method: "POST",
+    body: { points: poin, description: deskripsi ?? null },
+  });
+  return petakanMember(data);
+}
+
+export async function liveTierList(includeNonaktif = false): Promise<MemberTier[]> {
+  const qs = includeNonaktif ? "?includeInactive=true" : "";
+  const data = await minta<BtMemberTier[]>(`/api/member-tiers${qs}`);
+  return data.map(petakanTier);
+}
+
+export async function liveTierBuat(input: MemberTierInput): Promise<MemberTier> {
+  const data = await minta<BtMemberTier>("/api/member-tiers", {
+    method: "POST",
+    body: {
+      code: input.kode,
+      name: input.nama,
+      minPoints: input.minPoin,
+      discountRate: input.diskonPersen,
+      pointsMultiplier: input.pengaliPoin,
+    },
+  });
+  return petakanTier(data);
+}
+
+export async function liveTierUbah(id: string, input: MemberTierInput): Promise<MemberTier> {
+  const data = await minta<BtMemberTier>(`/api/member-tiers/${id}`, {
+    method: "PUT",
+    body: {
+      name: input.nama,
+      minPoints: input.minPoin,
+      discountRate: input.diskonPersen,
+      pointsMultiplier: input.pengaliPoin,
+    },
+  });
+  return petakanTier(data);
+}
+
+export async function liveTierNonaktifkan(id: string): Promise<MemberTier> {
+  const data = await minta<BtMemberTier>(`/api/member-tiers/${id}/deactivate`, {
+    method: "POST",
+    body: {},
+  });
+  return petakanTier(data);
+}
+
+export async function liveLoyaltyPolicyGet(): Promise<LoyaltyPolicy> {
+  const data = await minta<BtLoyaltyPolicy>("/api/loyalty/policy");
+  return {
+    aktif: data.enabled,
+    poinPerRibu: data.pointsPerThousand,
+    nilaiPoin: data.pointValue,
+    autoTier: data.autoTier,
+  };
+}
+
+export async function liveLoyaltyPolicySimpan(input: LoyaltyPolicy): Promise<LoyaltyPolicy> {
+  const data = await minta<BtLoyaltyPolicy>("/api/loyalty/policy", {
+    method: "PUT",
+    body: {
+      enabled: input.aktif,
+      pointsPerThousand: input.poinPerRibu,
+      pointValue: input.nilaiPoin,
+      autoTier: input.autoTier,
+    },
+  });
+  return {
+    aktif: data.enabled,
+    poinPerRibu: data.pointsPerThousand,
+    nilaiPoin: data.pointValue,
+    autoTier: data.autoTier,
+  };
+}
+
+/** Harga loyalty selalu dihitung engine; POS hanya mengirim kode + jumlah poin. */
+export async function liveLoyaltyHarga(
+  kodeMember: string,
+  poinDipakai: number,
+  jumlah: number,
+): Promise<HargaLoyalty> {
+  const data = await minta<BtHargaLoyalty>("/api/loyalty/price", {
+    method: "POST",
+    body: { memberCode: kodeMember, redeemPoints: poinDipakai, amount: jumlah },
+  });
+  return {
+    memberId: data.memberId,
+    kode: data.memberCode,
+    tierId: data.tierId ?? undefined,
+    diskonTier: data.tierDiscountAmount,
+    poinDipakai: data.redeemedPoints,
+    diskonPenukaran: data.redemptionDiscountAmount,
+    poinDapat: data.earnedPoints,
+    diskon: data.totalDiscountAmount,
+  };
 }

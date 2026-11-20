@@ -52,10 +52,12 @@ export function sebarDiskonTransaksi(
 export function totalParity(
   payload: Pick<CheckoutPayload, "lines" | "diskonTransaksi" | "pajak"> & {
     diskonVoucher?: number;
+    diskonLoyalty?: number;
   },
 ): {
   base: number;
   baseVoucher: number;
+  baseAkhir: number;
   pajak: number;
   total: number;
   baris: BarisHarga[];
@@ -64,12 +66,14 @@ export function totalParity(
   const baris = hitungBarisHarga(payload.lines);
   const diskonPerBaris = sebarDiskonTransaksi(baris, payload.diskonTransaksi);
   const base = bulat2(baris.reduce((s, b, i) => s + bulat2(b.bruto - diskonPerBaris[i]), 0));
-  // Voucher dipotong dari atas dokumen (bukan disebar ke baris), jadi base
-  // baris tetap utuh dan yang berkurang adalah nilai jual invoice.
+  // Voucher dan loyalty dipotong dari atas dokumen (bukan disebar ke baris),
+  // jadi base baris tetap utuh dan yang berkurang adalah nilai jual invoice.
   const diskonVoucher = Math.min(base, Math.max(0, bulat2(payload.diskonVoucher ?? 0)));
   const baseVoucher = bulat2(base - diskonVoucher);
+  const diskonLoyalty = Math.min(baseVoucher, Math.max(0, bulat2(payload.diskonLoyalty ?? 0)));
+  const baseAkhir = bulat2(baseVoucher - diskonLoyalty);
   const pajak = bulat2(payload.pajak);
-  return { base, baseVoucher, pajak, total: bulat2(baseVoucher + pajak), baris, diskonPerBaris };
+  return { base, baseVoucher, baseAkhir, pajak, total: bulat2(baseAkhir + pajak), baris, diskonPerBaris };
 }
 
 export function pajakNominal(

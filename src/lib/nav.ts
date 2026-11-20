@@ -5,6 +5,7 @@ import {
   BookText,
   Building2,
   Calculator,
+  Award,
   ClipboardCheck,
   ClipboardList,
   FileText,
@@ -44,6 +45,7 @@ export const NAV_GROUPS: NavGroup[] = [
       { href: "/pembelian", label: "Pembelian", icon: ClipboardList, roles: ["pemilik"] },
       { href: "/supplier", label: "Pemasok", icon: Truck, roles: ["pemilik"] },
       { href: "/voucher", label: "Voucher", icon: BadgePercent, roles: ["pemilik"] },
+      { href: "/member", label: "Member & Poin", icon: Award, roles: ["pemilik"] },
     ],
   },
   {

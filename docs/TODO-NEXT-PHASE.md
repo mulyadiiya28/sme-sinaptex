@@ -227,11 +227,17 @@ semantik engine).
 ---
 
 ### 12. Member / Loyalty Program (P2.3)
+**Status:** ✅ Selesai (2026-11-20) — engine menghitung diskon & poin, POS hanya mengirim kode member dan jumlah poin
+
 **Tasks:**
-- [ ] Member master
-- [ ] Point system
-- [ ] Reward redemption
-- [ ] Tier membership
+- [x] Member master — halaman `/member` (list/create/update/deactivate, kode unik per tenant)
+- [x] Tier membership — master tier (min poin, diskon, pengali poin) + auto-tier dari poin seumur hidup
+- [x] Kebijakan poin per tenant (aktif, poin per Rp1.000, nilai rupiah per poin, auto-tier)
+- [x] Point system — buku poin append-only (EARN/REDEEM/ADJUST); poin baru bergerak saat penjualan benar-benar diposting
+- [x] Reward redemption — kasir memilih member + jumlah poin; engine membatasi poin terpakai ke saldo & nilai invoice
+- [x] Diskon tier + penukaran dipotong dari nilai invoice sebelum pajak, snapshot di `Sale` (aman untuk batch tertahan approval)
+- [x] Endpoint engine `/api/members`, `/api/member-tiers`, `/api/loyalty/policy`, `/api/loyalty/price` + migrasi `AddLoyalty`
+- [x] Mode mock mencerminkan aturan engine (master, harga, buku poin) lewat `api.member`
 
 **Expected:**
 - Loyalty program
@@ -264,7 +270,10 @@ semantik engine).
 | 7 | Voucher | ⭐⭐ | 2 minggu | Medium complexity |
 | 8 | PPh | ⭐ | 1 minggu | Low complexity |
 | 9 | Filter Lanjutan | ⭐⭐ | 1 minggu | Medium complexity |
-| 10-13 | P2+ Features | ⭐⭐ | 4 minggu | Nice to have |
+| 10 | Dashboard Analytics | ⭐⭐ | — | ✅ Selesai |
+| 11 | Multi-Branch | ⭐⭐ | — | ✅ Selesai |
+| 12 | Member / Loyalty | ⭐⭐ | — | ✅ Selesai |
+| 13 | WhatsApp Integration | ⭐⭐ | — | Belum |
 
 ---
 
@@ -324,5 +333,5 @@ Implement dulu yang mudah & bermanfaat:
 
 ---
 
-**Last Updated:** 2026-11-12  
-**Next Review:** 2026-11-19 (setelah 1 minggu production)
+**Last Updated:** 2026-11-20  
+**Next Review:** 2026-11-27 (setelah P2.3 terpasang)

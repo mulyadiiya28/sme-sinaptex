@@ -208,6 +208,18 @@ export type CheckoutPayload = {
    * ulang sendiri dan itulah yang dibukukan.
    */
   diskonVoucher?: number;
+  /**
+   * Kode member yang dipilih kasir. Diskon tier dan nilai penukaran poin
+   * dihitung engine — POS hanya mengirim kode dan jumlah poin yang diminta.
+   */
+  memberCode?: string;
+  /** Jumlah poin yang ingin ditukar pada transaksi ini. */
+  poinDipakai?: number;
+  /**
+   * Diskon loyalty hasil harga engine saat kasir memilih member. Dipakai POS
+   * untuk menghitung pajak dan total di layar; engine menghitung ulang sendiri.
+   */
+  diskonLoyalty?: number;
 };
 
 export type CheckoutResult = {
@@ -435,6 +447,89 @@ export type VoucherValidasi = {
   validSampai: string;
   batasPemakaian?: number;
   dipakai: number;
+};
+
+/// <summary>
+/// Member program poin. Terpisah dari pelanggan: seseorang boleh menjadi
+/// pelanggan tanpa mengikuti program, dan saldo poin adalah fakta keanggotaan.
+/// </summary>
+export type Member = {
+  id: string;
+  kode: string;
+  nama: string;
+  telepon?: string;
+  tierId?: string;
+  /** Poin yang siap ditukar sekarang. */
+  poin: number;
+  /** Poin yang pernah diperoleh — penentu tier. */
+  poinSeumurHidup: number;
+  bergabungPada: string;
+  aktif: boolean;
+};
+
+export type MemberInput = {
+  kode: string;
+  nama: string;
+  telepon?: string;
+  tierId?: string;
+};
+
+export type MemberUpdate = {
+  telepon?: string;
+  tierId?: string;
+};
+
+/// <summary>Tier member: aturan diskon dan pengali poin, bukan jurnal.</summary>
+export type MemberTier = {
+  id: string;
+  kode: string;
+  nama: string;
+  minPoin: number;
+  /** Diskon sebagai rasio: 0.05 berarti lima persen. */
+  diskonPersen: number;
+  pengaliPoin: number;
+  aktif: boolean;
+};
+
+export type MemberTierInput = {
+  kode: string;
+  nama: string;
+  minPoin: number;
+  diskonPersen: number;
+  pengaliPoin: number;
+};
+
+/// <summary>Satu baris kebijakan program poin per tenant.</summary>
+export type LoyaltyPolicy = {
+  aktif: boolean;
+  /** Poin per Rp1.000 penjualan bersih. */
+  poinPerRibu: number;
+  /** Nilai rupiah satu poin saat ditukar. */
+  nilaiPoin: number;
+  autoTier: boolean;
+};
+
+/// <summary>Satu entri buku poin yang hanya ditambah, never ditulis ulang.</summary>
+export type TransaksiPoin = {
+  id: string;
+  memberId: string;
+  tipe: "EARN" | "REDEEM" | "ADJUST";
+  poin: number;
+  penjualanId?: string;
+  deskripsi?: string;
+  waktu: string;
+};
+
+/// <summary>Hasil harga loyalty dari engine, disalin ke layar kasir.</summary>
+export type HargaLoyalty = {
+  memberId: string;
+  kode: string;
+  tierId?: string;
+  diskonTier: number;
+  poinDipakai: number;
+  diskonPenukaran: number;
+  poinDapat: number;
+  diskon: number;
 };
 
 /// <summary>Item penyusutan bulanan untuk satu aset.</summary>

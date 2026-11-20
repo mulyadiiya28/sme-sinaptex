@@ -61,6 +61,14 @@ import type {
   User,
   StockMovementRef,
   StockTransferInput,
+  HargaLoyalty,
+  LoyaltyPolicy,
+  Member,
+  MemberInput,
+  MemberTier,
+  MemberTierInput,
+  MemberUpdate,
+  TransaksiPoin,
   Voucher,
   VoucherInput,
   VoucherValidasi,
@@ -308,6 +316,17 @@ export const mockDb = {
       aktif: true,
     },
   ] as Voucher[],
+
+  // ===== LOYALTY =====
+  members: [] as Member[],
+  memberTiers: [] as MemberTier[],
+  transaksiPoin: [] as TransaksiPoin[],
+  loyaltyPolicy: {
+    aktif: true,
+    poinPerRibu: 1,
+    nilaiPoin: 1000,
+    autoTier: true,
+  } as LoyaltyPolicy,
 
   /** Isi kartu stok awal dari stok produk untuk gudang default. */
   initStockCards(): void {
@@ -615,6 +634,250 @@ export const mockDb = {
     const voucher = this.vouchers.find((v) => v.kode === (kode ?? "").trim().toUpperCase());
     if (!voucher) return;
     voucher.dipakai += 1;
+  },
+
+  // ===== LOYALTY (mirror engine) =====
+  daftarMember(includeNonaktif = false): Member[] {
+    return structuredClone(
+      this.members.filter((m) => includeNonaktif || m.aktif),
+    ).sort((a, b) => a.kode.localeCompare(b.kode));
+  },
+
+  buatMember(input: MemberInput, user: User): Member {
+    if (user.role !== "pemilik") throw new Error("Hanya pemilik yang boleh mengelola member.");
+    const kode = (input.kode ?? "").trim().toUpperCase();
+    const nama = (input.nama ?? "").trim();
+    if (!kode) throw new Error("Kode member wajib diisi.");
+    if (!nama) throw new Error("Nama member wajib diisi.");
+    if (this.members.some((m) => m.kode === kode)) {
+      throw new Error(`Kode member ${kode} sudah dipakai.`);
+    }
+    if (input.tierId && !this.memberTiers.some((t) => t.id === input.tierId)) {
+      throw new Error("Tier member tidak ditemukan.");
+    }
+    const member: Member = {
+      id: `member-${Date.now().toString(36)}-${Math.random().toString(16).slice(2, 8)}`,
+      kode,
+      nama,
+      telepon: input.telepon?.trim() || undefined,
+      tierId: input.tierId || undefined,
+      poin: 0,
+      poinSeumurHidup: 0,
+      bergabungPada: waktuSekarang(),
+      aktif: true,
+    };
+    this.members.push(member);
+    this.audit(user, "member_buat", `Member ${kode} dibuat`);
+    return structuredClone(member);
+  },
+
+  ubahMember(id: string, input: MemberUpdate, user: User): Member {
+    if (user.role !== "pemilik") throw new Error("Hanya pemilik yang boleh mengelola member.");
+    const target = this.members.find((m) => m.id === id);
+    if (!target) throw new Error("Member tidak ditemukan.");
+    if (input.tierId && !this.memberTiers.some((t) => t.id === input.tierId)) {
+      throw new Error("Tier member tidak ditemukan.");
+    }
+    target.telepon = input.telepon?.trim() || undefined;
+    target.tierId = input.tierId || undefined;
+    this.audit(user, "member_ubah", `Member ${target.kode} diubah`);
+    return structuredClone(target);
+  },
+
+  nonaktifkanMember(id: string, user: User): Member {
+    if (user.role !== "pemilik") throw new Error("Hanya pemilik yang boleh mengelola member.");
+    const target = this.members.find((m) => m.id === id);
+    if (!target) throw new Error("Member tidak ditemukan.");
+    target.aktif = false;
+    this.audit(user, "member_nonaktifkan", `Member ${target.kode} dinonaktifkan`);
+    return structuredClone(target);
+  },
+
+  riwayatPoin(memberId: string): TransaksiPoin[] {
+    return structuredClone(
+      this.transaksiPoin.filter((t) => t.memberId === memberId),
+    ).sort((a, b) => b.waktu.localeCompare(a.waktu));
+  },
+
+  sesuaikanPoin(kode: string, poin: number, deskripsi: string | undefined, user: User): Member {
+    if (user.role !== "pemilik") throw new Error("Hanya pemilik yang boleh menyesuaikan poin.");
+    if (!Number.isInteger(poin) || poin === 0) throw new Error("Jumlah poin harus bilangan bulat bukan nol.");
+    const member = this.cariMember(kode);
+    if (!member.aktif) throw new Error(`Member ${member.kode} sudah tidak aktif.`);
+    if (poin < 0 && member.poin + poin < 0) throw new Error("Penyesuaian membuat saldo poin negatif.");
+    member.poin += poin;
+    if (poin > 0) member.poinSeumurHidup += poin;
+    this.transaksiPoin.push({
+      id: `poin-${this.transaksiPoin.length + 1}`,
+      memberId: member.id,
+      tipe: "ADJUST",
+      poin,
+      deskripsi: deskripsi?.trim() || undefined,
+      waktu: waktuSekarang(),
+    });
+    this.audit(user, "poin_sesuaikan", `Member ${member.kode}: ${poin > 0 ? "+" : ""}${poin} poin`);
+    return structuredClone(member);
+  },
+
+  daftarTier(includeNonaktif = false): MemberTier[] {
+    return structuredClone(
+      this.memberTiers.filter((t) => includeNonaktif || t.aktif),
+    ).sort((a, b) => a.minPoin - b.minPoin);
+  },
+
+  buatTier(input: MemberTierInput, user: User): MemberTier {
+    if (user.role !== "pemilik") throw new Error("Hanya pemilik yang boleh mengelola tier.");
+    const kode = (input.kode ?? "").trim().toUpperCase();
+    const nama = (input.nama ?? "").trim();
+    if (!kode) throw new Error("Kode tier wajib diisi.");
+    if (!nama) throw new Error("Nama tier wajib diisi.");
+    if (this.memberTiers.some((t) => t.kode === kode)) throw new Error(`Kode tier ${kode} sudah dipakai.`);
+    const tier = this.susunTier({
+      id: `tier-${Date.now().toString(36)}-${Math.random().toString(16).slice(2, 8)}`,
+      kode,
+      nama,
+      minPoin: input.minPoin,
+      diskonPersen: input.diskonPersen,
+      pengaliPoin: input.pengaliPoin,
+      aktif: true,
+    });
+    this.memberTiers.push(tier);
+    this.audit(user, "tier_buat", `Tier ${kode} dibuat`);
+    return structuredClone(tier);
+  },
+
+  ubahTier(id: string, input: MemberTierInput, user: User): MemberTier {
+    if (user.role !== "pemilik") throw new Error("Hanya pemilik yang boleh mengelola tier.");
+    const target = this.memberTiers.find((t) => t.id === id);
+    if (!target) throw new Error("Tier tidak ditemukan.");
+    const disusun = this.susunTier({ ...target, ...input });
+    target.nama = disusun.nama;
+    target.minPoin = disusun.minPoin;
+    target.diskonPersen = disusun.diskonPersen;
+    target.pengaliPoin = disusun.pengaliPoin;
+    this.audit(user, "tier_ubah", `Tier ${target.kode} diubah`);
+    return structuredClone(target);
+  },
+
+  nonaktifkanTier(id: string, user: User): MemberTier {
+    if (user.role !== "pemilik") throw new Error("Hanya pemilik yang boleh mengelola tier.");
+    const target = this.memberTiers.find((t) => t.id === id);
+    if (!target) throw new Error("Tier tidak ditemukan.");
+    target.aktif = false;
+    this.audit(user, "tier_nonaktifkan", `Tier ${target.kode} dinonaktifkan`);
+    return structuredClone(target);
+  },
+
+  susunTier(input: MemberTierInput & Pick<MemberTier, "id" | "aktif">): MemberTier {
+    if (input.minPoin < 0) throw new Error("Minimum poin tidak boleh negatif.");
+    if (input.diskonPersen < 0 || input.diskonPersen > 1) {
+      throw new Error("Diskon tier harus antara 0 dan 1 (10% = 0.1).");
+    }
+    if (input.pengaliPoin <= 0) throw new Error("Pengali poin harus lebih dari 0.");
+    return { ...input, kode: input.kode.toUpperCase(), nama: input.nama.trim() };
+  },
+
+  getLoyaltyPolicy(): LoyaltyPolicy {
+    return structuredClone(this.loyaltyPolicy);
+  },
+
+  simpanLoyaltyPolicy(input: LoyaltyPolicy, user: User): LoyaltyPolicy {
+    if (user.role !== "pemilik") throw new Error("Hanya pemilik yang boleh mengelola kebijakan poin.");
+    if (input.poinPerRibu < 1) throw new Error("Poin per seribu rupiah minimal 1.");
+    if (input.nilaiPoin < 1) throw new Error("Nilai poin minimal 1 rupiah.");
+    this.loyaltyPolicy = structuredClone(input);
+    this.audit(user, "loyalty_policy", "Kebijakan program poin disimpan");
+    return structuredClone(this.loyaltyPolicy);
+  },
+
+  cariMember(kode: string): Member {
+    const normalized = (kode ?? "").trim().toUpperCase();
+    const member = this.members.find((m) => m.kode === normalized);
+    if (!member) throw new Error(`Member ${normalized} tidak ditemukan.`);
+    return member;
+  },
+
+  /** Harga loyalty dihitung mock engine, bukan komponen — sama seperti live. */
+  hargaLoyalty(kode: string, poinDiminta: number, jumlah: number): HargaLoyalty {
+    const policy = this.loyaltyPolicy;
+    if (!policy.aktif) throw new Error("Program poin sedang dinonaktifkan.");
+    if (!kode?.trim()) {
+      return {
+        memberId: "", kode: "", diskonTier: 0, poinDipakai: 0,
+        diskonPenukaran: 0, poinDapat: 0, diskon: 0,
+      };
+    }
+    if (poinDiminta < 0) throw new Error("Jumlah poin tidak boleh negatif.");
+
+    const member = this.cariMember(kode);
+    if (!member.aktif) throw new Error(`Member ${member.kode} sudah tidak aktif.`);
+    const tier = member.tierId
+      ? this.memberTiers.find((t) => t.id === member.tierId && t.aktif)
+      : undefined;
+    const eligible = Math.max(0, Math.round(jumlah * 100) / 100);
+    const diskonTier = tier
+      ? Math.min(eligible, Math.round(eligible * tier.diskonPersen * 100) / 100)
+      : 0;
+    const setelahTier = Math.round((eligible - diskonTier) * 100) / 100;
+    let poinDipakai = Math.min(Math.max(0, poinDiminta), member.poin);
+    if (policy.nilaiPoin > 0) {
+      poinDipakai = Math.min(poinDipakai, Math.floor(setelahTier / policy.nilaiPoin));
+    }
+    const diskonPenukaran = Math.round(poinDipakai * policy.nilaiPoin * 100) / 100;
+    const neto = Math.max(0, Math.round((setelahTier - diskonPenukaran) * 100) / 100);
+    const pengali = tier?.pengaliPoin ?? 1;
+    const poinDapat = Math.max(0, Math.floor((neto / 1000) * policy.poinPerRibu * pengali));
+
+    return {
+      memberId: member.id,
+      kode: member.kode,
+      tierId: tier?.id,
+      diskonTier,
+      poinDipakai,
+      diskonPenukaran,
+      poinDapat,
+      diskon: Math.round((diskonTier + diskonPenukaran) * 100) / 100,
+    };
+  },
+
+  /** Memindahkan buku poin setelah checkout berhasil (bukan saat preview). */
+  catatPenjualanLoyalty(kode: string, poinDiminta: number, jumlah: number, nomor: string): void {
+    if (!kode?.trim()) return;
+    const harga = this.hargaLoyalty(kode, poinDiminta, jumlah);
+    if (!harga.memberId) return;
+    const member = this.members.find((m) => m.id === harga.memberId);
+    if (!member) return;
+    if (harga.poinDipakai > 0) {
+      member.poin -= harga.poinDipakai;
+      this.transaksiPoin.push({
+        id: `poin-${this.transaksiPoin.length + 1}`,
+        memberId: member.id,
+        tipe: "REDEEM",
+        poin: harga.poinDipakai,
+        penjualanId: nomor,
+        deskripsi: "Penukaran poin penjualan",
+        waktu: waktuSekarang(),
+      });
+    }
+    if (harga.poinDapat > 0) {
+      member.poin += harga.poinDapat;
+      member.poinSeumurHidup += harga.poinDapat;
+      this.transaksiPoin.push({
+        id: `poin-${this.transaksiPoin.length + 1}`,
+        memberId: member.id,
+        tipe: "EARN",
+        poin: harga.poinDapat,
+        penjualanId: nomor,
+        deskripsi: "Poin dari penjualan",
+        waktu: waktuSekarang(),
+      });
+    }
+    if (this.loyaltyPolicy.autoTier) {
+      const tiers = this.daftarTier()
+        .filter((t) => t.minPoin <= member.poinSeumurHidup)
+        .sort((a, b) => b.minPoin - a.minPoin);
+      if (tiers[0]) member.tierId = tiers[0].id;
+    }
   },
 
   susunVoucher(input: VoucherInput & Pick<Voucher, "id" | "dipakai" | "aktif">): Voucher {

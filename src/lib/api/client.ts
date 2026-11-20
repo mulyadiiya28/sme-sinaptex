@@ -70,7 +70,14 @@ import type {
   CreateSupplierRequest,
   DailyMovementReport,
   FiscalPeriod,
+  HargaLoyalty,
   HasilRestoreBackup,
+  LoyaltyPolicy,
+  Member,
+  MemberInput,
+  MemberTier,
+  MemberTierInput,
+  MemberUpdate,
   PenyusutanItem,
   Reconciliation,
   Supplier,
@@ -83,6 +90,7 @@ import type {
   StockOpname,
   StockOpnameInput,
   StockTransferInput,
+  TransaksiPoin,
   Voucher,
   VoucherInput,
   VoucherValidasi,
@@ -171,8 +179,17 @@ import {
   liveLabaRugi,
   liveLisensiAktivasi,
   liveLisensiStatus,
+  liveLoyaltyHarga,
+  liveLoyaltyPolicyGet,
+  liveLoyaltyPolicySimpan,
   liveLogin,
   liveLogout,
+  liveMemberBuat,
+  liveMemberList,
+  liveMemberNonaktifkan,
+  liveMemberRiwayatPoin,
+  liveMemberSesuaikanPoin,
+  liveMemberUbah,
   liveNeracaSaldoExport,
   livePelanggan,
   livePenyesuaianStok,
@@ -194,6 +211,10 @@ import {
   liveShiftRiwayat,
   liveShiftTutup,
   liveSolvency,
+  liveTierBuat,
+  liveTierList,
+  liveTierNonaktifkan,
+  liveTierUbah,
   liveTransaksiRiwayat,
   liveUbahUser,
   liveUnggahLogo,
@@ -221,6 +242,7 @@ let nomorBerikut = 25;
 export function hitungTotal(
   payload: Pick<CheckoutPayload, "lines" | "diskonTransaksi" | "pajak"> & {
     diskonVoucher?: number;
+    diskonLoyalty?: number;
   },
 ): number {
   return totalParity(payload).total;
@@ -948,6 +970,83 @@ export const api = {
     },
   },
 
+  member: {
+    list: async (includeNonaktif = false): Promise<Member[]> => {
+      if (API_MODE === "live") return liveMemberList(includeNonaktif);
+      await delay(120);
+      return mockDb.daftarMember(includeNonaktif);
+    },
+    create: async (input: MemberInput, user: User): Promise<Member> => {
+      if (API_MODE === "live") return liveMemberBuat(input);
+      await delay(350);
+      return mockDb.buatMember(input, user);
+    },
+    update: async (id: string, input: MemberUpdate, user: User): Promise<Member> => {
+      if (API_MODE === "live") return liveMemberUbah(id, input);
+      await delay(350);
+      return mockDb.ubahMember(id, input, user);
+    },
+    deactivate: async (id: string, user: User): Promise<Member> => {
+      if (API_MODE === "live") return liveMemberNonaktifkan(id);
+      await delay(350);
+      return mockDb.nonaktifkanMember(id, user);
+    },
+    riwayatPoin: async (memberId: string): Promise<TransaksiPoin[]> => {
+      if (API_MODE === "live") return liveMemberRiwayatPoin(memberId);
+      await delay(120);
+      return mockDb.riwayatPoin(memberId);
+    },
+    sesuaikanPoin: async (
+      kode: string,
+      poin: number,
+      deskripsi: string | undefined,
+      user: User,
+    ): Promise<Member> => {
+      if (API_MODE === "live") return liveMemberSesuaikanPoin(kode, poin, deskripsi);
+      await delay(350);
+      return mockDb.sesuaikanPoin(kode, poin, deskripsi, user);
+    },
+    tiers: {
+      list: async (includeNonaktif = false): Promise<MemberTier[]> => {
+        if (API_MODE === "live") return liveTierList(includeNonaktif);
+        await delay(120);
+        return mockDb.daftarTier(includeNonaktif);
+      },
+      create: async (input: MemberTierInput, user: User): Promise<MemberTier> => {
+        if (API_MODE === "live") return liveTierBuat(input);
+        await delay(350);
+        return mockDb.buatTier(input, user);
+      },
+      update: async (id: string, input: MemberTierInput, user: User): Promise<MemberTier> => {
+        if (API_MODE === "live") return liveTierUbah(id, input);
+        await delay(350);
+        return mockDb.ubahTier(id, input, user);
+      },
+      deactivate: async (id: string, user: User): Promise<MemberTier> => {
+        if (API_MODE === "live") return liveTierNonaktifkan(id);
+        await delay(350);
+        return mockDb.nonaktifkanTier(id, user);
+      },
+    },
+    policy: {
+      get: async (): Promise<LoyaltyPolicy> => {
+        if (API_MODE === "live") return liveLoyaltyPolicyGet();
+        await delay(120);
+        return mockDb.getLoyaltyPolicy();
+      },
+      save: async (input: LoyaltyPolicy, user: User): Promise<LoyaltyPolicy> => {
+        if (API_MODE === "live") return liveLoyaltyPolicySimpan(input);
+        await delay(250);
+        return mockDb.simpanLoyaltyPolicy(input, user);
+      },
+    },
+    harga: async (kode: string, poin: number, jumlah: number): Promise<HargaLoyalty> => {
+      if (API_MODE === "live") return liveLoyaltyHarga(kode, poin, jumlah);
+      await delay(120);
+      return mockDb.hargaLoyalty(kode, poin, jumlah);
+    },
+  },
+
   persetujuan: {
     list: async (): Promise<PersetujuanBatch[]> => {
       if (API_MODE === "live") return livePersetujuanList();
@@ -1058,6 +1157,7 @@ export const api = {
         throw new Error("Pembayaran kurang dan penjualan kredit tidak diizinkan.");
       }
 
+      const { baseVoucher } = totalParity(payload);
       mockDb.kunciCheckout.add(payload.idempotensiKunci);
 
       nomorBerikut += 1;
@@ -1107,6 +1207,14 @@ export const api = {
       );
 
       if (masukTunai > 0) mockDb.catatPenjualanTunai(masukTunai);
+
+      if (payload.voucherCode) mockDb.pakaiVoucher(payload.voucherCode);
+      mockDb.catatPenjualanLoyalty(
+        payload.memberCode ?? "",
+        payload.poinDipakai ?? 0,
+        baseVoucher,
+        nomor,
+      );
 
       mockDb.catatPenjualanStok(
         nomor,

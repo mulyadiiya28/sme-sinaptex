@@ -6,12 +6,13 @@ import type { CheckoutResult, PaymentMethod, ProfilToko } from "@/lib/api/types"
 import { MoneyDisplay } from "@/components/money-display";
 import { StatusBadge } from "@/components/status-badge";
 import { pajakNominal, totalTransaksi, useCart } from "@/lib/store/cart";
+import { totalParity } from "@/lib/uang";
 import { useToko } from "@/lib/store/toko";
 import { usePrinter } from "@/lib/store/printer";
 import { useGateway } from "@/lib/store/gateway";
 import { GatewayPanel } from "@/components/kasir/gateway-panel";
 import { cetakStruk, cetakStrukOtomatis } from "@/lib/struk";
-import { useCheckout } from "@/hooks/queries";
+import { useCheckout, useMemberList } from "@/hooks/queries";
 import { api } from "@/lib/api/client";
 import { formatIDR } from "@/lib/format";
 import { API_BASE_URL } from "@/lib/api/live";
@@ -67,11 +68,25 @@ export function PaymentDialog({
   const [kodeVoucher, setKodeVoucher] = useState("");
   const [validasiPending, setValidasiPending] = useState(false);
   const [pesanVoucher, setPesanVoucher] = useState<string | null>(null);
+  const [kodeMember, setKodeMember] = useState("");
+  const [poinMember, setPoinMember] = useState(0);
+  const [validasiMemberPending, setValidasiMemberPending] = useState(false);
+  const [pesanMember, setPesanMember] = useState<string | null>(null);
+  const daftarMember = useMemberList(true);
   const kunciIdempotensi = useRef<string>(
     typeof crypto !== "undefined" && "randomUUID" in crypto ? crypto.randomUUID() : `chk-${Date.now()}-${Math.random()}`,
   );
 
-  const total = totalTransaksi(cart.lines, cart.diskonTransaksi, pajakNominal(cart.lines, cart.diskonTransaksi, pajakPersen), cart.voucher?.diskon ?? 0);
+  const diskonVoucher = cart.voucher?.diskon ?? 0;
+  const diskonLoyalty = cart.member?.diskon ?? 0;
+  const pajak = pajakNominal(cart.lines, cart.diskonTransaksi, pajakPersen, diskonVoucher, diskonLoyalty);
+  const total = totalTransaksi(cart.lines, cart.diskonTransaksi, pajak, diskonVoucher, diskonLoyalty);
+  // Engine mengharga loyalty dari nilai invoice setelah voucher (dan diskon
+  // baris), sebelum pajak — basisnya harus sama persis dengan layar kasir.
+  const dasarLoyalty = useMemo(
+    () => totalParity({ lines: cart.lines, diskonTransaksi: cart.diskonTransaksi, pajak: 0, diskonVoucher }).baseVoucher,
+    [cart.lines, cart.diskonTransaksi, diskonVoucher],
+  );
 
   const hitungan = useMemo(() => {
     let belum = total;
@@ -113,7 +128,7 @@ export function PaymentDialog({
         diskon: l.diskon,
       })),
       diskonTransaksi: cart.diskonTransaksi,
-      pajak: pajakNominal(cart.lines, cart.diskonTransaksi, pajakPersen),
+      pajak,
       total,
       kembalian,
       piutang,
@@ -136,7 +151,7 @@ export function PaymentDialog({
     mutation.mutate({
       lines: cart.lines,
       diskonTransaksi: cart.diskonTransaksi,
-      pajak: pajakNominal(cart.lines, cart.diskonTransaksi, pajakPersen),
+      pajak,
       allocations: cart.allocations,
       gunakanPiutang: cart.gunakanPiutang,
       pelanggan: cart.pelanggan,
@@ -145,7 +160,10 @@ export function PaymentDialog({
       idempotensiKunci: kunciIdempotensi.current,
       gatewayRef: referensiGateway,
       voucherCode: cart.voucher?.kode,
-      diskonVoucher: cart.voucher?.diskon,
+      diskonVoucher: diskonVoucher || undefined,
+      memberCode: cart.member?.kode,
+      poinDipakai: cart.member?.poinDipakai,
+      diskonLoyalty: diskonLoyalty || undefined,
     });
   }
 
@@ -193,8 +211,14 @@ export function PaymentDialog({
     setValidasiPending(true);
     setPesanVoucher(null);
     try {
-      const hasil = await api.voucher.validate(kode, total);
+      const hasil = await api.voucher.validate(
+        kode,
+        totalParity({ lines: cart.lines, diskonTransaksi: cart.diskonTransaksi, pajak: 0 }).base,
+      );
       cart.setVoucher({ kode: hasil.kode, diskon: hasil.diskon });
+      cart.clearMember();
+      setPoinMember(0);
+      setPesanMember(null);
       setPesanVoucher(`Voucher ${hasil.kode} dipakai: diskon ${formatIDR(hasil.diskon)}.`);
     } catch (err) {
       cart.clearVoucher();
@@ -206,8 +230,38 @@ export function PaymentDialog({
 
   function hapusVoucher() {
     cart.clearVoucher();
+    cart.clearMember();
     setKodeVoucher("");
     setPesanVoucher(null);
+    setPesanMember(null);
+  }
+
+  async function pakaiMember() {
+    const kode = kodeMember.trim().toUpperCase();
+    if (!kode) return;
+    setValidasiMemberPending(true);
+    setPesanMember(null);
+    try {
+      const hasil = await api.member.harga(kode, poinMember, dasarLoyalty);
+      const nama = daftarMember.data?.find((m) => m.kode === hasil.kode)?.nama ?? hasil.kode;
+      cart.setMember({ ...hasil, nama });
+      setPoinMember(hasil.poinDipakai);
+      setPesanMember(
+        `Member ${hasil.kode}: diskon ${formatIDR(hasil.diskon)}, ${hasil.poinDipakai} poin ditukar, ${hasil.poinDapat} poin diperoleh.`,
+      );
+    } catch (err) {
+      cart.clearMember();
+      setPesanMember(err instanceof Error ? err.message : "Member tidak valid.");
+    } finally {
+      setValidasiMemberPending(false);
+    }
+  }
+
+  function hapusMember() {
+    cart.clearMember();
+    setKodeMember("");
+    setPoinMember(0);
+    setPesanMember(null);
   }
 
   if (sukses) {
@@ -253,6 +307,14 @@ export function PaymentDialog({
               <div className="flex justify-between">
                 <dt className="text-muted">Piutang pelanggan</dt>
                 <dd className="font-bold text-amber-600"><MoneyDisplay value={sukses.piutang} /></dd>
+              </div>
+            )}
+            {cart.member && !sukses.menungguPersetujuan && (
+              <div className="flex justify-between">
+                <dt className="text-muted">Poin member</dt>
+                <dd className="font-bold text-brand tabular-nums">
+                  +{cart.member.poinDapat} / -{cart.member.poinDipakai}
+                </dd>
               </div>
             )}
           </dl>
@@ -400,6 +462,58 @@ export function PaymentDialog({
               </div>
             )}
             {pesanVoucher && <p className="mt-2 text-xs text-muted">{pesanVoucher}</p>}
+          </div>
+
+          <div className="mt-3 rounded-xl border border-line p-3">
+            <p className="mb-2 text-xs font-semibold text-muted">Member & poin</p>
+            <datalist id="daftar-kode-member">
+              {(daftarMember.data ?? []).map((m) => (
+                <option key={m.id} value={m.kode}>{m.nama}</option>
+              ))}
+            </datalist>
+            {cart.member ? (
+              <div className="space-y-2">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="font-mono text-xs font-bold">{cart.member.kode}</span>
+                  <span className="text-xs text-muted">{cart.member.nama}</span>
+                  <button type="button" className="btn-secondary rounded-lg px-2 py-1 text-xs" onClick={hapusMember}>
+                    Lepas
+                  </button>
+                </div>
+                <div className="grid grid-cols-3 gap-2 text-xs">
+                  <span>Diskon: <strong className="text-emerald-700">{formatIDR(cart.member.diskon)}</strong></span>
+                  <span>Poin pakai: <strong className="tabular-nums">{cart.member.poinDipakai}</strong></span>
+                  <span>Poin dapat: <strong className="tabular-nums">{cart.member.poinDapat}</strong></span>
+                </div>
+              </div>
+            ) : (
+              <div className="grid gap-2 sm:grid-cols-[1fr_7rem_auto]">
+                <input
+                  className="input font-mono uppercase"
+                  placeholder="KODE-MEMBER"
+                  list="daftar-kode-member"
+                  value={kodeMember}
+                  onChange={(e) => setKodeMember(e.target.value.toUpperCase())}
+                />
+                <input
+                  type="number"
+                  min={0}
+                  className="input text-right tabular-nums"
+                  title="Jumlah poin yang ingin ditukar"
+                  value={poinMember === 0 ? "" : poinMember}
+                  onChange={(e) => setPoinMember(Math.max(0, Number(e.target.value)))}
+                />
+                <button
+                  type="button"
+                  className="btn-primary rounded-lg px-3 py-2 text-xs"
+                  disabled={validasiMemberPending || !kodeMember}
+                  onClick={() => void pakaiMember()}
+                >
+                  {validasiMemberPending ? "..." : "Pakai"}
+                </button>
+              </div>
+            )}
+            {pesanMember && <p className="mt-2 text-xs text-muted">{pesanMember}</p>}
           </div>
 
           {gateway.aktif && (

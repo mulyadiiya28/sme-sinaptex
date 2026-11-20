@@ -15,12 +15,14 @@ export function CartPanel({
   onBayar: () => void;
   onBatal: () => void;
 }) {
-  const { lines, diskonTransaksi, setQty, removeLine, setDiskonTransaksi, setPelanggan } = useCart();
+  const { lines, diskonTransaksi, setQty, removeLine, setDiskonTransaksi, setPelanggan, voucher, member } = useCart();
   const pajakPersen = useToko((s) => s.profil.pajakPersen ?? 0);
   const pelangganList = usePelanggan();
+  const diskonVoucher = voucher?.diskon ?? 0;
+  const diskonLoyalty = member?.diskon ?? 0;
   const subtotal = subtotalLines(lines);
-  const pajak = pajakNominal(lines, diskonTransaksi, pajakPersen);
-  const total = totalTransaksi(lines, diskonTransaksi, pajak);
+  const pajak = pajakNominal(lines, diskonTransaksi, pajakPersen, diskonVoucher, diskonLoyalty);
+  const total = totalTransaksi(lines, diskonTransaksi, pajak, diskonVoucher, diskonLoyalty);
   const totalItem = lines.reduce((s, l) => s + l.qty, 0);
 
   if (lines.length === 0) {
@@ -109,6 +111,12 @@ export function CartPanel({
               className="w-28 rounded-lg border border-line px-2 py-1 text-right text-sm tabular-nums"
             />
           </div>
+          {diskonVoucher > 0 && (
+            <RowFlex label={`Voucher ${voucher?.kode ?? ""}`} value={-diskonVoucher} />
+          )}
+          {diskonLoyalty > 0 && (
+            <RowFlex label={`Poin ${member?.kode ?? ""}`} value={-diskonLoyalty} />
+          )}
           {pajakPersen > 0 && (
             <RowFlex label={`Pajak (${pajakPersen}%)`} value={pajak} />
           )}
