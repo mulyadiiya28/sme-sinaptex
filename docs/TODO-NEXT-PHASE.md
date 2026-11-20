@@ -92,7 +92,7 @@ pemilik yang sudah ada.
 - [x] Create splash screen component
 - [x] Implement copyright & Terms & Conditions dialog
 - [x] Activation key system (checksum + ikat ke sidik perangkat lokal)
-- [ ] License validation API (engine belum punya endpoint; key belum ditegakkan server)
+- [x] License validation API (engine endpoint `/api/licenses` + wiring POS)
 - [x] Machine ID tracking (`machine_id` di Tauri; UUID localStorage di browser)
 
 **Expected:**
@@ -215,10 +215,10 @@ semantik engine).
 
 ### 11. Multi-Branch Support (P2.2)
 **Tasks:**
-- [ ] Branch master (CRUD)
-- [ ] Stock per branch
-- [ ] Report per branch
-- [ ] `[Branch ID]` header di API calls
+- [x] Branch master (CRUD) — halaman `/cabang` (owner)
+- [x] Stock per branch — filter gudang di halaman Persediaan
+- [x] Report per branch — laporan akuntansi (jurnal, neraca, laba-rugi, gerakan harian, ekspor) menghormati cabang aktif
+- [x] `[Branch ID]` header di API calls — topbar selector mengirim `X-Branch-Id`
 
 **Expected:**
 - Multi-cabang support
