@@ -4,6 +4,7 @@ import type {
   ApprovalRule,
   AsetTetap,
   AsetTetapInput,
+  Assessment,
   Biaya,
   CashAccount,
   CreateApprovalRuleRequest,
@@ -34,6 +35,8 @@ import type {
   PenyusutanItem,
   PphLaporan,
   Product,
+  ProductPerformance,
+  ProductPerformanceRankings,
   Reconciliation,
   ReturInput,
   ReturPembelian,
@@ -1738,6 +1741,126 @@ export const mockDb = {
         equityMultiplier: 0,
         dominantDriver: "-",
       },
+    };
+  },
+
+  /**
+   * Performa produk versi mock: dihitung dari baris transaksi yang tersimpan.
+   * Mode live memakai /api/analytics/product-performance milik engine, yang
+   * juga menetralkan retur penjualan; mock meniru hal yang sama sebisanya
+   * (qty dan omzet dikurangi retur, HPP memakai harga beli saat ini).
+   */
+  productPerformance(startDate: string, endDate: string): ProductPerformance[] {
+    const awal = new Date(`${startDate}T00:00:00`);
+    const akhir = new Date(`${endDate}T23:59:59.999`);
+    const dalamPeriode = (waktu: string) => {
+      const d = new Date(waktu);
+      return d >= awal && d <= akhir;
+    };
+
+    type Akumulasi = { nama: string; qty: number; omzet: number; hpp: number };
+    const peta = new Map<string, Akumulasi>();
+    const slot = (nama: string): Akumulasi => {
+      const produk = this.products.find((p) => p.nama === nama);
+      const kunci = produk?.id ?? nama;
+      const ada = peta.get(kunci);
+      if (ada) return ada;
+      const baru: Akumulasi = { nama, qty: 0, omzet: 0, hpp: 0 };
+      peta.set(kunci, baru);
+      return baru;
+    };
+
+    for (const t of this.transaksi) {
+      if (t.status === "dibatalkan" || !dalamPeriode(t.waktu)) continue;
+      for (const item of t.items) {
+        const produk = this.products.find((p) => p.nama === item.nama);
+        const s = slot(item.nama);
+        s.qty += item.qty;
+        s.omzet += Math.max(0, item.qty * item.hargaJual - item.diskon);
+        s.hpp += item.qty * (item.hargaBeli ?? produk?.hargaBeli ?? 0);
+      }
+    }
+
+    for (const r of this.retur) {
+      if (!dalamPeriode(r.waktu)) continue;
+      for (const item of r.items) {
+        const produk = this.products.find((p) => p.nama === item.nama);
+        const s = peta.get(produk?.id ?? item.nama);
+        if (!s) continue;
+        s.qty -= item.qty;
+        s.omzet -= item.qty * item.hargaJual;
+        s.hpp -= item.qty * (produk?.hargaBeli ?? 0);
+      }
+    }
+
+    const semua = Array.from(peta.entries()).map(([id, p]) => {
+      const omzet = Math.max(0, p.omzet);
+      const hpp = Math.max(0, p.hpp);
+      return { id, nama: p.nama, qty: p.qty, omzet, hpp, laba: omzet - hpp };
+    });
+    const totalOmzet = semua.reduce((s, p) => s + p.omzet, 0);
+    const totalLaba = semua.reduce((s, p) => s + p.laba, 0);
+
+    return semua
+      .filter((p) => p.qty > 0 || p.omzet > 0)
+      .map((p) => {
+        const margin = p.omzet > 0 ? (p.laba / p.omzet) * 100 : 0;
+        const penilaian: Assessment =
+          p.omzet === 0
+            ? {
+                rating: "TIDAK BERLAKU",
+                explanation: "Belum ada penjualan bersih pada periode ini.",
+                benchmark: "-",
+              }
+            : margin >= 20
+              ? {
+                  rating: "BAIK",
+                  explanation: "Margin kotor di atas 20% — produk menyumbang laba yang sehat.",
+                  benchmark: "Patokan praktis: margin ≥ 20%.",
+                }
+              : margin >= 10
+                ? {
+                    rating: "CUKUP",
+                    explanation: "Margin kotor 10–20% — masih menyumbang laba, tetapi tipis.",
+                    benchmark: "Patokan praktis: margin ≥ 20%.",
+                  }
+                : {
+                    rating: "KURANG SEHAT",
+                    explanation: "Margin kotor di bawah 10% — laba per penjualan sangat tipis.",
+                    benchmark: "Patokan praktis: margin ≥ 20%.",
+                  };
+
+        return {
+          productId: p.id,
+          productName: p.nama,
+          totalQuantitySold: p.qty,
+          totalRevenue: p.omzet,
+          totalCost: p.hpp,
+          grossProfit: p.laba,
+          marginPercentage: margin,
+          revenueContributionPercentage: totalOmzet > 0 ? (p.omzet / totalOmzet) * 100 : 0,
+          profitContributionPercentage: totalLaba > 0 ? (p.laba / totalLaba) * 100 : 0,
+          assessment: penilaian,
+          description: `Terjual ${p.qty.toLocaleString("id-ID")} unit pada periode ini.`,
+        } satisfies ProductPerformance;
+      })
+      .sort((a, b) => b.totalRevenue - a.totalRevenue);
+  },
+
+  productPerformanceRankings(
+    startDate: string,
+    endDate: string,
+    top = 10,
+  ): ProductPerformanceRankings {
+    const semua = this.productPerformance(startDate, endDate);
+    const ambil = (urut: (a: ProductPerformance, b: ProductPerformance) => number) =>
+      [...semua].sort(urut).slice(0, top);
+    return {
+      fastMoving: ambil((a, b) => b.totalQuantitySold - a.totalQuantitySold),
+      slowMoving: ambil((a, b) => a.totalQuantitySold - b.totalQuantitySold),
+      highMargin: ambil((a, b) => b.marginPercentage - a.marginPercentage),
+      topRevenue: ambil((a, b) => b.totalRevenue - a.totalRevenue),
+      topProfit: ambil((a, b) => b.grossProfit - a.grossProfit),
     };
   },
 

@@ -218,6 +218,10 @@ Perilaku live yang menyimpang dari mock:
   (`api.analitik.ringkasanKesehatan`, query key `["kesehatan-usaha"]`). Angka Rasio Lancar, Rasio
   Kas, dan Modal Kerja di live datang dari engine (jurnal yang sama dengan neraca saldo); mode mock
   menghitungnya sendiri dari akun mock (hanya 3 indikator yang bisa dihitung jujur).
+- Dashboard analytics (P2.1): tren penjualan harian (SVG, filter 7/30/90 hari), komposisi metode
+  pembayaran (donut), dan produk teratas dari `GET /api/analytics/product-performance/rankings`.
+  Penjualan hari ini diperbarui otomatis tiap 60 detik. Komposisi pembayaran dan tren dihitung
+  dari transaksi tercatat di POS (riwayat 1 tahun), bukan dari engine.
 - Neraca saldo memakai `GET /api/reports/trial-balance?fromDate=&toDate=` dan membaca
   `openingBalance`/`closingBalance`: kolom **Saldo awal | Debit | Kredit | Saldo berjalan**.
 - Rute engine selalu memakai **id** dokumen, sedangkan POS menyimpan nomor dokumen

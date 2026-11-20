@@ -837,14 +837,12 @@ export const api = {
     productPerformance: async (startDate: string, endDate: string): Promise<ProductPerformance[]> => {
       if (API_MODE === "live") return liveProductPerformance(startDate, endDate);
       await delay(120);
-      return [];
+      return mockDb.productPerformance(startDate, endDate);
     },
     productPerformanceRankings: async (startDate: string, endDate: string, top = 10): Promise<ProductPerformanceRankings> => {
       if (API_MODE === "live") return liveProductPerformanceRankings(startDate, endDate, top);
       await delay(120);
-      return {
-        fastMoving: [], slowMoving: [], highMargin: [], topRevenue: [], topProfit: [],
-      };
+      return mockDb.productPerformanceRankings(startDate, endDate, top);
     },
   },
 

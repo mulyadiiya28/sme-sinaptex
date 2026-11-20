@@ -200,14 +200,16 @@ semantik engine).
 
 ### 10. Dashboard Analytics (P2.1)
 **Tasks:**
-- [ ] Sales trend chart (line chart)
-- [ ] Top products chart (bar chart)
-- [ ] Payment method breakdown (pie chart)
-- [ ] Real-time sales counter
+- [x] Sales trend chart (line chart) — SVG harian, filter 7/30/90 hari
+- [x] Top products chart (bar chart) — dari performa produk engine, mode mock dihitung dari transaksi
+- [x] Payment method breakdown (donut chart)
+- [x] Real-time sales counter — penjualan hari ini diperbarui otomatis tiap 60 detik
+- [x] Panel kesehatan usaha (sudah ada, dari `GET /api/analytics/health-summary`)
 
 **Expected:**
 - Dashboard lebih informatif
 - Visual analytics
+- Data tren/top produk dari engine, komposisi pembayaran dari transaksi tercatat
 
 ---
 

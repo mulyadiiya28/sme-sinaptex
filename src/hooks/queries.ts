@@ -50,8 +50,12 @@ export function useShiftRiwayat() {
   return useQuery({ queryKey: ["shift-riwayat"], queryFn: api.shift.riwayat });
 }
 
-export function useRiwayatTransaksi() {
-  return useQuery({ queryKey: ["transaksi"], queryFn: api.transaksi.riwayat });
+export function useRiwayatTransaksi(refetchMs?: number) {
+  return useQuery({
+    queryKey: ["transaksi"],
+    queryFn: api.transaksi.riwayat,
+    ...(refetchMs ? { refetchInterval: refetchMs } : {}),
+  });
 }
 
 export function useRiwayatRetur() {

@@ -7,6 +7,21 @@ export function formatIDR(value: number): string {
   }).format(value);
 }
 
+/**
+ * Nominal ringkas untuk label sumbu grafik: "Rp 1,2 jt", "Rp 250 rb".
+ * Untuk nilai yang dibaca sebagai uang di tabel/struk tetap pakai
+ * `formatIDR()` atau `<MoneyDisplay>`.
+ */
+export function formatRingkasIDR(value: number): string {
+  const abs = Math.abs(value);
+  const tulis = (pembagi: number, satuan: string) =>
+    `Rp ${(value / pembagi).toLocaleString("id-ID", { maximumFractionDigits: 1 })} ${satuan}`;
+  if (abs >= 1_000_000_000) return tulis(1_000_000_000, "miliar");
+  if (abs >= 1_000_000) return tulis(1_000_000, "jt");
+  if (abs >= 1_000) return tulis(1_000, "rb");
+  return `Rp ${value.toLocaleString("id-ID")}`;
+}
+
 /** Tanggal kalender lokal (YYYY-MM-DD). `toISOString()` berbasis UTC, jadi
  * transaksi pukul 00.00–06.59 WIB akan terbaca sebagai hari sebelumnya. */
 export function tanggalLokal(nilai: string | Date = new Date()): string {

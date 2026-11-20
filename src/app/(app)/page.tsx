@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useState } from "react";
 import { AlertTriangle, Calculator, Store, TrendingUp, Wallet } from "lucide-react";
 import { PageHeader } from "@/components/page-header";
 import { KpiCard } from "@/components/kpi-card";
@@ -8,18 +9,44 @@ import { MoneyDisplay } from "@/components/money-display";
 import { PanelKesehatan } from "@/components/panel-kesehatan";
 import { KpiSkeleton, Skeleton } from "@/components/skeleton";
 import { StatusBadge } from "@/components/status-badge";
-import { useActiveShift, useArAging, useProducts, useRiwayatTransaksi } from "@/hooks/queries";
+import { PaymentBreakdown } from "@/components/dashboard/payment-breakdown";
+import { SalesTrendChart } from "@/components/dashboard/sales-trend-chart";
+import { TopProductsChart } from "@/components/dashboard/top-products-chart";
+import {
+  useActiveShift,
+  useArAging,
+  useProductPerformanceRankings,
+  useProducts,
+  useRiwayatTransaksi,
+} from "@/hooks/queries";
 import type { TransaksiRiwayat } from "@/lib/api/types";
+import {
+  piutangPeriode,
+  rentangHariTerakhir,
+  ringkasMetodePembayaran,
+  ringkasTrenPenjualan,
+} from "@/lib/dashboard";
 import { tanggalLokal } from "@/lib/format";
 import { perluReminder } from "@/lib/reminder";
 import { useReminder } from "@/lib/store/reminder";
+import { cn } from "@/lib/utils";
+
+const PERIODE = [7, 30, 90] as const;
+type Periode = (typeof PERIODE)[number];
+
+/** Dashboard memantau penjualan hari berjalan; 60 detik cukup untuk POS satu toko. */
+const INTERVAL_LIVE_MS = 60_000;
 
 export default function DashboardPage() {
+  const [periode, setPeriode] = useState<Periode>(30);
   const products = useProducts();
   const shift = useActiveShift();
-  const riwayat = useRiwayatTransaksi();
+  const riwayat = useRiwayatTransaksi(INTERVAL_LIVE_MS);
   const aging = useArAging();
   const reminderLog = useReminder((s) => s.log);
+
+  const { dari, sampai } = rentangHariTerakhir(periode);
+  const rankings = useProductPerformanceRankings(dari, sampai, 6);
 
   if (products.isLoading || riwayat.isLoading) {
     return <DashboardSkeleton />;
@@ -34,11 +61,16 @@ export default function DashboardPage() {
   const piutangHariIni = hariIni.reduce((s, t) => s + t.piutang, 0);
   const perluDiingatkan = perluReminder(aging.data?.invoices ?? [], reminderLog, hari);
 
+  const tren = ringkasTrenPenjualan(semua, periode);
+  const metode = ringkasMetodePembayaran(semua, periode);
+  const piutang = piutangPeriode(semua, periode);
+  const produkTeratas = rankings.data?.topRevenue ?? [];
+
   return (
     <div>
       <PageHeader
         title="Dashboard"
-        description="Gambaran kesehatan usaha dalam satu layar — dihitung dari transaksi nyata."
+        description="Gambaran kesehatan usaha dan tren penjualan dalam satu layar — dihitung dari transaksi nyata."
         actions={
           <Link href="/kasir" className="btn-accent">
             <Calculator className="size-4" aria-hidden />
@@ -51,7 +83,7 @@ export default function DashboardPage() {
         <KpiCard
           label="Penjualan hari ini"
           value={<MoneyDisplay value={omzetHariIni} />}
-          hint={`${hariIni.length} transaksi`}
+          hint={`${hariIni.length} transaksi · diperbarui otomatis`}
           tone="navy"
           icon={<Store className="size-4" aria-hidden />}
         />
@@ -77,6 +109,46 @@ export default function DashboardPage() {
           icon={<TrendingUp className="size-4" aria-hidden />}
         />
       </div>
+
+      <div className="mt-6 flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <h2 className="flex items-center gap-2 text-sm font-bold text-brand">
+            <TrendingUp className="size-4" aria-hidden />
+            Analitik penjualan
+          </h2>
+          <p className="mt-1 text-xs text-muted">
+            {periode} hari terakhir · {dari} s/d {sampai}
+          </p>
+        </div>
+        <div className="inline-flex rounded-xl border border-line bg-white p-1">
+          {PERIODE.map((p) => (
+            <button
+              key={p}
+              type="button"
+              onClick={() => setPeriode(p)}
+              aria-pressed={periode === p}
+              className={cn(
+                "rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors",
+                periode === p ? "bg-brand text-white" : "text-muted hover:text-ink",
+              )}
+            >
+              {p} hari
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="mt-3 grid grid-cols-1 gap-4 xl:grid-cols-3">
+        <SalesTrendChart data={tren} className="xl:col-span-2" />
+        <PaymentBreakdown data={metode} piutang={piutang} />
+      </div>
+
+      <TopProductsChart
+        products={produkTeratas}
+        loading={rankings.isLoading}
+        error={rankings.isError}
+        className="mt-4"
+      />
 
       <PanelKesehatan className="mt-6" />
 
@@ -147,10 +219,31 @@ function DashboardSkeleton() {
     <div>
       <PageHeader
         title="Dashboard"
-        description="Gambaran kesehatan usaha dalam satu layar — dihitung dari transaksi nyata."
+        description="Gambaran kesehatan usaha dan tren penjualan dalam satu layar — dihitung dari transaksi nyata."
         actions={<Skeleton className="h-10 w-32 rounded-xl" />}
       />
       <KpiSkeleton />
+      <div className="mt-6 grid grid-cols-1 gap-4 xl:grid-cols-3">
+        <div className="panel col-span-2 p-5">
+          <Skeleton className="h-4 w-40" />
+          <Skeleton className="mt-4 h-52 rounded-2xl" />
+        </div>
+        <div className="panel p-5">
+          <Skeleton className="h-4 w-32" />
+          <Skeleton className="mt-4 h-40 rounded-2xl" />
+        </div>
+      </div>
+      <div className="panel mt-4 p-5">
+        <Skeleton className="h-4 w-32" />
+        <div className="mt-4 space-y-4">
+          {Array.from({ length: 3 }).map((_, i) => (
+            <div key={i} className="space-y-2">
+              <Skeleton className="h-4 w-1/2" />
+              <Skeleton className="h-2 w-full rounded-full" />
+            </div>
+          ))}
+        </div>
+      </div>
       <div className="mt-6 grid grid-cols-1 gap-4 xl:grid-cols-3">
         <div className="panel col-span-2 p-5">
           <Skeleton className="h-4 w-40" />
