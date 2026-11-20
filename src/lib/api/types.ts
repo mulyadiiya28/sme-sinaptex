@@ -1104,3 +1104,20 @@ export type CreateSupplierRequest = {
   email?: string;
   taxNumber?: string;
 };
+
+export type HasilAktivasiLisensi = {
+  ok: boolean;
+  reason: string | null;
+  licenseType: string | null;
+  expiresAt: string | null;
+  key: string | null;
+};
+
+export type StatusLisensi = {
+  active: boolean;
+  licenseType: string | null;
+  expiresAt: string | null;
+  key: string | null;
+  machineId: string | null;
+};
+

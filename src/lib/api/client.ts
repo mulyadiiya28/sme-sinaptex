@@ -16,6 +16,7 @@ import type {
   Dupont,
   HasilImpor,
   HealthIndicator,
+  HasilAktivasiLisensi,
   HealthSummary,
   ImportResult,
   ImporPelangganBaris,
@@ -53,6 +54,7 @@ import type {
   ShiftInfo,
   ShiftMutasiInput,
   ShiftRiwayat,
+  StatusLisensi,
   Solvency,
   TransaksiRiwayat,
   TransferKas,
@@ -167,6 +169,8 @@ import {
   liveKonfirmasiDigital,
   liveFakturPdf,
   liveLabaRugi,
+  liveLisensiAktivasi,
+  liveLisensiStatus,
   liveLogin,
   liveLogout,
   liveNeracaSaldoExport,
@@ -647,6 +651,22 @@ export const api = {
       throw new Error(
         "Manajemen cabang hanya tersedia di mode live — hierarki cabang disimpan engine.",
       );
+    },
+  },
+
+  lisensi: {
+    aktivasi: async (key: string, machineId: string): Promise<HasilAktivasiLisensi> => {
+      if (API_MODE === "live") return liveLisensiAktivasi(key, machineId);
+      await delay(120);
+      const { validasiFormatKey } = await import("@/lib/license");
+      const cek = validasiFormatKey(key);
+      if (!cek.ok) return { ok: false, reason: cek.alasan, licenseType: null, expiresAt: null, key: null };
+      return { ok: true, reason: null, licenseType: cek.jenis, expiresAt: cek.berakhirPada, key };
+    },
+    status: async (machineId: string): Promise<StatusLisensi> => {
+      if (API_MODE === "live") return liveLisensiStatus(machineId);
+      await delay(120);
+      return { active: true, licenseType: null, expiresAt: null, key: null, machineId };
     },
   },
 

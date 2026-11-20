@@ -18,6 +18,7 @@ import type {
   Dupont,
   Expense,
   HealthIndicator,
+  HasilAktivasiLisensi,
   HealthSummary,
   ImportResult,
   ImporPelangganBaris,
@@ -56,6 +57,7 @@ import type {
   ShiftInfo,
   ShiftMutasiInput,
   ShiftRiwayat,
+  StatusLisensi,
   Solvency,
   TransaksiRiwayat,
   TransferKas,
@@ -3752,4 +3754,18 @@ function opnameEngine(row: BtOpname): StockOpname {
     createdBy: row.createdBy,
     updatedAt: row.updatedAt,
   };
+}
+
+export async function liveLisensiAktivasi(key: string, machineId: string): Promise<HasilAktivasiLisensi> {
+  const data = await minta<HasilAktivasiLisensi>("/api/licenses/activate", {
+    method: "POST",
+    body: { key, machineId },
+  });
+  return data;
+}
+
+export async function liveLisensiStatus(machineId: string): Promise<StatusLisensi> {
+  const qs = new URLSearchParams({ machineId });
+  const data = await minta<StatusLisensi>(`/api/licenses/status?${qs.toString()}`);
+  return data;
 }

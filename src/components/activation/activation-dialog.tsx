@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { labelLisensi, normalisasiKey, validasiFormatKey } from "@/lib/license";
 import { sidikMesin } from "@/lib/license-device";
+import { API_MODE, api } from "@/lib/api/client";
 import { useAktivasi } from "@/lib/store/aktivasi";
 
 export function ActivationDialog({ onDone, bolehLewati = false }: { onDone: () => void; bolehLewati?: boolean }) {
@@ -25,6 +26,13 @@ export function ActivationDialog({ onDone, bolehLewati = false }: { onDone: () =
       if (ada && ada !== mesinId) {
         setError("Key ini sudah dipakai di perangkat lain.");
         return;
+      }
+      if (API_MODE === "live") {
+        const hasilServer = await api.lisensi.aktivasi(normal, mesinId);
+        if (!hasilServer.ok) {
+          setError(hasilServer.reason ?? "Key ditolak engine.");
+          return;
+        }
       }
       catatKeyTerpakai(normal, mesinId);
       useAktivasi.getState().simpanAktivasi({
