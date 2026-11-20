@@ -32,6 +32,7 @@ import type {
   Pembelian,
   PembelianInput,
   PenyusutanItem,
+  PphLaporan,
   Product,
   Reconciliation,
   ReturInput,
@@ -1207,9 +1208,56 @@ export const mockDb = {
     return structuredClone(retur);
   },
 
-
   riwayatRetur(): ReturPenjualan[] {
     return structuredClone(this.retur);
+  },
+
+  laporanPph(dari: string, sampai: string): PphLaporan {
+    const awal = new Date(`${dari}T00:00:00`);
+    const akhir = new Date(`${sampai}T23:59:59.999`);
+
+    // Sama seperti engine: hanya faktur yang benar-benar memotong PPh yang
+    // masuk laporan, dan angkanya snapshot dokumen.
+    const baris = this.pembelian
+      .filter((p) => {
+        const waktu = new Date(p.waktu);
+        return p.pphAmount > 0 && waktu >= awal && waktu <= akhir;
+      })
+      .map((p) => ({
+        purchaseId: p.id,
+        nomor: p.nomor,
+        tanggal: p.waktu,
+        pemasok: p.pemasok || "Tanpa pemasok",
+        supplierId: p.supplierId,
+        dpp: p.pphBaseAmount,
+        ppn: Math.max(0, p.total - p.pphBaseAmount),
+        pphType: p.pphType ?? "PPH23",
+        pphRate: p.pphRate,
+        pphAmount: p.pphAmount,
+        total: p.total,
+        payableAmount: p.payableAmount,
+      }));
+
+    const perJenis = (["PPH23", "PPH42"] as const)
+      .map((jenis) => {
+        const cocok = baris.filter((b) => b.pphType === jenis);
+        return {
+          pphType: jenis,
+          jumlahFaktur: cocok.length,
+          dpp: cocok.reduce((s, b) => s + b.dpp, 0),
+          pphAmount: cocok.reduce((s, b) => s + b.pphAmount, 0),
+        };
+      })
+      .filter((j) => j.jumlahFaktur > 0);
+
+    return {
+      dari,
+      sampai,
+      baris,
+      perJenis,
+      totalDpp: baris.reduce((s, b) => s + b.dpp, 0),
+      totalPph: baris.reduce((s, b) => s + b.pphAmount, 0),
+    };
   },
 
   registerPembelian(input: PembelianInput): Pembelian {

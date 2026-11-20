@@ -7,21 +7,10 @@ import { MoneyDisplay } from "@/components/money-display";
 import { PageHeader } from "@/components/page-header";
 import { KpiCard } from "@/components/kpi-card";
 import { KpiSkeleton, TableSkeleton } from "@/components/skeleton";
-import { usePembelian } from "@/hooks/queries";
-import type { PphType } from "@/lib/api/types";
+import { usePphLaporan } from "@/hooks/queries";
+import type { PphLaporanRow, PphType } from "@/lib/api/types";
 import { unduhCsv } from "@/lib/csv";
 import { formatIDR, tanggalLokal } from "@/lib/format";
-
-type BarisPph = {
-  nomor: string;
-  tanggal: string;
-  pemasok: string;
-  dpp: number;
-  total: number;
-  pphType: PphType;
-  pphRate: number | null;
-  pphAmount: number;
-};
 
 const LABEL_PPH: Record<PphType, string> = {
   PPH23: "PPh 23",
@@ -37,37 +26,41 @@ function formatRate(rate: number | null) {
   return `${Number((rate * 100).toFixed(4))}%`;
 }
 
+/** Hari terakhir sebuah bulan `YYYY-MM`, tanpa bergantung zona waktu. */
+function akhirBulan(bulan: string) {
+  const [tahun, nomorBulan] = bulan.split("-").map(Number);
+  const hari = new Date(tahun, nomorBulan, 0).getDate();
+  return `${bulan}-${String(hari).padStart(2, "0")}`;
+}
+
 export default function PphPage() {
-  const pembelian = usePembelian();
-  const [cetak, setCetak] = useState<BarisPph | null>(null);
+  const [bulan, setBulan] = useState(() => tanggalLokal(new Date()).slice(0, 7));
+  const [cetak, setCetak] = useState<PphLaporanRow | null>(null);
 
-  // Hanya faktur yang benar-benar memotong PPh: angka dan jenisnya datang dari
-  // snapshot engine, bukan estimasi dari tarif global.
-  const baris: BarisPph[] = useMemo(() => {
-    return (pembelian.data ?? [])
-      .filter((p) => p.pphAmount > 0)
-      .map((p) => ({
-        nomor: p.nomor ?? "-",
-        tanggal: p.waktu ?? "",
-        pemasok: p.pemasok ?? "-",
-        dpp: p.pphBaseAmount,
-        total: p.total ?? 0,
-        pphType: p.pphType ?? "PPH23",
-        pphRate: p.pphRate,
-        pphAmount: p.pphAmount,
-      }));
-  }, [pembelian.data]);
+  const dari = `${bulan}-01`;
+  const sampai = akhirBulan(bulan);
+  const laporan = usePphLaporan(dari, sampai);
 
-  const totalDpp = baris.reduce((s, b) => s + b.dpp, 0);
-  const totalPph = baris.reduce((s, b) => s + b.pphAmount, 0);
-  const totalPph23 = baris.filter((b) => b.pphType === "PPH23").reduce((s, b) => s + b.pphAmount, 0);
-  const totalPph42 = baris.filter((b) => b.pphType === "PPH42").reduce((s, b) => s + b.pphAmount, 0);
+  const baris = laporan.data?.baris ?? [];
 
-  const kolom: Column<BarisPph>[] = [
+  // Rekap per jenis datang dari engine, bukan dihitung ulang di layar.
+  const totalPerJenis = useMemo(() => {
+    const peta = new Map<PphType, number>();
+    for (const j of laporan.data?.perJenis ?? []) peta.set(j.pphType, j.pphAmount);
+    return peta;
+  }, [laporan.data]);
+
+  const totalDpp = laporan.data?.totalDpp ?? 0;
+  const totalPph = laporan.data?.totalPph ?? 0;
+  const totalPph23 = totalPerJenis.get("PPH23") ?? 0;
+  const totalPph42 = totalPerJenis.get("PPH42") ?? 0;
+
+  const kolom: Column<PphLaporanRow>[] = [
     { key: "nomor", header: "No. Faktur", render: (r) => <span className="font-mono text-xs">{r.nomor}</span> },
     { key: "tanggal", header: "Tanggal", render: (r) => <span className="text-xs text-muted">{tanggalLokal(r.tanggal)}</span> },
     { key: "pemasok", header: "Pemasok", render: (r) => <span className="text-sm">{r.pemasok}</span> },
     { key: "dpp", header: "DPP", align: "right", render: (r) => <MoneyDisplay value={r.dpp} /> },
+    { key: "ppn", header: "PPN", align: "right", render: (r) => <MoneyDisplay value={r.ppn} /> },
     { key: "jenis", header: "Jenis", render: (r) => <span className="text-xs font-semibold">{labelJenis(r.pphType)}</span> },
     { key: "rate", header: "Rate", align: "right", render: (r) => <span className="tabular-nums text-xs">{formatRate(r.pphRate)}</span> },
     { key: "pph", header: "PPh", align: "right", render: (r) => <MoneyDisplay value={r.pphAmount} /> },
@@ -84,19 +77,21 @@ export default function PphPage() {
   ];
 
   function ekspor() {
-    const header = ["No. Faktur", "Tanggal", "Pemasok", "DPP", "Jenis", "Rate", "PPh", "Total Faktur"];
+    const header = ["No. Faktur", "Tanggal", "Pemasok", "DPP", "PPN", "Jenis", "Rate", "PPh", "Total Faktur", "Dibayar ke Pemasok"];
     const rows = baris.map((b) => [
       b.nomor,
       b.tanggal,
       b.pemasok,
       b.dpp,
+      b.ppn,
       labelJenis(b.pphType),
       b.pphRate === null ? "" : b.pphRate * 100,
       b.pphAmount,
       b.total,
+      b.payableAmount,
     ]);
-    rows.push(["TOTAL", "", "", totalDpp, "", "", totalPph, ""]);
-    unduhCsv(`laporan-pph-${new Date().toISOString().slice(0, 10)}.csv`, header, rows);
+    rows.push(["TOTAL", "", "", totalDpp, "", "", "", totalPph, "", ""]);
+    unduhCsv(`laporan-pph-${dari}-${sampai}.csv`, header, rows);
   }
 
   function cetakBukti() {
@@ -116,6 +111,7 @@ td:last-child{text-align:right;font-weight:600} .total td{font-weight:700;border
 <tr><td>Tanggal</td><td>${tanggalLokal(cetak.tanggal)}</td></tr>
 <tr><td>Pemasok</td><td>${cetak.pemasok}</td></tr>
 <tr><td>DPP</td><td>${formatIDR(cetak.dpp)}</td></tr>
+<tr><td>PPN</td><td>${formatIDR(cetak.ppn)}</td></tr>
 <tr><td>Jenis</td><td>${labelJenis(cetak.pphType)}</td></tr>
 <tr><td>Rate</td><td>${formatRate(cetak.pphRate)}</td></tr>
 <tr><td>Total Faktur</td><td>${formatIDR(cetak.total)}</td></tr>
@@ -128,12 +124,12 @@ td:last-child{text-align:right;font-weight:600} .total td{font-weight:700;border
     w.print();
   }
 
-  if (pembelian.isLoading) {
+  if (laporan.isLoading) {
     return (
       <div>
         <PageHeader title="PPh (Pajak Penghasilan)" description="PPh yang dipotong dari faktur pembelian." />
         <KpiSkeleton />
-        <TableSkeleton baris={6} kolom={8} />
+        <TableSkeleton baris={6} kolom={9} />
       </div>
     );
   }
@@ -144,37 +140,55 @@ td:last-child{text-align:right;font-weight:600} .total td{font-weight:700;border
         title="PPh (Pajak Penghasilan)"
         description="PPh 23 dan PPh 4 ayat 2 yang dipotong dari faktur pembelian, sesuai snapshot engine."
         actions={
-          <button type="button" className="btn-secondary" onClick={ekspor} disabled={baris.length === 0}>
-            <Download className="size-4" aria-hidden /> Ekspor CSV
-          </button>
+          <div className="flex items-center gap-2">
+            <label className="text-xs font-semibold text-muted" htmlFor="bulan-pph">Periode</label>
+            <input
+              id="bulan-pph"
+              type="month"
+              className="input w-auto py-1.5"
+              value={bulan}
+              onChange={(e) => setBulan(e.target.value || bulan)}
+            />
+            <button type="button" className="btn-secondary" onClick={ekspor} disabled={baris.length === 0}>
+              <Download className="size-4" aria-hidden /> Ekspor CSV
+            </button>
+          </div>
         }
       />
 
-      <div className="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-4">
-        <KpiCard label="Jumlah Faktur" value={baris.length} hint="Faktur dengan pemotongan" />
-        <KpiCard label="Total DPP" value={<MoneyDisplay value={totalDpp} />} />
-        <KpiCard label="PPh 23" value={<MoneyDisplay value={totalPph23} />} />
-        <KpiCard label="PPh 4(2)" value={<MoneyDisplay value={totalPph42} />} />
-      </div>
-
-      <div className="panel mb-4 p-4">
-        <div className="flex items-baseline justify-between">
-          <span className="text-sm font-semibold text-ink">Total PPh dipotong</span>
-          <MoneyDisplay value={totalPph} className="text-lg font-black text-brand" />
+      {laporan.isError ? (
+        <div className="panel p-4">
+          <p className="py-12 text-center text-sm text-rose-600">Gagal memuat laporan PPh.</p>
         </div>
-        <p className="mt-2 text-xs text-muted">
-          Angka di halaman ini adalah snapshot yang disimpan engine saat faktur disubmit — bukan hitungan ulang
-          dari tarif hari ini. Untuk memotong PPh, centang opsi PPh di form Buat Pembelian.
-        </p>
-      </div>
+      ) : (
+        <>
+          <div className="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-4">
+            <KpiCard label="Jumlah Faktur" value={baris.length} hint={`${dari} s/d ${sampai}`} />
+            <KpiCard label="Total DPP" value={<MoneyDisplay value={totalDpp} />} />
+            <KpiCard label="PPh 23" value={<MoneyDisplay value={totalPph23} />} />
+            <KpiCard label="PPh 4(2)" value={<MoneyDisplay value={totalPph42} />} />
+          </div>
 
-      <DataTable<BarisPph>
-        columns={kolom}
-        rows={baris}
-        rowKey={(r) => r.nomor}
-        empty="Belum ada faktur pembelian yang memotong PPh."
-        loading={pembelian.isLoading}
-      />
+          <div className="panel mb-4 p-4">
+            <div className="flex items-baseline justify-between">
+              <span className="text-sm font-semibold text-ink">Total PPh dipotong</span>
+              <MoneyDisplay value={totalPph} className="text-lg font-black text-brand" />
+            </div>
+            <p className="mt-2 text-xs text-muted">
+              Angka di halaman ini adalah snapshot yang disimpan engine saat faktur disubmit — bukan hitungan ulang
+              dari tarif hari ini. Untuk memotong PPh, centang opsi PPh di form Buat Pembelian.
+            </p>
+          </div>
+
+          <DataTable<PphLaporanRow>
+            columns={kolom}
+            rows={baris}
+            rowKey={(r) => r.purchaseId}
+            empty="Belum ada faktur pembelian yang memotong PPh pada periode ini."
+            loading={laporan.isLoading}
+          />
+        </>
+      )}
 
       {cetak && (
         <div className="fixed inset-0 z-50 grid place-items-center bg-ink/40 p-4">

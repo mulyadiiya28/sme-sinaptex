@@ -37,6 +37,7 @@ import type {
   PembelianInput,
   PenyesuaianStokInput,
   PersetujuanBatch,
+  PphLaporan,
   Product,
   ProductPerformance,
   ProductPerformanceRankings,
@@ -173,6 +174,7 @@ import {
   livePenyesuaianStok,
   livePembelianBuat,
   livePembelianList,
+  livePphLaporan,
   liveReturPembelian,
   liveProductPerformance,
   liveProductPerformanceRankings,
@@ -492,6 +494,14 @@ export const api = {
       if (API_MODE === "live") return liveReturPembelian(input);
       await delay(400);
       return mockDb.prosesReturPembelian(input, user);
+    },
+  },
+
+  pph: {
+    laporan: async (dari: string, sampai: string): Promise<PphLaporan> => {
+      if (API_MODE === "live") return livePphLaporan(dari, sampai);
+      await delay(150);
+      return mockDb.laporanPph(dari, sampai);
     },
   },
 

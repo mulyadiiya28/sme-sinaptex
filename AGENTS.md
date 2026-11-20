@@ -121,6 +121,7 @@ daftar/ubah/hapus user (`GET/PUT/DELETE /api/users`), jejak audit (`GET /api/aud
 master pemasok (`GET/POST /api/suppliers`, `POST /api/suppliers/{id}/deactivate`),
 kebijakan operasional (`GET/PUT /api/settings/operational-policy`), periode fiskal
 (`/api/fiscal-periods`), umur piutang/hutang + rekonsiliasi (`/api/reports/ar-ap/*`),
+laporan PPh per jenis (`GET /api/reports/pph`),
 analitik kesehatan & rasio (`/api/analytics/*`), backup database
 (`GET/POST /api/backup`, `GET /api/backup/list`, `GET /api/backup/download`, `POST /api/backup/restore`),
 cabang (`GET/POST /api/branches`), faktur PDF penjualan (`GET /api/sales/{id}/pdf`),
@@ -167,8 +168,9 @@ Perilaku live yang menyimpang dari mock:
   baris sebelum PPN) dan menyimpannya di dokumen. `livePembelianList` membaca balikan
   `pphAmount`/`pphType`/`pphRate`/`pphBaseAmount`/`payableAmount`, dan halaman `/pph` menampilkan
   snapshot itu (bukan estimasi tarif global). POS menghitung pembayaran tunai/bank sebagai
-  `total − PPh` karena engine memvalidasi pembayaran terhadap net payable. Rekap per jenis tersedia
-  lewat `GET /api/reports/pph?fromDate=&toDate=`.
+  `total − PPh` karena engine memvalidasi pembayaran terhadap net payable. Halaman `/pph` memakai
+  `api.pph.laporan(dari, sampai)` → `GET /api/reports/pph?fromDate=&toDate=` dengan filter bulan;
+  mode mock menghitung rekap yang sama dari `mockDb.laporanPph`.
 - Master pemasok sengaja hanya list/create/nonaktifkan (engine tidak menyediakan update kode/nama) —
   menjaga integritas nama pemasok pada faktur lama. `liveSupplierList` memakai
   `?includeInactive=true` supaya pemasok nonaktif tetap muncul di master dan namanya masih bisa

@@ -62,6 +62,14 @@ export function usePembelian() {
   return useQuery({ queryKey: ["pembelian"], queryFn: api.pembelian.list });
 }
 
+export function usePphLaporan(dari: string, sampai: string) {
+  return useQuery({
+    queryKey: ["pph-laporan", dari, sampai],
+    queryFn: () => api.pph.laporan(dari, sampai),
+    enabled: !!dari && !!sampai,
+  });
+}
+
 export function useBiaya() {
   return useQuery({ queryKey: ["biaya"], queryFn: () => api.biaya.list() });
 }
@@ -410,6 +418,7 @@ export function usePembelianMutations() {
   const qc = useQueryClient();
   const invalidateSemua = () => {
     qc.invalidateQueries({ queryKey: ["pembelian"] });
+    qc.invalidateQueries({ queryKey: ["pph-laporan"] });
     qc.invalidateQueries({ queryKey: ["jurnal"] });
     qc.invalidateQueries({ queryKey: ["akun"] });
     qc.invalidateQueries({ queryKey: ["laba-rugi"] });

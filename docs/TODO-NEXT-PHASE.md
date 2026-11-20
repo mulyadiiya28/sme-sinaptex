@@ -149,7 +149,7 @@ semantik engine).
 ### 7. Voucher/Kupon (P1.6)
 **File:** `PRIORITAS-P1-DETAIL.md`
 
-**Status:** 🟡 Sebagian — master voucher CRUD + halaman `/voucher` (2026-11-19); validasi di checkout belum dihubungkan
+**Status:** ✅ Selesai (2026-11-20) — master voucher + validasi di checkout + batas pemakaian di engine
 
 **Tasks:**
 - [x] Master voucher (CRUD) — halaman `/voucher` (list/create/update/deactivate)

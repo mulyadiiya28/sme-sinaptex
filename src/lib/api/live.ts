@@ -37,6 +37,8 @@ import type {
   PembelianInput,
   PersetujuanBatch,
   PersetujuanTransaksi,
+  PphLaporan,
+  PphType,
   Product,
   ProductPerformance,
   ProductPerformanceRankings,
@@ -542,6 +544,34 @@ type BtPembelian = {
   pphRate: number | null;
   pphBaseAmount: number;
   items: BtPembelianItem[];
+};
+
+type BtPphReportRow = {
+  purchaseId: string;
+  purchaseNumber: string | null;
+  purchaseDate: string;
+  supplierId: string | null;
+  baseAmount: number;
+  taxAmount: number;
+  pphType: string | null;
+  pphRate: number | null;
+  pphAmount: number;
+  totalAmount: number;
+  payableAmount: number;
+};
+
+type BtPphReport = {
+  fromDate: string;
+  toDate: string;
+  invoices: BtPphReportRow[];
+  totalsByType: Array<{
+    pphType: string;
+    invoiceCount: number;
+    baseAmount: number;
+    pphAmount: number;
+  }>;
+  totalBase: number;
+  totalPph: number;
 };
 type BtAkun = {
   accountCode: string;
@@ -1800,6 +1830,44 @@ export async function livePembelianList(): Promise<Pembelian[]> {
       payableAmount: p.payableAmount,
     };
   });
+}
+
+export async function livePphLaporan(dari: string, sampai: string): Promise<PphLaporan> {
+  const [laporan, pemasok] = await Promise.all([
+    minta<BtPphReport>(`/api/reports/pph?fromDate=${dari}&toDate=${sampai}`),
+    minta<{ id: string; name: string }[]>("/api/suppliers?includeInactive=true"),
+  ]);
+  const namaPemasok = new Map(pemasok.map((s) => [s.id, s.name]));
+  // Engine hanya menyimpan kode jenis; baris lama tanpa jenis diperlakukan
+  // sebagai PPh 23, sama seperti laporan di sisi engine.
+  const jenis = (nilai: string | null): PphType => (nilai === "PPH42" ? "PPH42" : "PPH23");
+
+  return {
+    dari: laporan.fromDate.slice(0, 10),
+    sampai: laporan.toDate.slice(0, 10),
+    baris: laporan.invoices.map((r) => ({
+      purchaseId: r.purchaseId,
+      nomor: r.purchaseNumber ?? r.purchaseId,
+      tanggal: r.purchaseDate,
+      pemasok: r.supplierId ? namaPemasok.get(r.supplierId) ?? r.supplierId : "Tanpa pemasok",
+      supplierId: r.supplierId,
+      dpp: r.baseAmount,
+      ppn: r.taxAmount,
+      pphType: jenis(r.pphType),
+      pphRate: r.pphRate,
+      pphAmount: r.pphAmount,
+      total: r.totalAmount,
+      payableAmount: r.payableAmount,
+    })),
+    perJenis: laporan.totalsByType.map((t) => ({
+      pphType: jenis(t.pphType),
+      jumlahFaktur: t.invoiceCount,
+      dpp: t.baseAmount,
+      pphAmount: t.pphAmount,
+    })),
+    totalDpp: laporan.totalBase,
+    totalPph: laporan.totalPph,
+  };
 }
 
 export async function livePembelianBuat(input: PembelianInput): Promise<Pembelian> {

@@ -541,6 +541,39 @@ export type PembelianInput = {
   pphRatePersen?: number;
 };
 
+/** Satu faktur pembelian yang memotong PPh, seperti dicatat dokumennya. */
+export type PphLaporanRow = {
+  purchaseId: string;
+  nomor: string;
+  tanggal: string;
+  pemasok: string;
+  supplierId: string | null;
+  /** Dasar pengenaan PPh: total baris sebelum PPN. */
+  dpp: number;
+  /** PPN masukan pada faktur yang sama (0 bila tidak kena PPN). */
+  ppn: number;
+  pphType: PphType;
+  pphRate: number | null;
+  pphAmount: number;
+  total: number;
+  payableAmount: number;
+};
+
+/** Rekap PPh yang dipotong pada satu rentang tanggal. */
+export type PphLaporan = {
+  dari: string;
+  sampai: string;
+  baris: PphLaporanRow[];
+  perJenis: Array<{
+    pphType: PphType;
+    jumlahFaktur: number;
+    dpp: number;
+    pphAmount: number;
+  }>;
+  totalDpp: number;
+  totalPph: number;
+};
+
 export type Biaya = {
   id: string;
   waktu: string;
