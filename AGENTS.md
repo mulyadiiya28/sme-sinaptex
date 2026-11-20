@@ -505,7 +505,7 @@ scripts/           backend task, client env, backup harian + restore
 - Profil toko sync `/api/settings/company-profile`; field POS di localStorage
 - Logo upload ke engine (mock tolak)
 - QRIS: uang ditahan di akun gateway (`1130`), konfirmasi = `POST /api/cash-transfers` gateway→bank bertanda `[QRIS <nomor>]`
-- Backup/cabang hanya di tab Pengaturan; POS **tidak** mengirim `X-Branch-Id` (stok engine dijaga per cabang, gudang POS masih terikat ke pusat)
+- Backup/cabang: POS mengirim `X-Branch-Id` saat cabang aktif dipilih (topbar). Default null = Pusat (semua cabang). Gudang baru otomatis terikat ke cabang aktif.
 - Batch tertahan approval: `/persetujuan` → `GET /api/transactions?status=SUBMITTED` → approve → `POST /api/cash-batches/{batchId}/post`
 
 ### Verifikasi
