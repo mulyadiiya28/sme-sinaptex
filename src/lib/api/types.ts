@@ -18,6 +18,7 @@ export type Gudang = {
   kode: string;
   nama: string;
   alamat?: string;
+  branchId?: string;
   isDefault: boolean;
   isActive: boolean;
   createdAt: string;

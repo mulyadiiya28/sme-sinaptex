@@ -3204,6 +3204,7 @@ function petakanGudang(w: BtGudang): Gudang {
     kode: w.code,
     nama: w.name,
     alamat: w.address ?? undefined,
+    branchId: w.branchId,
     isDefault: w.isDefault,
     isActive: w.isActive,
     createdAt: w.createdAt ?? "",

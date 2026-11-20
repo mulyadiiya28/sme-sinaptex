@@ -27,6 +27,7 @@ import {
   useStokRendah,
 } from "@/hooks/queries";
 import { useAuth } from "@/lib/store/auth";
+import { useCabang } from "@/lib/store/cabang";
 import { cn } from "@/lib/utils";
 
 type Tab = "ringkasan" | "stok" | "mutasi" | "opname" | "gudang";
@@ -117,7 +118,10 @@ export default function PersediaanPage() {
   const [opnameQty, setOpnameQty] = useState<Record<string, string>>({});
   const stokOpname = useStokGudang(opnameGudang || undefined);
 
-  const daftarGudang = gudang.data ?? [];
+  const cabangAktifId = useCabang((s) => s.cabangAktif);
+  const daftarGudang = (gudang.data ?? []).filter((g) =>
+    cabangAktifId ? g.branchId === cabangAktifId : true,
+  );
   const gudangAktif = daftarGudang.filter((g) => g.isActive);
   const daftarProduk = produk.data ?? [];
 
