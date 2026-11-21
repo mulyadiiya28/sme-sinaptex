@@ -70,6 +70,7 @@ export default function AsetTetapPage() {
   const live = API_MODE === "live";
   const [tab, setTab] = useState<"daftar" | "penyusutan" | "mutasi" | "laporan">("daftar");
   const [openCreate, setOpenCreate] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
   const [openMutasi, setOpenMutasi] = useState(false);
   const [openPenyusutan, setOpenPenyusutan] = useState(false);
   const [openLaporan, setOpenLaporan] = useState(false);
@@ -328,7 +329,18 @@ export default function AsetTetapPage() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink/50 p-4 backdrop-blur-sm" onClick={() => setOpenCreate(false)}>
           <div className="panel w-full max-w-2xl max-h-[90vh] overflow-y-auto p-7" onClick={(e) => e.stopPropagation()}>
             <h2 className="font-black text-brand">{editing ? "Edit Aset Tetap" : "Tambah Aset Tetap"}</h2>
-            <form className="mt-4 space-y-3" onSubmit={(e) => { e.preventDefault(); if (editing) update.mutate({ id: editing.id, input: form, user: { id: "", nama: "", username: "", role: "pemilik" } }); else create.mutate({ input: form, user: { id: "", nama: "", username: "", role: "pemilik" } }); setOpenCreate(false); }}>
+            <form className="mt-4 space-y-3" onSubmit={(e) => {
+              e.preventDefault();
+              setFormError(null);
+              const hariIni = new Date().toISOString().slice(0, 10);
+              if (form.tanggalPerolehan > hariIni) {
+                setFormError("Tanggal perolehan tidak boleh lebih dari hari ini.");
+                return;
+              }
+              if (editing) update.mutate({ id: editing.id, input: form, user: { id: "", nama: "", username: "", role: "pemilik" } });
+              else create.mutate({ input: form, user: { id: "", nama: "", username: "", role: "pemilik" } });
+              setOpenCreate(false);
+            }}>
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <FormField label="Kode Aset"><input className="input" value={form.kode} onChange={(e) => setForm({ ...form, kode: e.target.value })} required disabled={live && !!editing} /></FormField>
                 <FormField label="Nama Aset"><input className="input" value={form.nama} onChange={(e) => setForm({ ...form, nama: e.target.value })} required /></FormField>
@@ -373,7 +385,20 @@ export default function AsetTetapPage() {
                 <FormField label="Nilai Residu (Rp)"><input type="number" min={0} className="input text-right tabular-nums" value={form.nilaiResidu || ""} onChange={(e) => setForm({ ...form, nilaiResidu: Number(e.target.value) })} disabled={tanah} /></FormField>
                 <FormField label="Umur Ekonomis (bulan)"><input type="number" min={1} className="input text-right tabular-nums" value={form.umurEkonomis || ""} onChange={(e) => setForm({ ...form, umurEkonomis: Number(e.target.value) })} required disabled={tanah} /></FormField>
                 <FormField label="Metode Penyusutan"><select className="input" value={form.metodePenyusutan} onChange={(e) => setForm({ ...form, metodePenyusutan: e.target.value as AsetTetapInput["metodePenyusutan"] })} disabled={tanah}><option value="garis-lurus">Garis Lurus</option><option value="menurun-ganda">Menurun Ganda (DDB)</option><option value="jumlah-tahun">Jumlah Tahun (SYD)</option></select></FormField>
-                <FormField label="Tanggal Perolehan"><input type="date" className="input" value={form.tanggalPerolehan} onChange={(e) => setForm({ ...form, tanggalPerolehan: e.target.value })} required disabled={live && !!editing} /></FormField>
+                <FormField label="Tanggal Perolehan">
+                  <input
+                    type="date"
+                    className="input"
+                    value={form.tanggalPerolehan}
+                    max={new Date().toISOString().slice(0, 10)}
+                    onChange={(e) => setForm({ ...form, tanggalPerolehan: e.target.value })}
+                    required
+                    disabled={live && !!editing}
+                  />
+                  <p className="mt-1 text-xs text-muted">
+                    Tidak boleh lebih dari hari ini. Jika dimundurkan, selisih penyusutan bulan-bulan lampau dibebankan ke bulan berjalan sebagai jurnal penyesuaian.
+                  </p>
+                </FormField>
                 {!live && <FormField label="Status"><select className="input" value={form.status} onChange={(e) => setForm({ ...form, status: e.target.value as AsetTetapInput["status"] })}><option value="aktif">Aktif</option><option value="dijual">Dijual</option><option value="dihapuskan">Dihapuskan</option><option value="dipindahkan">Dipindahkan</option></select></FormField>}
                 {!live && <FormField label="Akun Aset"><input className="input" value={form.akunAset} onChange={(e) => setForm({ ...form, akunAset: e.target.value })} /></FormField>}
                 {!live && <FormField label="Akun Akum. Penyusutan"><input className="input" value={form.akunPenyusutan} onChange={(e) => setForm({ ...form, akunPenyusutan: e.target.value })} disabled={tanah} /></FormField>}
@@ -382,7 +407,8 @@ export default function AsetTetapPage() {
               {!live && <FormField label="Catatan"><input className="input" value={form.catatan} onChange={(e) => setForm({ ...form, catatan: e.target.value })} /></FormField>}
               {error && <p className="rounded-xl bg-rose-50 px-3 py-2 text-xs text-rose-700">{error}</p>}
               <div className="flex gap-2">
-                <button type="submit" disabled={create.isPending || update.isPending} className="btn-primary flex-1">{editing ? "Simpan Perubahan" : "Tambah Aset"}</button>
+                {formError && <p className="col-span-full rounded-xl bg-rose-50 px-3 py-2 text-xs text-rose-700">{formError}</p>}
+              <button type="submit" disabled={create.isPending || update.isPending} className="btn-primary flex-1">{editing ? "Simpan Perubahan" : "Tambah Aset"}</button>
                 <button type="button" onClick={() => setOpenCreate(false)} className="btn-secondary">Batal</button>
               </div>
             </form>

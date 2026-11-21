@@ -3115,8 +3115,20 @@ export async function liveDaftarAsetTetap(): Promise<AsetTetap[]> {
   return rows.map(petakanAsetTetap);
 }
 
+type BtHasilBuatAsetTetap = {
+  asset: BtAsetTetap;
+  adjustment?: {
+    months: number;
+    fromPeriod: string;
+    throughPeriod: string;
+    postingPeriod: string;
+    totalCharge: number;
+    journalId: string;
+  } | null;
+};
+
 export async function liveBuatAsetTetap(input: AsetTetapInput, _user: User): Promise<AsetTetap> {
-  const row = await minta<BtAsetTetap>("/api/fixed-assets", {
+  const row = await minta<BtHasilBuatAsetTetap>("/api/fixed-assets", {
     method: "POST",
     body: {
       code: input.kode,
@@ -3130,7 +3142,7 @@ export async function liveBuatAsetTetap(input: AsetTetapInput, _user: User): Pro
     },
   });
 
-  return petakanAsetTetap(row);
+  return petakanAsetTetap(row.asset);
 }
 
 export async function liveUbahAsetTetap(
