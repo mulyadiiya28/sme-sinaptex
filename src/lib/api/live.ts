@@ -84,6 +84,7 @@ import type {
   DailyMovementReport,
   FiscalPeriod,
   HasilRestoreBackup,
+  HasilTutupTahun,
   LaporanAsetTetap,
   MutasiAset,
   PenyusutanItem,
@@ -2546,6 +2547,45 @@ export async function liveFiscalPeriodClose(id: string, actorId: string, idempot
     body: {},
   });
   return data;
+}
+
+type BtHasilTutupTahun = {
+  PeriodId: string;
+  PeriodStatus: FiscalPeriod["status"];
+  ClosingTransactionId: string;
+  JournalId: string;
+  RevenueClosed: number;
+  ExpenseClosed: number;
+  NetProfit: number;
+  RetainedEarningsCode: string;
+  ClosedAccounts: string[];
+};
+
+export async function liveFiscalPeriodCloseYear(
+  id: string,
+  actorId: string,
+  idempotensiKunci: string,
+): Promise<HasilTutupTahun> {
+  const data = await minta<BtHasilTutupTahun>(
+    `/api/fiscal-periods/${encodeURIComponent(id)}/close-year`,
+    {
+      method: "POST",
+      headers: { "X-Actor-Id": actorId },
+      idempotensiKunci,
+      body: {},
+    },
+  );
+  return {
+    periodeId: data.PeriodId,
+    statusPeriode: data.PeriodStatus,
+    transaksiPenutupId: data.ClosingTransactionId,
+    jurnalId: data.JournalId,
+    pendapatanDitutup: data.RevenueClosed,
+    bebanDitutup: data.ExpenseClosed,
+    labaBersih: data.NetProfit,
+    kodeLabaDitahan: data.RetainedEarningsCode,
+    akunDitutup: data.ClosedAccounts,
+  };
 }
 
 export async function liveFiscalPeriodLock(id: string, actorId: string, actorLevel: string, reason: string, idempotensiKunci: string): Promise<FiscalPeriod> {

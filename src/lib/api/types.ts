@@ -1073,6 +1073,19 @@ export type CreateFiscalPeriodRequest = {
   status?: "OPEN" | "CLOSED" | "LOCKED";
 };
 
+/// <summary>Hasil penutupan tahun (POST /api/fiscal-periods/{id}/close-year).</summary>
+export type HasilTutupTahun = {
+  periodeId: string;
+  statusPeriode: FiscalPeriod["status"];
+  transaksiPenutupId: string;
+  jurnalId: string;
+  pendapatanDitutup: number;
+  bebanDitutup: number;
+  labaBersih: number;
+  kodeLabaDitahan: string;
+  akunDitutup: string[];
+};
+
 /// <summary>Satu berkas backup database di server engine.</summary>
 export type BackupFile = {
   fileName: string;

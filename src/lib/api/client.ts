@@ -15,6 +15,7 @@ import type {
   CompanyProfile,
   Dupont,
   HasilImpor,
+  HasilTutupTahun,
   HealthIndicator,
   HasilAktivasiLisensi,
   HealthSummary,
@@ -115,6 +116,7 @@ import {
   liveCompanyProfilePut,
   liveCreateProduct,
   liveFiscalPeriodClose,
+  liveFiscalPeriodCloseYear,
   liveFiscalPeriodCreate,
   liveFiscalPeriodGetPendingClose,
   liveFiscalPeriodList,
@@ -737,6 +739,14 @@ export const api = {
         void actorId;
         void idempotensiKunci;
         return mockDb.ubahStatusPeriodeFiskal(id, "CLOSED");
+      },
+      closeYear: async (id: string, actorId: string, idempotensiKunci: string): Promise<HasilTutupTahun> => {
+        if (API_MODE === "live") return liveFiscalPeriodCloseYear(id, actorId, idempotensiKunci);
+        await delay(350);
+        void id;
+        void actorId;
+        void idempotensiKunci;
+        throw new Error("Penutupan tahun hanya tersedia di mode live — engine yang memposting jurnal penutup ke Laba Ditahan.");
       },
       lock: async (id: string, actorId: string, actorLevel: string, reason: string, idempotensiKunci: string): Promise<FiscalPeriod> => {
         if (API_MODE === "live") return liveFiscalPeriodLock(id, actorId, actorLevel, reason, idempotensiKunci);

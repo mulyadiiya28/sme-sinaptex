@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { Building2, Calendar, CheckCircle2, DatabaseBackup, Download, FileDown, FileUp, Lock, Menu, Plus, RotateCcw, ShieldCheck, X } from "lucide-react";
 import type {
   AuditEntry,
@@ -10,6 +11,7 @@ import type {
   CreateFiscalPeriodRequest,
   FiscalPeriod,
   HasilImpor,
+  HasilTutupTahun,
   ImporPelangganBaris,
   ImporProdukBaris,
   ImporSaldoAwalBaris,
@@ -24,10 +26,11 @@ import { LisensiSettings } from "@/components/pengaturan/lisensi-settings";
 import { MoneyDisplay } from "@/components/money-display";
 import { PageHeader } from "@/components/page-header";
 import { StatusBadge, type StatusTone } from "@/components/status-badge";
-import { useAkun, useAuditLog, useAuthUsers, useBackupList, useBackupMutations, useCabangList, useCabangMutations, useFiscalPeriodList, useImporMutations, useUserMutations } from "@/hooks/queries";
+import { useAkun, useAuditLog, useAuthUsers, useBackupList, useBackupMutations, useCabangList, useCabangMutations, useFiscalPeriodList, useFiscalPeriodPendingClose, useImporMutations, useUserMutations } from "@/hooks/queries";
 import { urlLogoAbsolut } from "@/lib/api/live";
 import { API_MODE } from "@/lib/api/client";
 import { unduhCsv, parseCsv } from "@/lib/csv";
+import { formatIDR } from "@/lib/format";
 import { api } from "@/lib/api/client";
 import { useAuth } from "@/lib/store/auth";
 import { useToko } from "@/lib/store/toko";
@@ -761,6 +764,8 @@ function DaftarAkunInfo() {
 
 function PanelFiscalPeriods() {
   const periods = useFiscalPeriodList();
+  const pending = useFiscalPeriodPendingClose();
+  const queryClient = useQueryClient();
   const [openCreate, setOpenCreate] = useState(false);
   const [createForm, setCreateForm] = useState<CreateFiscalPeriodRequest>({
     name: "",
@@ -770,6 +775,8 @@ function PanelFiscalPeriods() {
   });
   const [createPending, setCreatePending] = useState(false);
   const [closePending, setClosePending] = useState(false);
+  const [tutupTahunPending, setTutupTahunPending] = useState<string | null>(null);
+  const [hasilTutupTahun, setHasilTutupTahun] = useState<HasilTutupTahun | null>(null);
 
   const statusWarna: Record<string, StatusTone> = {
     OPEN: "success",
@@ -783,6 +790,10 @@ function PanelFiscalPeriods() {
     LOCKED: "Kunci",
   };
 
+  const segarkan = () => {
+    void queryClient.invalidateQueries({ queryKey: ["akuntansi", "fiscal-periods"] });
+  };
+
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
     setCreatePending(true);
@@ -790,6 +801,7 @@ function PanelFiscalPeriods() {
       await api.akuntansi.fiscalPeriods.create(createForm);
       setCreateForm({ name: "", startDate: "", endDate: "", status: "OPEN" });
       setOpenCreate(false);
+      segarkan();
     } catch (err) {
       alert(String(err));
     } finally {
@@ -803,10 +815,31 @@ function PanelFiscalPeriods() {
     setClosePending(true);
     try {
       await api.akuntansi.fiscalPeriods.close(id, user.id, crypto.randomUUID());
+      segarkan();
     } catch (err) {
       alert(String(err));
     } finally {
       setClosePending(false);
+    }
+  };
+
+  const handleCloseYear = async (id: string, nama: string) => {
+    const user = useAuth.getState().user;
+    if (!user) return;
+    const yakin = window.confirm(
+      `Tutup tahun "${nama}"? Engine akan memposting jurnal penutup: seluruh saldo pendapatan dan beban dipindahkan ke Laba Ditahan, lalu periode ditutup. Tindakan ini tidak bisa dibatalkan dari sini.`,
+    );
+    if (!yakin) return;
+    setTutupTahunPending(id);
+    setHasilTutupTahun(null);
+    try {
+      const hasil = await api.akuntansi.fiscalPeriods.closeYear(id, user.id, crypto.randomUUID());
+      setHasilTutupTahun(hasil);
+      segarkan();
+    } catch (err) {
+      alert(String(err));
+    } finally {
+      setTutupTahunPending(null);
     }
   };
 
@@ -817,6 +850,7 @@ function PanelFiscalPeriods() {
     if (!reason) return;
     try {
       await api.akuntansi.fiscalPeriods.lock(id, user.id, "99", reason, crypto.randomUUID());
+      segarkan();
     } catch (err) {
       alert(String(err));
     }
@@ -829,6 +863,7 @@ function PanelFiscalPeriods() {
     if (!reason) return;
     try {
       await api.akuntansi.fiscalPeriods.reopen(id, user.id, "99", reason, crypto.randomUUID());
+      segarkan();
     } catch (err) {
       alert(String(err));
     }
@@ -841,6 +876,7 @@ function PanelFiscalPeriods() {
     if (!reason) return;
     try {
       await api.akuntansi.fiscalPeriods.reverseClosing(id, user.id, "99", reason, crypto.randomUUID());
+      segarkan();
     } catch (err) {
       alert(String(err));
     }
@@ -869,6 +905,16 @@ function PanelFiscalPeriods() {
             <div className="flex justify-end gap-1.5">
               {r.status === "OPEN" && (
                 <>
+                  {API_MODE === "live" && (
+                    <button
+                      type="button"
+                      onClick={() => handleCloseYear(r.id, r.name)}
+                      disabled={tutupTahunPending === r.id}
+                      className="btn-accent rounded-lg px-2.5 py-1.5 text-xs disabled:opacity-40"
+                    >
+                      {tutupTahunPending === r.id ? "Memproses..." : "Tutup Tahun"}
+                    </button>
+                  )}
                   <button type="button" onClick={() => handleClose(r.id)} className="btn-secondary rounded-lg px-2.5 py-1.5 text-xs">Tutup</button>
                   <button type="button" onClick={() => handleLock(r.id)} className="btn-secondary rounded-lg px-2.5 py-1.5 text-xs">Kunci</button>
                 </>
@@ -888,10 +934,44 @@ function PanelFiscalPeriods() {
         empty="Belum ada periode fiskal."
       />
 
+      {hasilTutupTahun && (
+        <div className="mt-4 rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-xs text-emerald-800">
+          <p className="font-bold">Penutupan tahun berhasil — jurnal {hasilTutupTahun.jurnalId}</p>
+          <p className="mt-1 tabular-nums">
+            Pendapatan ditutup {formatIDR(hasilTutupTahun.pendapatanDitutup)} · Beban ditutup {formatIDR(hasilTutupTahun.bebanDitutup)} · Laba bersih {formatIDR(hasilTutupTahun.labaBersih)} ke akun {hasilTutupTahun.kodeLabaDitahan}.
+          </p>
+          <p className="mt-1">{hasilTutupTahun.akunDitutup.length} akun laba-rugi dinolkan.</p>
+        </div>
+      )}
+
       <div className="mt-4 border-t border-line pt-4">
-        <h3 className="text-sm font-bold text-brand">Pending Close</h3>
-        <p className="text-xs text-muted">Periode yang telah ditutup tetapi belum ditutup tahun (close-year):</p>
-        <p className="text-xs text-muted mt-1">Fitur close-year tersedia lewat API engine.</p>
+        <h3 className="text-sm font-bold text-brand">Menunggu Penutupan</h3>
+        <p className="text-xs text-muted">
+          Periode OPEN yang tanggal selesainya sudah lewat. Engine menutupnya otomatis saat proses start, tetapi tombol Tutup Tahun lebih dulu memposting jurnal penutup ke Laba Ditahan.
+        </p>
+        {pending.isLoading ? (
+          <p className="mt-2 text-xs text-muted">Memuat...</p>
+        ) : (pending.data ?? []).length === 0 ? (
+          <p className="mt-2 text-xs text-muted">Tidak ada periode yang menunggu ditutup.</p>
+        ) : (
+          <ul className="mt-2 space-y-1">
+            {(pending.data ?? []).map((p) => (
+              <li key={p.id} className="flex items-center justify-between gap-2 text-xs">
+                <span>{p.name} — sampai {new Date(p.endDate).toLocaleDateString("id-ID")}</span>
+                {API_MODE === "live" && (
+                  <button
+                    type="button"
+                    onClick={() => handleCloseYear(p.id, p.name)}
+                    disabled={tutupTahunPending === p.id}
+                    className="btn-accent rounded-lg px-2.5 py-1 text-xs disabled:opacity-40"
+                  >
+                    {tutupTahunPending === p.id ? "Memproses..." : "Tutup Tahun"}
+                  </button>
+                )}
+              </li>
+            ))}
+          </ul>
+        )}
       </div>
 
       {openCreate && (

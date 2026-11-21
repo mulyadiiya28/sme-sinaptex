@@ -178,6 +178,13 @@ export function useFiscalPeriodList() {
   });
 }
 
+export function useFiscalPeriodPendingClose() {
+  return useQuery({
+    queryKey: ["akuntansi", "fiscal-periods", "pending-close"],
+    queryFn: () => api.akuntansi.fiscalPeriods.getPendingClose(),
+  });
+}
+
 export function useProfitability(startDate: string, endDate: string) {
   return useQuery({
     queryKey: ["analytics", "profitability", startDate, endDate],
