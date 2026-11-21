@@ -302,50 +302,51 @@ function PanelBukuBesar() {
 }
 
 function PanelLabaRugi() {
-  const kolom = [
-    { label: "YTD 2025 (s/d 31 Des)", from: "2025-01-01", to: "2025-12-31" },
-    { label: "YTD 2026 (s/d 31 Okt)", from: "2026-01-01", to: "2026-10-31" },
-    { label: "YTD 2026 (s/d hari ini)", from: "2026-01-01", to: new Date().toISOString().slice(0, 10) },
-  ];
-  const a1 = useAkun({ from: kolom[0].from, to: kolom[0].to });
-  const a2 = useAkun({ from: kolom[1].from, to: kolom[1].to });
-  const a3 = useAkun({ from: kolom[2].from, to: kolom[2].to });
-  const akuns = [a1.data ?? [], a2.data ?? [], a3.data ?? []];
+  const [dari, setDari] = useState(new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().slice(0, 10));
+  const [sampai, setSampai] = useState(new Date().toISOString().slice(0, 10));
+  const akun = useAkun({ from: dari, to: sampai });
 
   const master = useQuery({ queryKey: ["akun-master"], queryFn: () => api.akuntansi.akunMaster(), staleTime: 300_000 });
   const tipeDariKode = (kode: string) => master.data?.find((a) => a.kode === kode)?.tipe ?? (kode.charAt(0) === "4" ? "REVENUE" : (kode.charAt(0) === "5" || kode.charAt(0) === "6" || kode.charAt(0) === "7") ? "EXPENSE" : "ASSET");
 
-  const ringkas = (rows: AkunSaldo[]) => {
-    const pendapatan = rows.filter((r) => tipeDariKode(r.kode) === "REVENUE").reduce((sum, r) => sum + (r.kredit - r.debit), 0);
-    const hpp = rows.filter((r) => r.kode === "5000" || r.kode === "5100").reduce((sum, r) => sum + (r.debit - r.kredit), 0);
-    const biaya = rows.filter((r) => tipeDariKode(r.kode) === "EXPENSE" && r.kode !== "5000" && r.kode !== "5100").reduce((sum, r) => sum + (r.debit - r.kredit), 0);
-    const pajak = rows.filter((r) => r.kode === "2201" || r.kode === "2202").reduce((sum, r) => sum + (r.kredit - r.debit), 0);
-    return { pendapatan, hpp, biaya, pajak, laba: pendapatan - hpp - biaya - pajak };
-  };
-  const ringkasan = akuns.map(ringkas);
+  const rows = akun.data ?? [];
+  const pendapatan = rows.filter((r) => tipeDariKode(r.kode) === "REVENUE").reduce((sum, r) => sum + (r.kredit - r.debit), 0);
+  const hpp = rows.filter((r) => r.kode === "5000" || r.kode === "5100").reduce((sum, r) => sum + (r.debit - r.kredit), 0);
+  const biaya = rows.filter((r) => tipeDariKode(r.kode) === "EXPENSE" && r.kode !== "5000" && r.kode !== "5100").reduce((sum, r) => sum + (r.debit - r.kredit), 0);
+  const pajak = rows.filter((r) => r.kode === "2201" || r.kode === "2202").reduce((sum, r) => sum + (r.kredit - r.debit), 0);
+  const laba = pendapatan - hpp - biaya - pajak;
 
-  if (a1.isLoading || a2.isLoading || a3.isLoading || master.isLoading) {
+  if (akun.isLoading || master.isLoading) {
     return <KpiSkeleton />;
   }
 
   return (
     <div className="space-y-4">
-      <div className="overflow-x-auto">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b border-line text-left text-xs uppercase tracking-wide text-muted">
-              <th className="px-3 py-2">Komponen</th>
-              {kolom.map((k) => <th key={k.label} className="px-3 py-2 text-right">{k.label}</th>)}
-            </tr>
-          </thead>
-          <tbody>
-            <tr className="border-b border-line/60"><td className="px-3 py-2 font-medium">Pendapatan</td>{ringkasan.map((r, i) => <td key={i} className="px-3 py-2 text-right tabular-nums"><MoneyDisplay value={r.pendapatan} /></td>)}</tr>
-            <tr className="border-b border-line/60"><td className="px-3 py-2 font-medium">HPP</td>{ringkasan.map((r, i) => <td key={i} className="px-3 py-2 text-right tabular-nums"><MoneyDisplay value={-r.hpp} /></td>)}</tr>
-            <tr className="border-b border-line/60"><td className="px-3 py-2 font-medium">Biaya operasional</td>{ringkasan.map((r, i) => <td key={i} className="px-3 py-2 text-right tabular-nums"><MoneyDisplay value={-r.biaya} /></td>)}</tr>
-            <tr className="border-b border-line/60"><td className="px-3 py-2 font-medium">Pajak</td>{ringkasan.map((r, i) => <td key={i} className="px-3 py-2 text-right tabular-nums"><MoneyDisplay value={-r.pajak} /></td>)}</tr>
-            <tr className="border-t-2 border-line font-black"><td className="px-3 py-2">Laba bersih</td>{ringkasan.map((r, i) => <td key={i} className="px-3 py-2 text-right tabular-nums"><MoneyDisplay value={r.laba} /></td>)}</tr>
-          </tbody>
-        </table>
+      <div className="panel p-4">
+        <div className="mb-3 flex flex-wrap items-end gap-2 px-1">
+          <FormField label="Dari tanggal" className="w-40"><input type="date" className="input" value={dari} onChange={(e) => setDari(e.target.value)} /></FormField>
+          <FormField label="Sampai tanggal" className="w-40"><input type="date" className="input" value={sampai} onChange={(e) => setSampai(e.target.value)} /></FormField>
+          <button type="button" className="btn-secondary h-10" onClick={() => { const d = new Date(); setDari(new Date(d.getFullYear(), d.getMonth(), 1).toISOString().slice(0, 10)); setSampai(d.toISOString().slice(0, 10)); }}>Bulan ini</button>
+          <button type="button" className="btn-secondary h-10" onClick={() => { const d = new Date(); const y = d.getFullYear() - 1; setDari(`${y}-01-01`); setSampai(`${y}-12-31`); }}>Tahun lalu</button>
+        </div>
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          <KpiCard label="Pendapatan (penjualan)" value={<MoneyDisplay value={pendapatan} />} tone="navy" />
+          <KpiCard label="HPP" value={<MoneyDisplay value={hpp} />} tone="violet" />
+          <KpiCard label="Biaya operasional" value={<MoneyDisplay value={biaya} />} tone="rose" />
+          <KpiCard label="Laba bersih" value={<MoneyDisplay value={laba} />} tone="emerald" />
+        </div>
+        <div className="mt-4 panel p-5 text-sm">
+          <p className="font-bold text-brand">Perhitungan</p>
+          <div className="mt-2 space-y-1.5 tabular-nums">
+            <Row label="Pendapatan" value={pendapatan} />
+            <Row label="Dikurangi: HPP" value={-hpp} />
+            <Row label="Dikurangi: Biaya operasional" value={-biaya} />
+            <Row label="Dikurangi: Pajak" value={-pajak} />
+            <div className="border-t border-line pt-1.5">
+              <Row label="Laba bersih" value={laba} bold />
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   );
@@ -433,6 +434,15 @@ function PanelNeraca() {
           </tbody>
         </table>
       </div>
+    </div>
+  );
+}
+
+function Row({ label, value, bold }: { label: string; value: number; bold?: boolean }) {
+  return (
+    <div className={"flex items-center justify-between" + (bold ? " font-black text-brand" : "")}>
+      <span className="text-muted">{label}</span>
+      <MoneyDisplay value={value} />
     </div>
   );
 }
