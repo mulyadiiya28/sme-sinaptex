@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import React from "react";
 import { BookOpen, CheckCircle2, XCircle } from "lucide-react";
 import type { AkunMaster, AkunSaldo, JurnalEntry, LabaRugi } from "@/lib/api/types";
 import { DataTable, type Column } from "@/components/data-table";
@@ -403,7 +404,7 @@ function PanelNeraca() {
           </thead>
           <tbody>
             {kelompok.map((g) => (
-              <>
+              <React.Fragment key={g.label}>
                 <tr key={g.label} className="bg-slate-50 font-bold">
                   <td className="px-3 py-2">{g.label}</td>
                   {akuns.map((rows, i) => <td key={i} className="px-3 py-2 text-right tabular-nums"><MoneyDisplay value={total(rows, g.tipe)} /></td>)}
@@ -417,7 +418,7 @@ function PanelNeraca() {
                     })}
                   </tr>
                 ))}
-              </>
+              </React.Fragment>
             ))}
             <tr className="border-t-2 border-line font-bold">
               <td className="px-3 py-2">Laba Tahun Berjalan (YTD)</td>
