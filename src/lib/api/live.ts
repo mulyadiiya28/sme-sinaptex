@@ -77,6 +77,7 @@ import type {
   AgingReport,
   ApprovalRule,
   AsetTetap,
+  AkunMaster,
   AsetTetapInput,
   CreateApprovalRuleRequest,
   CreateFiscalPeriodRequest,
@@ -1156,6 +1157,23 @@ export async function liveShiftTutup(
     uangFisik: shift.uangFisik ?? uangFisik,
     selisih: shift.selisih ?? 0,
   };
+}
+
+type BtAkunMaster = {
+  code: string;
+  name: string;
+  accountType: string;
+  normalBalance: string;
+};
+
+export async function liveDaftarAkunMaster(): Promise<AkunMaster[]> {
+  const rows = await minta<BtAkunMaster[]>("/api/accounts");
+  return rows.map((r) => ({
+    kode: r.code,
+    nama: r.name,
+    tipe: (r.accountType as AkunMaster["tipe"]) ?? "ASSET",
+    normalBalance: (r.normalBalance as AkunMaster["normalBalance"]) ?? "DEBIT",
+  }));
 }
 
 export async function liveAkun(params: NeracaParams = {}): Promise<AkunSaldo[]> {

@@ -1,4 +1,5 @@
 import type {
+  AkunMaster,
   AkunSaldo,
   ArApTurnover,
   AsetTetap,
@@ -105,6 +106,7 @@ import {
   fileCsvProdukDariBaris,
   fileCsvSaldoAwalDariBaris,
   liveAkun,
+  liveDaftarAkunMaster,
   liveAuditLog,
   liveBayarHutang,
   liveBayarPiutang,
@@ -705,6 +707,28 @@ export const api = {
       if (API_MODE === "live") return liveAkun(params);
       await delay(120);
       return structuredClone(mockDb.akunSaldos(params));
+    },
+    akunMaster: async (): Promise<AkunMaster[]> => {
+      if (API_MODE === "live") return liveDaftarAkunMaster();
+      await delay(120);
+      const tipeDariKode = (kode: string): AkunMaster["tipe"] => {
+        const p = kode.charAt(0);
+        if (p === "1") return "ASSET";
+        if (p === "2") return "LIABILITY";
+        if (p === "3") return "EQUITY";
+        if (p === "4") return "REVENUE";
+        return "EXPENSE";
+      };
+      return mockDb
+        .akunSaldos()
+        .map((a) => a.akun.split(" ")[0])
+        .filter((v, i, arr) => arr.indexOf(v) === i)
+        .map((kode) => ({
+          kode,
+          nama: kode,
+          tipe: tipeDariKode(kode),
+          normalBalance: tipeDariKode(kode) === "LIABILITY" || tipeDariKode(kode) === "EQUITY" || tipeDariKode(kode) === "REVENUE" ? "CREDIT" : "DEBIT",
+        }));
     },
     eksporNeracaSaldo: async (dari: string, sampai: string): Promise<Blob> => {
       if (API_MODE === "live") return liveNeracaSaldoExport(dari, sampai);

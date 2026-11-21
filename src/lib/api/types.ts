@@ -748,6 +748,13 @@ export type NeracaParams = {
   branchId?: string;
 };
 
+export type AkunMaster = {
+  kode: string;
+  nama: string;
+  tipe: "ASSET" | "LIABILITY" | "EQUITY" | "REVENUE" | "EXPENSE";
+  normalBalance: "DEBIT" | "CREDIT";
+};
+
 export type LabaRugi = {
   pendapatan: number;
   retur: number;

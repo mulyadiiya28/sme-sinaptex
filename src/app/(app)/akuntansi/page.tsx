@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { BookOpen, CheckCircle2, XCircle } from "lucide-react";
-import type { AkunSaldo, JurnalEntry, LabaRugi } from "@/lib/api/types";
+import type { AkunMaster, AkunSaldo, JurnalEntry, LabaRugi } from "@/lib/api/types";
 import { DataTable, type Column } from "@/components/data-table";
 import { FormField } from "@/components/form-field";
 import { KpiCard } from "@/components/kpi-card";
@@ -11,9 +11,11 @@ import { PageHeader } from "@/components/page-header";
 import { KpiSkeleton, ListSkeleton, Skeleton, TableSkeleton } from "@/components/skeleton";
 import { StatusBadge } from "@/components/status-badge";
 import { useAkun, useJurnal, useLabaRugi } from "@/hooks/queries";
+import { useQuery } from "@tanstack/react-query";
+import { api } from "@/lib/api/client";
 import { cn } from "@/lib/utils";
 
-type Tab = "akun" | "jurnal" | "buku-besar" | "laba-rugi";
+type Tab = "akun" | "jurnal" | "buku-besar" | "laba-rugi" | "neraca";
 type StatusSaldo = "memuat" | "kosong" | "tanpa-transaksi" | "seimbang" | "tidak-seimbang";
 
 const TABS: Array<{ id: Tab; label: string }> = [
@@ -21,6 +23,7 @@ const TABS: Array<{ id: Tab; label: string }> = [
   { id: "jurnal", label: "Jurnal Otomatis" },
   { id: "buku-besar", label: "Buku Besar" },
   { id: "laba-rugi", label: "Laba-Rugi" },
+  { id: "neraca", label: "Neraca Berjalan" },
 ];
 
 export default function AkuntansiPage() {
@@ -52,6 +55,7 @@ export default function AkuntansiPage() {
       {tab === "jurnal" && <PanelJurnal />}
       {tab === "buku-besar" && <PanelBukuBesar />}
       {tab === "laba-rugi" && <PanelLabaRugi />}
+      {tab === "neraca" && <PanelNeraca />}
     </div>
   );
 }
@@ -204,9 +208,14 @@ function PanelBukuBesar() {
   const akun = useAkun();
   const jurnal = useJurnal();
   const [terpilih, setTerpilih] = useState("");
+  const [dari, setDari] = useState("");
+  const [sampai, setSampai] = useState("");
 
   const daftarAkun = (akun.data ?? []).map((a) => a.akun);
-  const baris = (jurnal.data ?? [])
+  const awalMs = dari ? new Date(dari).getTime() : null;
+  const akhirMs = sampai ? new Date(sampai + "T23:59:59").getTime() : null;
+
+  const semua = (jurnal.data ?? [])
     .slice()
     .sort((a, b) => new Date(a.waktu).getTime() - new Date(b.waktu).getTime())
     .flatMap((j) =>
@@ -214,7 +223,18 @@ function PanelBukuBesar() {
         .filter((b) => b.akun === terpilih)
         .map((b) => ({ waktu: j.waktu, keterangan: j.keterangan, ref: j.ref, debit: b.debit, kredit: b.kredit })),
     );
-  let saldoBerjalan = 0;
+  let saldoPembuka = 0;
+  for (const b of semua) {
+    const t = new Date(b.waktu).getTime();
+    if (awalMs !== null && t < awalMs) saldoPembuka += b.debit - b.kredit;
+  }
+  const baris = semua.filter((b) => {
+    const t = new Date(b.waktu).getTime();
+    if (awalMs !== null && t < awalMs) return false;
+    if (akhirMs !== null && t > akhirMs) return false;
+    return true;
+  });
+  let saldoBerjalan = saldoPembuka;
   const berjalan = baris.map((b) => {
     saldoBerjalan += b.debit - b.kredit;
     return { ...b, saldo: saldoBerjalan };
@@ -239,7 +259,12 @@ function PanelBukuBesar() {
             <option key={a} value={a}>{a}</option>
           ))}
         </select>
+        <FormField label="Dari" className="w-36"><input type="date" className="input" value={dari} onChange={(e) => setDari(e.target.value)} /></FormField>
+        <FormField label="Sampai" className="w-36"><input type="date" className="input" value={sampai} onChange={(e) => setSampai(e.target.value)} /></FormField>
       </div>
+      {terpilih && awalMs !== null && (
+        <p className="px-1 text-xs text-muted">Saldo pembuka sebelum rentang: <span className="font-bold tabular-nums">{saldoPembuka.toLocaleString("id-ID")}</span></p>
+      )}
       {terpilih === "" ? (
         <p className="px-1 text-sm text-muted">Pilih akun untuk melihat mutasinya.</p>
       ) : (
@@ -323,6 +348,92 @@ function Row({ label, value, bold }: { label: string; value: number; bold?: bool
     <div className={cn("flex items-center justify-between", bold && "font-black text-brand")}>
       <span className="text-muted">{label}</span>
       <MoneyDisplay value={value} />
+    </div>
+  );
+}
+
+function PanelNeraca() {
+  const master = useQuery({ queryKey: ["akun-master"], queryFn: () => api.akuntansi.akunMaster(), staleTime: 300_000 });
+  const tipeDariKode = (kode: string) => master.data?.find((a) => a.kode === kode)?.tipe ?? (kode.charAt(0) === "1" ? "ASSET" : kode.charAt(0) === "2" ? "LIABILITY" : kode.charAt(0) === "3" ? "EQUITY" : "EXPENSE");
+
+  const kolom = [
+    { label: "31 Des 2025", to: "2025-12-31" },
+    { label: "31 Okt 2026", to: "2026-10-31" },
+    { label: "Hari ini", to: new Date().toISOString().slice(0, 10) },
+  ];
+
+  const a1 = useAkun({ from: "1900-01-01", to: kolom[0].to });
+  const a2 = useAkun({ from: "1900-01-01", to: kolom[1].to });
+  const a3 = useAkun({ from: "1900-01-01", to: kolom[2].to });
+  const akuns = [a1.data ?? [], a2.data ?? [], a3.data ?? []];
+
+  const klasifikasi = (rows: AkunSaldo[], tipe: string) =>
+    rows.filter((r) => tipeDariKode(r.kode) === tipe);
+
+  const total = (rows: AkunSaldo[], tipe: string) =>
+    klasifikasi(rows, tipe).reduce((s, r) => s + r.saldoAkhir, 0);
+
+  const labaYTD = (rows: AkunSaldo[]) => {
+    const pendapatan = klasifikasi(rows, "REVENUE").reduce((s, r) => s + r.saldoAkhir, 0);
+    const beban = klasifikasi(rows, "EXPENSE").reduce((s, r) => s + r.saldoAkhir, 0);
+    return pendapatan - beban;
+  };
+
+  if (a1.isLoading || a2.isLoading || a3.isLoading || master.isLoading) {
+    return <TableSkeleton kolom={4} baris={8} />;
+  }
+
+  const kelompok = [
+    { tipe: "ASSET", label: "ASET" },
+    { tipe: "LIABILITY", label: "KEWAJIBAN" },
+    { tipe: "EQUITY", label: "EKUITAS" },
+  ];
+
+  return (
+    <div className="panel p-4">
+      <h2 className="mb-3 px-1 text-sm font-bold text-brand">Neraca berjalan (posisi keuangan)</h2>
+      <p className="mb-3 px-1 text-xs text-muted">Saldo akhir per tanggal. Laba tahun berjalan = pendapatan minus beban YTD, ditampilkan sebagai bagian ekuitas.</p>
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="border-b border-line text-left text-xs uppercase tracking-wide text-muted">
+              <th className="px-3 py-2">Kelompok / Akun</th>
+              {kolom.map((k) => <th key={k.label} className="px-3 py-2 text-right">{k.label}</th>)}
+            </tr>
+          </thead>
+          <tbody>
+            {kelompok.map((g) => (
+              <>
+                <tr key={g.label} className="bg-slate-50 font-bold">
+                  <td className="px-3 py-2">{g.label}</td>
+                  {akuns.map((rows, i) => <td key={i} className="px-3 py-2 text-right tabular-nums"><MoneyDisplay value={total(rows, g.tipe)} /></td>)}
+                </tr>
+                {klasifikasi(akuns[2], g.tipe).map((r) => (
+                  <tr key={r.kode} className="border-b border-line/60">
+                    <td className="px-3 py-1.5 pl-6 text-muted">{r.akun}</td>
+                    {akuns.map((rows, i) => {
+                      const found = rows.find((x) => x.kode === r.kode);
+                      return <td key={i} className="px-3 py-1.5 text-right tabular-nums">{found ? <MoneyDisplay value={found.saldoAkhir} /> : "—"}</td>;
+                    })}
+                  </tr>
+                ))}
+              </>
+            ))}
+            <tr className="border-t-2 border-line font-bold">
+              <td className="px-3 py-2">Laba Tahun Berjalan (YTD)</td>
+              {akuns.map((rows, i) => <td key={i} className="px-3 py-2 text-right tabular-nums"><MoneyDisplay value={labaYTD(rows)} /></td>)}
+            </tr>
+            <tr className="border-t-2 border-line font-black">
+              <td className="px-3 py-2">Total Aset</td>
+              {akuns.map((rows, i) => <td key={i} className="px-3 py-2 text-right tabular-nums"><MoneyDisplay value={total(rows, "ASSET")} /></td>)}
+            </tr>
+            <tr className="font-black">
+              <td className="px-3 py-2">Total Kewajiban + Ekuitas + Laba</td>
+              {akuns.map((rows, i) => <td key={i} className="px-3 py-2 text-right tabular-nums"><MoneyDisplay value={total(rows, "LIABILITY") + total(rows, "EQUITY") + labaYTD(rows)} /></td>)}
+            </tr>
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }
