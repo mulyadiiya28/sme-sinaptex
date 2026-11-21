@@ -304,19 +304,37 @@ function PanelBukuBesar() {
 function PanelLabaRugi() {
   const [dari, setDari] = useState(new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().slice(0, 10));
   const [sampai, setSampai] = useState(new Date().toISOString().slice(0, 10));
+  const [bandingkan, setBandingkan] = useState(false);
+
   const akun = useAkun({ from: dari, to: sampai });
+
+  // previous month range
+  const prev = (() => {
+    const d = new Date(dari);
+    const y = d.getMonth() === 0 ? d.getFullYear() - 1 : d.getFullYear();
+    const m = d.getMonth() === 0 ? 11 : d.getMonth() - 1;
+    const first = new Date(y, m, 1);
+    const last = new Date(y, m + 1, 0);
+    return { from: first.toISOString().slice(0, 10), to: last.toISOString().slice(0, 10) };
+  })();
+  const akunPrev = useAkun({ from: prev.from, to: prev.to });
 
   const master = useQuery({ queryKey: ["akun-master"], queryFn: () => api.akuntansi.akunMaster(), staleTime: 300_000 });
   const tipeDariKode = (kode: string) => master.data?.find((a) => a.kode === kode)?.tipe ?? (kode.charAt(0) === "4" ? "REVENUE" : (kode.charAt(0) === "5" || kode.charAt(0) === "6" || kode.charAt(0) === "7") ? "EXPENSE" : "ASSET");
 
-  const rows = akun.data ?? [];
-  const pendapatan = rows.filter((r) => tipeDariKode(r.kode) === "REVENUE").reduce((sum, r) => sum + (r.kredit - r.debit), 0);
-  const hpp = rows.filter((r) => r.kode === "5000" || r.kode === "5100").reduce((sum, r) => sum + (r.debit - r.kredit), 0);
-  const biaya = rows.filter((r) => tipeDariKode(r.kode) === "EXPENSE" && r.kode !== "5000" && r.kode !== "5100").reduce((sum, r) => sum + (r.debit - r.kredit), 0);
-  const pajak = rows.filter((r) => r.kode === "2201" || r.kode === "2202").reduce((sum, r) => sum + (r.kredit - r.debit), 0);
-  const laba = pendapatan - hpp - biaya - pajak;
+  const ringkas = (rows: AkunSaldo[]) => {
+    const pendapatan = rows.filter((r) => tipeDariKode(r.kode) === "REVENUE").reduce((sum, r) => sum + (r.kredit - r.debit), 0);
+    const hpp = rows.filter((r) => r.kode === "5000" || r.kode === "5100").reduce((sum, r) => sum + (r.debit - r.kredit), 0);
+    const biaya = rows.filter((r) => tipeDariKode(r.kode) === "EXPENSE" && r.kode !== "5000" && r.kode !== "5100").reduce((sum, r) => sum + (r.debit - r.kredit), 0);
+    const pajak = rows.filter((r) => r.kode === "2201" || r.kode === "2202").reduce((sum, r) => sum + (r.kredit - r.debit), 0);
+    return { pendapatan, hpp, biaya, pajak, laba: pendapatan - hpp - biaya - pajak };
+  };
 
-  if (akun.isLoading || master.isLoading) {
+  const rows = akun.data ?? [];
+  const r = ringkas(rows);
+  const rPrev = ringkas(akunPrev.data ?? []);
+
+  if (akun.isLoading || akunPrev.isLoading || master.isLoading) {
     return <KpiSkeleton />;
   }
 
@@ -328,25 +346,50 @@ function PanelLabaRugi() {
           <FormField label="Sampai tanggal" className="w-40"><input type="date" className="input" value={sampai} onChange={(e) => setSampai(e.target.value)} /></FormField>
           <button type="button" className="btn-secondary h-10" onClick={() => { const d = new Date(); setDari(new Date(d.getFullYear(), d.getMonth(), 1).toISOString().slice(0, 10)); setSampai(d.toISOString().slice(0, 10)); }}>Bulan ini</button>
           <button type="button" className="btn-secondary h-10" onClick={() => { const d = new Date(); const y = d.getFullYear() - 1; setDari(`${y}-01-01`); setSampai(`${y}-12-31`); }}>Tahun lalu</button>
+          <button type="button" className="btn-secondary h-10" onClick={() => setBandingkan((v) => !v)}>{bandingkan ? "Sembunyikan perbandingan" : "Bandingkan bulan lalu"}</button>
         </div>
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-          <KpiCard label="Pendapatan (penjualan)" value={<MoneyDisplay value={pendapatan} />} tone="navy" />
-          <KpiCard label="HPP" value={<MoneyDisplay value={hpp} />} tone="violet" />
-          <KpiCard label="Biaya operasional" value={<MoneyDisplay value={biaya} />} tone="rose" />
-          <KpiCard label="Laba bersih" value={<MoneyDisplay value={laba} />} tone="emerald" />
-        </div>
-        <div className="mt-4 panel p-5 text-sm">
-          <p className="font-bold text-brand">Perhitungan</p>
-          <div className="mt-2 space-y-1.5 tabular-nums">
-            <Row label="Pendapatan" value={pendapatan} />
-            <Row label="Dikurangi: HPP" value={-hpp} />
-            <Row label="Dikurangi: Biaya operasional" value={-biaya} />
-            <Row label="Dikurangi: Pajak" value={-pajak} />
-            <div className="border-t border-line pt-1.5">
-              <Row label="Laba bersih" value={laba} bold />
-            </div>
+
+        {bandingkan ? (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-line text-left text-xs uppercase tracking-wide text-muted">
+                  <th className="px-3 py-2">Komponen</th>
+                  <th className="px-3 py-2 text-right">Bulan lalu ({prev.from} s/d {prev.to})</th>
+                  <th className="px-3 py-2 text-right">Rentang dipilih ({dari} s/d {sampai})</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr className="border-b border-line/60"><td className="px-3 py-2 font-medium">Pendapatan</td><td className="px-3 py-2 text-right tabular-nums"><MoneyDisplay value={rPrev.pendapatan} /></td><td className="px-3 py-2 text-right tabular-nums"><MoneyDisplay value={r.pendapatan} /></td></tr>
+                <tr className="border-b border-line/60"><td className="px-3 py-2 font-medium">HPP</td><td className="px-3 py-2 text-right tabular-nums"><MoneyDisplay value={-rPrev.hpp} /></td><td className="px-3 py-2 text-right tabular-nums"><MoneyDisplay value={-r.hpp} /></td></tr>
+                <tr className="border-b border-line/60"><td className="px-3 py-2 font-medium">Biaya operasional</td><td className="px-3 py-2 text-right tabular-nums"><MoneyDisplay value={-rPrev.biaya} /></td><td className="px-3 py-2 text-right tabular-nums"><MoneyDisplay value={-r.biaya} /></td></tr>
+                <tr className="border-b border-line/60"><td className="px-3 py-2 font-medium">Pajak</td><td className="px-3 py-2 text-right tabular-nums"><MoneyDisplay value={-rPrev.pajak} /></td><td className="px-3 py-2 text-right tabular-nums"><MoneyDisplay value={-r.pajak} /></td></tr>
+                <tr className="border-t-2 border-line font-black"><td className="px-3 py-2">Laba bersih</td><td className="px-3 py-2 text-right tabular-nums"><MoneyDisplay value={rPrev.laba} /></td><td className="px-3 py-2 text-right tabular-nums"><MoneyDisplay value={r.laba} /></td></tr>
+              </tbody>
+            </table>
           </div>
-        </div>
+        ) : (
+          <>
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+              <KpiCard label="Pendapatan (penjualan)" value={<MoneyDisplay value={r.pendapatan} />} tone="navy" />
+              <KpiCard label="HPP" value={<MoneyDisplay value={r.hpp} />} tone="violet" />
+              <KpiCard label="Biaya operasional" value={<MoneyDisplay value={r.biaya} />} tone="rose" />
+              <KpiCard label="Laba bersih" value={<MoneyDisplay value={r.laba} />} tone="emerald" />
+            </div>
+            <div className="mt-4 panel p-5 text-sm">
+              <p className="font-bold text-brand">Perhitungan</p>
+              <div className="mt-2 space-y-1.5 tabular-nums">
+                <Row label="Pendapatan" value={r.pendapatan} />
+                <Row label="Dikurangi: HPP" value={-r.hpp} />
+                <Row label="Dikurangi: Biaya operasional" value={-r.biaya} />
+                <Row label="Dikurangi: Pajak" value={-r.pajak} />
+                <div className="border-t border-line pt-1.5">
+                  <Row label="Laba bersih" value={r.laba} bold />
+                </div>
+              </div>
+            </div>
+          </>
+        )}
       </div>
     </div>
   );
@@ -356,18 +399,15 @@ function PanelNeraca() {
   const master = useQuery({ queryKey: ["akun-master"], queryFn: () => api.akuntansi.akunMaster(), staleTime: 300_000 });
   const tipeDariKode = (kode: string) => master.data?.find((a) => a.kode === kode)?.tipe ?? (kode.charAt(0) === "1" ? "ASSET" : kode.charAt(0) === "2" ? "LIABILITY" : kode.charAt(0) === "3" ? "EQUITY" : "EXPENSE");
 
-  const [d1, setD1] = useState("2025-12-31");
-  const [d2, setD2] = useState("2026-10-31");
-  const [d3, setD3] = useState(new Date().toISOString().slice(0, 10));
   const kolom = [
-    { label: "Kolom 1", to: d1 },
-    { label: "Kolom 2", to: d2 },
-    { label: "Kolom 3", to: d3 },
+    { label: "31 Des 2025", to: "2025-12-31" },
+    { label: "31 Okt 2026", to: "2026-10-31" },
+    { label: "Hari ini", to: new Date().toISOString().slice(0, 10) },
   ];
 
-  const a1 = useAkun({ from: "1900-01-01", to: d1 });
-  const a2 = useAkun({ from: "1900-01-01", to: d2 });
-  const a3 = useAkun({ from: "1900-01-01", to: d3 });
+  const a1 = useAkun({ from: "1900-01-01", to: kolom[0].to });
+  const a2 = useAkun({ from: "1900-01-01", to: kolom[1].to });
+  const a3 = useAkun({ from: "1900-01-01", to: kolom[2].to });
   const akuns = [a1.data ?? [], a2.data ?? [], a3.data ?? []];
 
   const klasifikasi = (rows: AkunSaldo[], tipe: string) =>
@@ -396,11 +436,6 @@ function PanelNeraca() {
     <div className="panel p-4">
       <h2 className="mb-3 px-1 text-sm font-bold text-brand">Neraca berjalan (posisi keuangan)</h2>
       <p className="mb-3 px-1 text-xs text-muted">Saldo akhir per tanggal. Laba tahun berjalan = pendapatan minus beban YTD, ditampilkan sebagai bagian ekuitas.</p>
-      <div className="mb-3 flex flex-wrap items-end gap-2 px-1">
-        <FormField label="Kolom 1" className="w-40"><input type="date" className="input" value={d1} onChange={(e) => setD1(e.target.value)} /></FormField>
-        <FormField label="Kolom 2" className="w-40"><input type="date" className="input" value={d2} onChange={(e) => setD2(e.target.value)} /></FormField>
-        <FormField label="Kolom 3" className="w-40"><input type="date" className="input" value={d3} onChange={(e) => setD3(e.target.value)} /></FormField>
-      </div>
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
@@ -411,7 +446,7 @@ function PanelNeraca() {
           </thead>
           <tbody>
             {kelompok.map((g) => (
-              <React.Fragment key={g.label}>
+              <>
                 <tr key={g.label} className="bg-slate-50 font-bold">
                   <td className="px-3 py-2">{g.label}</td>
                   {akuns.map((rows, i) => <td key={i} className="px-3 py-2 text-right tabular-nums"><MoneyDisplay value={total(rows, g.tipe)} /></td>)}
@@ -425,7 +460,7 @@ function PanelNeraca() {
                     })}
                   </tr>
                 ))}
-              </React.Fragment>
+              </>
             ))}
             <tr className="border-t-2 border-line font-bold">
               <td className="px-3 py-2">Laba Tahun Berjalan (YTD)</td>
