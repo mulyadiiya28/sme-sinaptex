@@ -302,53 +302,51 @@ function PanelBukuBesar() {
 }
 
 function PanelLabaRugi() {
-  const lr = useLabaRugi();
-  const data: LabaRugi | undefined = lr.data;
+  const kolom = [
+    { label: "YTD 2025 (s/d 31 Des)", from: "2025-01-01", to: "2025-12-31" },
+    { label: "YTD 2026 (s/d 31 Okt)", from: "2026-01-01", to: "2026-10-31" },
+    { label: "YTD 2026 (s/d hari ini)", from: "2026-01-01", to: new Date().toISOString().slice(0, 10) },
+  ];
+  const a1 = useAkun({ from: kolom[0].from, to: kolom[0].to });
+  const a2 = useAkun({ from: kolom[1].from, to: kolom[1].to });
+  const a3 = useAkun({ from: kolom[2].from, to: kolom[2].to });
+  const akuns = [a1.data ?? [], a2.data ?? [], a3.data ?? []];
 
-  if (lr.isLoading) {
-    return (
-      <div className="space-y-4">
-        <KpiSkeleton />
-        <div className="panel space-y-2.5 p-5">
-          <Skeleton className="h-4 w-28" />
-          {Array.from({ length: 5 }).map((_, i) => (
-            <Skeleton key={i} className="h-4 w-full" />
-          ))}
-        </div>
-      </div>
-    );
+  const master = useQuery({ queryKey: ["akun-master"], queryFn: () => api.akuntansi.akunMaster(), staleTime: 300_000 });
+  const tipeDariKode = (kode: string) => master.data?.find((a) => a.kode === kode)?.tipe ?? (kode.charAt(0) === "4" ? "REVENUE" : (kode.charAt(0) === "5" || kode.charAt(0) === "6" || kode.charAt(0) === "7") ? "EXPENSE" : "ASSET");
+
+  const ringkas = (rows: AkunSaldo[]) => {
+    const pendapatan = rows.filter((r) => tipeDariKode(r.kode) === "REVENUE").reduce((sum, r) => sum + (r.kredit - r.debit), 0);
+    const hpp = rows.filter((r) => r.kode === "5000" || r.kode === "5100").reduce((sum, r) => sum + (r.debit - r.kredit), 0);
+    const biaya = rows.filter((r) => tipeDariKode(r.kode) === "EXPENSE" && r.kode !== "5000" && r.kode !== "5100").reduce((sum, r) => sum + (r.debit - r.kredit), 0);
+    const pajak = rows.filter((r) => r.kode === "2201" || r.kode === "2202").reduce((sum, r) => sum + (r.kredit - r.debit), 0);
+    return { pendapatan, hpp, biaya, pajak, laba: pendapatan - hpp - biaya - pajak };
+  };
+  const ringkasan = akuns.map(ringkas);
+
+  if (a1.isLoading || a2.isLoading || a3.isLoading || master.isLoading) {
+    return <KpiSkeleton />;
   }
 
   return (
     <div className="space-y-4">
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <KpiCard label="Pendapatan (penjualan)" value={<MoneyDisplay value={data?.pendapatan ?? 0} />} tone="navy" />
-        <KpiCard label="HPP" value={<MoneyDisplay value={data?.hpp ?? 0} />} tone="violet" />
-        <KpiCard label="Biaya operasional" value={<MoneyDisplay value={data?.biaya ?? 0} />} tone="rose" />
-        <KpiCard label="Laba bersih" value={<MoneyDisplay value={data?.laba ?? 0} />} tone="emerald" />
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="border-b border-line text-left text-xs uppercase tracking-wide text-muted">
+              <th className="px-3 py-2">Komponen</th>
+              {kolom.map((k) => <th key={k.label} className="px-3 py-2 text-right">{k.label}</th>)}
+            </tr>
+          </thead>
+          <tbody>
+            <tr className="border-b border-line/60"><td className="px-3 py-2 font-medium">Pendapatan</td>{ringkasan.map((r, i) => <td key={i} className="px-3 py-2 text-right tabular-nums"><MoneyDisplay value={r.pendapatan} /></td>)}</tr>
+            <tr className="border-b border-line/60"><td className="px-3 py-2 font-medium">HPP</td>{ringkasan.map((r, i) => <td key={i} className="px-3 py-2 text-right tabular-nums"><MoneyDisplay value={-r.hpp} /></td>)}</tr>
+            <tr className="border-b border-line/60"><td className="px-3 py-2 font-medium">Biaya operasional</td>{ringkasan.map((r, i) => <td key={i} className="px-3 py-2 text-right tabular-nums"><MoneyDisplay value={-r.biaya} /></td>)}</tr>
+            <tr className="border-b border-line/60"><td className="px-3 py-2 font-medium">Pajak</td>{ringkasan.map((r, i) => <td key={i} className="px-3 py-2 text-right tabular-nums"><MoneyDisplay value={-r.pajak} /></td>)}</tr>
+            <tr className="border-t-2 border-line font-black"><td className="px-3 py-2">Laba bersih</td>{ringkasan.map((r, i) => <td key={i} className="px-3 py-2 text-right tabular-nums"><MoneyDisplay value={r.laba} /></td>)}</tr>
+          </tbody>
+        </table>
       </div>
-      <div className="panel p-5 text-sm">
-        <p className="font-bold text-brand">Perhitungan</p>
-        <div className="mt-2 space-y-1.5 tabular-nums">
-          <Row label="Pendapatan" value={data?.pendapatan ?? 0} />
-          <Row label="Dikurangi: Retur penjualan" value={-(data?.retur ?? 0)} />
-          <Row label="Dikurangi: HPP" value={-(data?.hpp ?? 0)} />
-          <Row label="Dikurangi: Biaya operasional" value={-(data?.biaya ?? 0)} />
-          <Row label="Dikurangi: Pajak keluaran" value={-(data?.pajak ?? 0)} />
-          <div className="border-t border-line pt-1.5">
-            <Row label="Laba bersih" value={data?.laba ?? 0} bold />
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function Row({ label, value, bold }: { label: string; value: number; bold?: boolean }) {
-  return (
-    <div className={cn("flex items-center justify-between", bold && "font-black text-brand")}>
-      <span className="text-muted">{label}</span>
-      <MoneyDisplay value={value} />
     </div>
   );
 }
@@ -404,7 +402,7 @@ function PanelNeraca() {
           </thead>
           <tbody>
             {kelompok.map((g) => (
-              <React.Fragment key={g.label}>
+              <>
                 <tr key={g.label} className="bg-slate-50 font-bold">
                   <td className="px-3 py-2">{g.label}</td>
                   {akuns.map((rows, i) => <td key={i} className="px-3 py-2 text-right tabular-nums"><MoneyDisplay value={total(rows, g.tipe)} /></td>)}
@@ -418,7 +416,7 @@ function PanelNeraca() {
                     })}
                   </tr>
                 ))}
-              </React.Fragment>
+              </>
             ))}
             <tr className="border-t-2 border-line font-bold">
               <td className="px-3 py-2">Laba Tahun Berjalan (YTD)</td>
