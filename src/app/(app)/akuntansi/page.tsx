@@ -399,15 +399,18 @@ function PanelNeraca() {
   const master = useQuery({ queryKey: ["akun-master"], queryFn: () => api.akuntansi.akunMaster(), staleTime: 300_000 });
   const tipeDariKode = (kode: string) => master.data?.find((a) => a.kode === kode)?.tipe ?? (kode.charAt(0) === "1" ? "ASSET" : kode.charAt(0) === "2" ? "LIABILITY" : kode.charAt(0) === "3" ? "EQUITY" : "EXPENSE");
 
+  const [d1, setD1] = useState("2025-12-31");
+  const [d2, setD2] = useState("2026-10-31");
+  const [d3, setD3] = useState(new Date().toISOString().slice(0, 10));
   const kolom = [
-    { label: "31 Des 2025", to: "2025-12-31" },
-    { label: "31 Okt 2026", to: "2026-10-31" },
-    { label: "Hari ini", to: new Date().toISOString().slice(0, 10) },
+    { label: "Kolom 1", to: d1 },
+    { label: "Kolom 2", to: d2 },
+    { label: "Kolom 3", to: d3 },
   ];
 
-  const a1 = useAkun({ from: "1900-01-01", to: kolom[0].to });
-  const a2 = useAkun({ from: "1900-01-01", to: kolom[1].to });
-  const a3 = useAkun({ from: "1900-01-01", to: kolom[2].to });
+  const a1 = useAkun({ from: "1900-01-01", to: d1 });
+  const a2 = useAkun({ from: "1900-01-01", to: d2 });
+  const a3 = useAkun({ from: "1900-01-01", to: d3 });
   const akuns = [a1.data ?? [], a2.data ?? [], a3.data ?? []];
 
   const klasifikasi = (rows: AkunSaldo[], tipe: string) =>
@@ -436,6 +439,11 @@ function PanelNeraca() {
     <div className="panel p-4">
       <h2 className="mb-3 px-1 text-sm font-bold text-brand">Neraca berjalan (posisi keuangan)</h2>
       <p className="mb-3 px-1 text-xs text-muted">Saldo akhir per tanggal. Laba tahun berjalan = pendapatan minus beban YTD, ditampilkan sebagai bagian ekuitas.</p>
+      <div className="mb-3 flex flex-wrap items-end gap-2 px-1">
+        <FormField label="Kolom 1" className="w-40"><input type="date" className="input" value={d1} onChange={(e) => setD1(e.target.value)} /></FormField>
+        <FormField label="Kolom 2" className="w-40"><input type="date" className="input" value={d2} onChange={(e) => setD2(e.target.value)} /></FormField>
+        <FormField label="Kolom 3" className="w-40"><input type="date" className="input" value={d3} onChange={(e) => setD3(e.target.value)} /></FormField>
+      </div>
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
