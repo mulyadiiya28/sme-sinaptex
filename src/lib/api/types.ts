@@ -1086,6 +1086,17 @@ export type HasilTutupTahun = {
   akunDitutup: string[];
 };
 
+/// <summary>Hasil pembalikan tutup tahun (POST /api/fiscal-periods/{id}/reverse-closing).</summary>
+export type HasilBalikTutup = {
+  jurnalPembalikId: string;
+  jurnalPenutupId: string;
+  transaksiPenutupId: string;
+  periodeId: string;
+  statusPeriode: FiscalPeriod["status"];
+  dibatalkanOleh: string;
+  alasan: string | null;
+};
+
 /// <summary>Satu berkas backup database di server engine.</summary>
 export type BackupFile = {
   fileName: string;

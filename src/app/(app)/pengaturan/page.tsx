@@ -10,6 +10,7 @@ import type {
   CompanyProfile,
   CreateFiscalPeriodRequest,
   FiscalPeriod,
+  HasilBalikTutup,
   HasilImpor,
   HasilTutupTahun,
   ImporPelangganBaris,
@@ -777,6 +778,8 @@ function PanelFiscalPeriods() {
   const [closePending, setClosePending] = useState(false);
   const [tutupTahunPending, setTutupTahunPending] = useState<string | null>(null);
   const [hasilTutupTahun, setHasilTutupTahun] = useState<HasilTutupTahun | null>(null);
+  const [balikPending, setBalikPending] = useState<string | null>(null);
+  const [hasilBalikTutup, setHasilBalikTutup] = useState<HasilBalikTutup | null>(null);
 
   const statusWarna: Record<string, StatusTone> = {
     OPEN: "success",
@@ -792,6 +795,10 @@ function PanelFiscalPeriods() {
 
   const segarkan = () => {
     void queryClient.invalidateQueries({ queryKey: ["akuntansi", "fiscal-periods"] });
+    void queryClient.invalidateQueries({ queryKey: ["jurnal"] });
+    void queryClient.invalidateQueries({ queryKey: ["akun"] });
+    void queryClient.invalidateQueries({ queryKey: ["laba-rugi"] });
+    void queryClient.invalidateQueries({ queryKey: ["transaksi"] });
   };
 
   const handleCreate = async (e: React.FormEvent) => {
@@ -832,6 +839,7 @@ function PanelFiscalPeriods() {
     if (!yakin) return;
     setTutupTahunPending(id);
     setHasilTutupTahun(null);
+    setHasilBalikTutup(null);
     try {
       const hasil = await api.akuntansi.fiscalPeriods.closeYear(id, user.id, crypto.randomUUID());
       setHasilTutupTahun(hasil);
@@ -874,11 +882,16 @@ function PanelFiscalPeriods() {
     if (!user) return;
     const reason = window.prompt("Alasan membalikkan penutupan tahun:");
     if (!reason) return;
+    setBalikPending(id);
+    setHasilBalikTutup(null);
     try {
-      await api.akuntansi.fiscalPeriods.reverseClosing(id, user.id, "99", reason, crypto.randomUUID());
+      const hasil = await api.akuntansi.fiscalPeriods.reverseClosing(id, user.id, "99", reason, crypto.randomUUID());
+      setHasilBalikTutup(hasil);
       segarkan();
     } catch (err) {
       alert(String(err));
+    } finally {
+      setBalikPending(null);
     }
   };
 
@@ -922,7 +935,9 @@ function PanelFiscalPeriods() {
               {r.status === "CLOSED" && (
                 <>
                   <button type="button" onClick={() => handleReopen(r.id)} className="btn-secondary rounded-lg px-2.5 py-1.5 text-xs">Buka Kembali</button>
-                  <button type="button" onClick={() => handleReverseClosing(r.id)} className="btn-secondary rounded-lg px-2.5 py-1.5 text-xs text-rose-600">Balikan Penutupan</button>
+                  <button type="button" onClick={() => handleReverseClosing(r.id)} disabled={balikPending === r.id} className="btn-secondary rounded-lg px-2.5 py-1.5 text-xs text-rose-600 disabled:opacity-40">
+                    {balikPending === r.id ? "Memproses..." : "Balikan Penutupan"}
+                  </button>
                 </>
               )}
             </div>
@@ -941,6 +956,19 @@ function PanelFiscalPeriods() {
             Pendapatan ditutup {formatIDR(hasilTutupTahun.pendapatanDitutup)} · Beban ditutup {formatIDR(hasilTutupTahun.bebanDitutup)} · Laba bersih {formatIDR(hasilTutupTahun.labaBersih)} ke akun {hasilTutupTahun.kodeLabaDitahan}.
           </p>
           <p className="mt-1">{hasilTutupTahun.akunDitutup.length} akun laba-rugi dinolkan.</p>
+        </div>
+      )}
+
+      {hasilBalikTutup && (
+        <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
+          <p className="font-bold">Penutupan berhasil dibatalkan — jurnal pembalik {hasilBalikTutup.jurnalPembalikId}</p>
+          <p className="mt-1 tabular-nums">
+            Jurnal penutup asli {hasilBalikTutup.jurnalPenutupId} tetap tersimpan dan dibatalkan lewat jurnal pembalik, bukan dihapus. Periode kembali berstatus {hasilBalikTutup.statusPeriode}.
+          </p>
+          <p className="mt-1">
+            Jurnal pembalik bertanggal pada tanggal tutup periode (bukan hari ini), jadi cari dengan filter tanggal periode tersebut di tab Jurnal. Dibatalkan oleh {hasilBalikTutup.dibatalkanOleh}.
+            {hasilBalikTutup.alasan ? ` Alasan: ${hasilBalikTutup.alasan}.` : ""}
+          </p>
         </div>
       )}
 

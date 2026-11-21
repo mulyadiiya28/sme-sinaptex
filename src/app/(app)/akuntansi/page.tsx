@@ -14,6 +14,7 @@ import { useAkun, useJurnal, useLabaRugi } from "@/hooks/queries";
 import { cn } from "@/lib/utils";
 
 type Tab = "akun" | "jurnal" | "buku-besar" | "laba-rugi";
+type StatusSaldo = "memuat" | "kosong" | "tanpa-transaksi" | "seimbang" | "tidak-seimbang";
 
 const TABS: Array<{ id: Tab; label: string }> = [
   { id: "akun", label: "Neraca Saldo" },
@@ -64,7 +65,15 @@ function PanelAkun() {
   const totalKredit = rows.reduce((s, r) => s + r.kredit, 0);
   const totalSaldoAwal = rows.reduce((s, r) => s + r.saldoAwal, 0);
   const totalSaldoAkhir = rows.reduce((s, r) => s + r.saldoAkhir, 0);
-  const seimbang = Math.abs(totalDebit - totalKredit) < 1 && Math.round(totalDebit) > 0;
+  const statusSaldo: StatusSaldo = akun.isLoading
+    ? "memuat"
+    : rows.length === 0
+      ? "kosong"
+      : totalDebit === 0 && totalKredit === 0
+        ? "tanpa-transaksi"
+        : Math.abs(totalDebit - totalKredit) < 1
+          ? "seimbang"
+          : "tidak-seimbang";
 
   const columns: Column<AkunSaldo>[] = [
     { key: "akun", header: "Akun", render: (r) => <span className="font-medium">{r.akun}</span> },
@@ -101,7 +110,7 @@ function PanelAkun() {
             <input type="date" className="input" value={sampai} onChange={(e) => setSampai(e.target.value)} />
           </FormField>
         </div>
-        <BalanceBadge seimbang={seimbang} />
+        <BalanceBadge status={statusSaldo} />
       </div>
       <DataTable
         columns={columns}
@@ -318,19 +327,27 @@ function Row({ label, value, bold }: { label: string; value: number; bold?: bool
   );
 }
 
-function BalanceBadge({ seimbang }: { seimbang: boolean }) {
-  if (seimbang) {
-    return (
-      <span className="inline-flex items-center gap-1">
-        <CheckCircle2 className="size-4 text-emerald-600" aria-hidden />
-        <StatusBadge label="Debit = Kredit (seimbang)" tone="success" />
-      </span>
-    );
+function BalanceBadge({ status }: { status: StatusSaldo }) {
+  switch (status) {
+    case "memuat":
+      return <StatusBadge label="Memuat saldo..." tone="neutral" />;
+    case "kosong":
+      return <StatusBadge label="Belum ada data" tone="neutral" />;
+    case "tanpa-transaksi":
+      return <StatusBadge label="Belum ada transaksi di rentang ini" tone="info" />;
+    case "seimbang":
+      return (
+        <span className="inline-flex items-center gap-1">
+          <CheckCircle2 className="size-4 text-emerald-600" aria-hidden />
+          <StatusBadge label="Debit = Kredit (seimbang)" tone="success" />
+        </span>
+      );
+    case "tidak-seimbang":
+      return (
+        <span className="inline-flex items-center gap-1">
+          <XCircle className="size-4 text-rose-600" aria-hidden />
+          <StatusBadge label="Tidak seimbang" tone="danger" />
+        </span>
+      );
   }
-  return (
-    <span className="inline-flex items-center gap-1">
-      <XCircle className="size-4 text-rose-600" aria-hidden />
-      <StatusBadge label="Tidak seimbang" tone="danger" />
-    </span>
-  );
 }

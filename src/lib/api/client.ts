@@ -14,6 +14,7 @@ import type {
   CheckoutResult,
   CompanyProfile,
   Dupont,
+  HasilBalikTutup,
   HasilImpor,
   HasilTutupTahun,
   HealthIndicator,
@@ -766,14 +767,15 @@ export const api = {
         void idempotensiKunci;
         return mockDb.ubahStatusPeriodeFiskal(id, "OPEN");
       },
-      reverseClosing: async (id: string, actorId: string, actorLevel: string, reason: string, idempotensiKunci: string): Promise<FiscalPeriod> => {
+      reverseClosing: async (id: string, actorId: string, actorLevel: string, reason: string, idempotensiKunci: string): Promise<HasilBalikTutup> => {
         if (API_MODE === "live") return liveFiscalPeriodReverseClosing(id, actorId, actorLevel, reason, idempotensiKunci);
         await delay(350);
+        void id;
         void actorId;
         void actorLevel;
         void reason;
         void idempotensiKunci;
-        return mockDb.ubahStatusPeriodeFiskal(id, "OPEN");
+        throw new Error("Pembalikan tutup tahun hanya tersedia di mode live — engine yang memposting jurnal pembalik.");
       },
       getPendingClose: async (): Promise<FiscalPeriod[]> => {
         if (API_MODE === "live") return liveFiscalPeriodGetPendingClose();

@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { ArrowLeft, DoorOpen, HandCoins } from "lucide-react";
+import { ArrowLeft, DoorOpen, HandCoins, PackageX } from "lucide-react";
 import { useProducts, useActiveShift } from "@/hooks/queries";
 import { useCart } from "@/lib/store/cart";
 import { useAuth } from "@/lib/store/auth";
@@ -59,9 +59,22 @@ function KasirScreen() {
     return <KasirSkeleton />;
   }
   if (products.isError || !products.data) {
+    const pesan =
+      products.error instanceof Error && products.error.message
+        ? products.error.message
+        : "Periksa koneksi ke engine, lalu coba lagi.";
     return (
-      <div className="grid h-screen place-items-center text-sm text-rose-600">
-        Gagal memuat produk.
+      <div className="grid h-screen place-items-center px-6">
+        <div className="panel max-w-md p-8 text-center">
+          <span className="mx-auto flex size-14 items-center justify-center rounded-2xl bg-rose-50 text-rose-600">
+            <PackageX className="size-6" aria-hidden />
+          </span>
+          <p className="mt-3 font-black text-brand">Produk belum dapat dimuat</p>
+          <p className="mt-1 text-sm text-muted">{pesan}</p>
+          <button type="button" onClick={() => void products.refetch()} className="btn-primary mt-4 inline-flex">
+            Coba lagi
+          </button>
+        </div>
       </div>
     );
   }

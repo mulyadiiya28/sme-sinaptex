@@ -83,6 +83,7 @@ import type {
   CreateSupplierRequest,
   DailyMovementReport,
   FiscalPeriod,
+  HasilBalikTutup,
   HasilRestoreBackup,
   HasilTutupTahun,
   LaporanAsetTetap,
@@ -2616,8 +2617,24 @@ export async function liveFiscalPeriodReopen(id: string, actorId: string, actorL
   return data;
 }
 
-export async function liveFiscalPeriodReverseClosing(id: string, actorId: string, actorLevel: string, reason: string, idempotensiKunci: string): Promise<FiscalPeriod> {
-  const data = await minta<FiscalPeriod>(`/api/fiscal-periods/${id}/reverse-closing`, {
+type BtHasilBalikTutup = {
+  ReversalJournalId: string;
+  ReversedClosingJournalId: string;
+  ClosingTransactionId: string;
+  PeriodId: string;
+  PeriodStatus: FiscalPeriod["status"];
+  ReversedBy: string;
+  Reason: string | null;
+};
+
+export async function liveFiscalPeriodReverseClosing(
+  id: string,
+  actorId: string,
+  actorLevel: string,
+  reason: string,
+  idempotensiKunci: string,
+): Promise<HasilBalikTutup> {
+  const data = await minta<BtHasilBalikTutup>(`/api/fiscal-periods/${encodeURIComponent(id)}/reverse-closing`, {
     method: "POST",
     idempotensiKunci,
     headers: {
@@ -2627,7 +2644,15 @@ export async function liveFiscalPeriodReverseClosing(id: string, actorId: string
     },
     body: {},
   });
-  return data;
+  return {
+    jurnalPembalikId: data.ReversalJournalId,
+    jurnalPenutupId: data.ReversedClosingJournalId,
+    transaksiPenutupId: data.ClosingTransactionId,
+    periodeId: data.PeriodId,
+    statusPeriode: data.PeriodStatus,
+    dibatalkanOleh: data.ReversedBy,
+    alasan: data.Reason,
+  };
 }
 
 export async function liveFiscalPeriodGetPendingClose(): Promise<FiscalPeriod[]> {

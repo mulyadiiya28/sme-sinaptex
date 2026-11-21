@@ -196,7 +196,14 @@ export function ProductCatalog({
               <tr>
                 <td colSpan={5} className="px-4 py-14 text-center">
                   <PackageX className="mx-auto size-8 mb-1.5" aria-hidden />
-                  <p className="text-sm text-muted">Produk tidak ditemukan.</p>
+                  <p className="text-sm font-semibold text-ink">
+                    {products.length === 0 ? "Belum ada produk terdaftar" : "Produk tidak ditemukan"}
+                  </p>
+                  <p className="mt-1 text-xs text-muted">
+                    {products.length === 0
+                      ? "Hubungi pemilik toko untuk menambahkan produk sebelum melayani transaksi."
+                      : "Coba kata kunci atau kategori lain."}
+                  </p>
                 </td>
               </tr>
             ) : (
