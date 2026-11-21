@@ -32,7 +32,7 @@ export function NotifikasiSettings() {
           <Send className="size-5" aria-hidden />
         </span>
         <div>
-          <h2 className="font-black text-brand">Notifikasi (Telegram)</h2>
+          <h2 className="font-black text-brand">Notifikasi (Telegram / WhatsApp)</h2>
           <p className="mt-1 text-sm text-muted">
             Konfigurasi disimpan lokal di perangkat ini. Telegram bot token dari @BotFather, chat ID dari @userinfobot.
           </p>
