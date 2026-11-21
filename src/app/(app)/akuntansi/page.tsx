@@ -381,7 +381,13 @@ function PanelLabaRugi() {
               <div className="mt-2 space-y-1.5 tabular-nums">
                 <Row label="Pendapatan" value={r.pendapatan} />
                 <Row label="Dikurangi: HPP" value={-r.hpp} />
+                <div className="border-t border-line pt-1.5 font-bold">
+                  <Row label="Laba kotor" value={r.pendapatan - r.hpp} bold />
+                </div>
                 <Row label="Dikurangi: Biaya operasional" value={-r.biaya} />
+                <div className="border-t border-line pt-1.5 font-bold">
+                  <Row label="Laba operasional" value={r.pendapatan - r.hpp - r.biaya} bold />
+                </div>
                 <Row label="Dikurangi: Pajak" value={-r.pajak} />
                 <div className="border-t border-line pt-1.5">
                   <Row label="Laba bersih" value={r.laba} bold />
@@ -402,16 +408,19 @@ function PanelNeraca() {
   const [d1, setD1] = useState("2025-12-31");
   const [d2, setD2] = useState("2026-10-31");
   const [d3, setD3] = useState(new Date().toISOString().slice(0, 10));
-  const kolom = [
-    { label: "Kolom 1", to: d1 },
-    { label: "Kolom 2", to: d2 },
-    { label: "Kolom 3", to: d3 },
-  ];
+  const [tunggal, setTunggal] = useState(false);
+  const kolom = tunggal
+    ? [{ label: "Posisi per tanggal", to: d1 }]
+    : [
+        { label: "Kolom 1", to: d1 },
+        { label: "Kolom 2", to: d2 },
+        { label: "Kolom 3", to: d3 },
+      ];
 
   const a1 = useAkun({ from: "1900-01-01", to: d1 });
   const a2 = useAkun({ from: "1900-01-01", to: d2 });
   const a3 = useAkun({ from: "1900-01-01", to: d3 });
-  const akuns = [a1.data ?? [], a2.data ?? [], a3.data ?? []];
+  const akuns = tunggal ? [a1.data ?? []] : [a1.data ?? [], a2.data ?? [], a3.data ?? []];
 
   const klasifikasi = (rows: AkunSaldo[], tipe: string) =>
     rows.filter((r) => tipeDariKode(r.kode) === tipe);
@@ -442,7 +451,8 @@ function PanelNeraca() {
       <div className="mb-3 flex flex-wrap items-end gap-2 px-1">
         <FormField label="Kolom 1" className="w-40"><input type="date" className="input" value={d1} onChange={(e) => setD1(e.target.value)} /></FormField>
         <FormField label="Kolom 2" className="w-40"><input type="date" className="input" value={d2} onChange={(e) => setD2(e.target.value)} /></FormField>
-        <FormField label="Kolom 3" className="w-40"><input type="date" className="input" value={d3} onChange={(e) => setD3(e.target.value)} /></FormField>
+        <FormField label="Kolom 3" className="w-40"><input type="date" className="input" value={d3} onChange={(e) => setD3(e.target.value)} disabled={tunggal} /></FormField>
+        <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={tunggal} onChange={(e) => setTunggal(e.target.checked)} /> Tampilan tunggal</label>
       </div>
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
@@ -459,7 +469,7 @@ function PanelNeraca() {
                   <td className="px-3 py-2">{g.label}</td>
                   {akuns.map((rows, i) => <td key={i} className="px-3 py-2 text-right tabular-nums"><MoneyDisplay value={total(rows, g.tipe)} /></td>)}
                 </tr>
-                {klasifikasi(akuns[2], g.tipe).map((r) => (
+                {klasifikasi(akuns[akuns.length - 1], g.tipe).map((r) => (
                   <tr key={r.kode} className="border-b border-line/60">
                     <td className="px-3 py-1.5 pl-6 text-muted">{r.akun}</td>
                     {akuns.map((rows, i) => {
