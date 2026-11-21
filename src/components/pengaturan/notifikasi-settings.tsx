@@ -49,6 +49,16 @@ export function NotifikasiSettings() {
         <span>Aktifkan notifikasi</span>
       </label>
 
+      <label className="mt-2 flex items-start gap-2.5 text-sm text-ink">
+        <input
+          type="checkbox"
+          className="mt-0.5"
+          checked={draft.autoKirim}
+          onChange={(e) => ubah({ autoKirim: e.target.checked })}
+        />
+        <span>Kirim otomatis setelah transaksi (Telegram)</span>
+      </label>
+
       <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
         <FormField label="Provider">
           <select className="input" value={draft.provider} onChange={(e) => ubah({ provider: e.target.value as NotifikasiConfig["provider"] })}>

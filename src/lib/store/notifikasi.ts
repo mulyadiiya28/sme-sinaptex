@@ -9,6 +9,7 @@ export type NotifikasiConfig = {
   telegramBotToken: string;
   telegramChatId: string;
   waNomor: string;
+  autoKirim: boolean;
 };
 
 export const NOTIFIKASI_DEFAULT: NotifikasiConfig = {
@@ -17,6 +18,7 @@ export const NOTIFIKASI_DEFAULT: NotifikasiConfig = {
   telegramBotToken: "",
   telegramChatId: "",
   waNomor: "",
+  autoKirim: false,
 };
 
 type State = {

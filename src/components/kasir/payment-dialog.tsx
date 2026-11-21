@@ -6,6 +6,8 @@ import type { CheckoutResult, PaymentMethod, ProfilToko } from "@/lib/api/types"
 import { MoneyDisplay } from "@/components/money-display";
 import { StatusBadge } from "@/components/status-badge";
 import { pajakNominal, totalTransaksi, useCart } from "@/lib/store/cart";
+import { useNotifikasi } from "@/lib/store/notifikasi";
+import { kirimTelegram } from "@/lib/notifikasi/telegram";
 import { totalParity } from "@/lib/uang";
 import { useToko } from "@/lib/store/toko";
 import { usePrinter } from "@/lib/store/printer";
@@ -105,6 +107,14 @@ export function PaymentDialog({
 
   const mutation = useCheckout((result) => {
     setSukses(result);
+    const notif = useNotifikasi.getState().config;
+    if (notif.aktif && notif.autoKirim && notif.provider === "telegram") {
+      void kirimTelegram(
+        notif.telegramBotToken,
+        notif.telegramChatId,
+        `Transaksi ${result.nomor} selesai. Total: ${result.total}. Kembalian: ${result.kembalian}.`,
+      );
+    }
     const pengaturan = usePrinter.getState();
     if (!pengaturan.aktif || !pengaturan.autoPrint) return;
     if (result.menungguPersetujuan || result.status === "menunggu_pembayaran") return;
