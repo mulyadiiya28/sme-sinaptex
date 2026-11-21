@@ -38,6 +38,18 @@ const METODE_LABEL: Record<AsetTetap["metodePenyusutan"], string> = {
   "jumlah-tahun": "Jumlah Tahun",
 };
 
+type KategoriAset = { nilai: string; label: string; golongan: string; umurBulan: number };
+
+const KATEGORI_ASET: KategoriAset[] = [
+  { nilai: "Tanah", label: "Tanah", golongan: "Tidak disusutkan secara pajak", umurBulan: 12 },
+  { nilai: "Bangunan", label: "Bangunan & Sarana", golongan: "Kelompok 1 — 20 tahun", umurBulan: 240 },
+  { nilai: "Mesin & Peralatan", label: "Mesin & Peralatan", golongan: "Kelompok 2 — 8 tahun", umurBulan: 96 },
+  { nilai: "Kendaraan", label: "Kendaraan", golongan: "Kelompok 3 — 4 tahun", umurBulan: 48 },
+  { nilai: "Perabot & Perlengkapan", label: "Perabot & Perlengkapan", golongan: "Kelompok 3 — 4 tahun", umurBulan: 48 },
+  { nilai: "Komputer & Elektronik", label: "Komputer & Peralatan Elektronik", golongan: "Kelompok 4 — 3 tahun", umurBulan: 36 },
+  { nilai: "Aset Dalam Pembangunan", label: "Aset Dalam Pembangunan", golongan: "Belum disusutkan", umurBulan: 12 },
+];
+
 const JENIS_MUTASI_LABEL: Record<MutasiAset["jenis"], string> = {
   pembelian: "Pembelian",
   penjualan: "Penjualan",
@@ -66,10 +78,10 @@ export default function AsetTetapPage() {
   const [form, setForm] = useState<AsetTetapInput>({
     kode: "",
     nama: "",
-    kategori: "Peralatan",
+    kategori: "Mesin & Peralatan",
     nilaiPerolehan: 0,
     nilaiResidu: 0,
-    umurEkonomis: 60,
+    umurEkonomis: 96,
     metodePenyusutan: "garis-lurus",
     tanggalPerolehan: new Date().toISOString().slice(0, 10),
     lokasi: "Gudang Utama",
@@ -133,6 +145,10 @@ export default function AsetTetapPage() {
 
   // Engine tidak menyimpan lokasi aset; kolom ini hanya bermakna di mode mock.
   const kolom = live ? columns.filter((c) => c.key !== "lokasi") : columns;
+  const kategoriTerpilih = KATEGORI_ASET.find((k) => k.nilai === form.kategori);
+  const opsiKategori: KategoriAset[] = kategoriTerpilih
+    ? KATEGORI_ASET
+    : [...KATEGORI_ASET, { nilai: form.kategori, label: form.kategori, golongan: "Kategori dari data lama", umurBulan: form.umurEkonomis }];
 
   return (
     <div>
@@ -143,7 +159,7 @@ export default function AsetTetapPage() {
         }
         actions={
           <>
-            <button type="button" onClick={() => { setForm({ kode: "", nama: "", kategori: "Peralatan", nilaiPerolehan: 0, nilaiResidu: 0, umurEkonomis: 60, metodePenyusutan: "garis-lurus", tanggalPerolehan: new Date().toISOString().slice(0, 10), lokasi: "Gudang Utama", status: "aktif", akunAset: "1501", akunPenyusutan: "1511", akunBebanPenyusutan: "6911", catatan: "" }); setEditing(null); setOpenCreate(true); }} className="btn-primary">
+            <button type="button" onClick={() => { setForm({ kode: "", nama: "", kategori: "Mesin & Peralatan", nilaiPerolehan: 0, nilaiResidu: 0, umurEkonomis: 96, metodePenyusutan: "garis-lurus", tanggalPerolehan: new Date().toISOString().slice(0, 10), lokasi: "Gudang Utama", status: "aktif", akunAset: "1501", akunPenyusutan: "1511", akunBebanPenyusutan: "6911", catatan: "" }); setEditing(null); setOpenCreate(true); }} className="btn-primary">
               <Plus className="size-4" aria-hidden /> Tambah Aset
             </button>
             <button type="button" onClick={() => { setPenyusutanPeriode(new Date().toISOString().slice(0, 7)); setOpenPenyusutan(true); }} className="btn-secondary">
@@ -295,11 +311,27 @@ export default function AsetTetapPage() {
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <FormField label="Kode Aset"><input className="input" value={form.kode} onChange={(e) => setForm({ ...form, kode: e.target.value })} required disabled={live && !!editing} /></FormField>
                 <FormField label="Nama Aset"><input className="input" value={form.nama} onChange={(e) => setForm({ ...form, nama: e.target.value })} required /></FormField>
-                <FormField label="Kategori"><input className="input" value={form.kategori} onChange={(e) => setForm({ ...form, kategori: e.target.value })} list="daftar-kategori-aset" />
-                  <datalist id="daftar-kategori-aset">
-                    <option value="Tanah" /><option value="Bangunan" /><option value="Kendaraan" />
-                    <option value="Peralatan" /><option value="Perlengkapan" /><option value="Mesin" />
-                  </datalist>
+                <FormField label="Kategori">
+                  <select
+                    className="input"
+                    value={form.kategori}
+                    onChange={(e) => {
+                      const pilihan = KATEGORI_ASET.find((k) => k.nilai === e.target.value);
+                      setForm({ ...form, kategori: e.target.value, umurEkonomis: pilihan?.umurBulan ?? form.umurEkonomis });
+                    }}
+                  >
+                    {opsiKategori.map((k) => (
+                      <option key={k.nilai} value={k.nilai}>{k.label} — {k.golongan}</option>
+                    ))}
+                  </select>
+                  <p className="mt-1 text-xs text-muted">
+                    Golongan {kategoriTerpilih?.golongan ?? "dari data lama"} · umur bawaan {kategoriTerpilih?.umurBulan ?? form.umurEkonomis} bulan, masih bisa diubah.
+                  </p>
+                  {(form.kategori === "Tanah" || form.kategori === "Aset Dalam Pembangunan") && (
+                    <p className="mt-1 text-xs text-amber-600">
+                      Secara pajak tidak disusutkan, tetapi engine tetap memerlukan umur ekonomis lebih dari 0 bulan.
+                    </p>
+                  )}
                 </FormField>
                 {!live && <FormField label="Lokasi"><input className="input" value={form.lokasi} onChange={(e) => setForm({ ...form, lokasi: e.target.value })} /></FormField>}
                 <FormField label="Nilai Perolehan (Rp)"><input type="number" min={0} className="input text-right tabular-nums" value={form.nilaiPerolehan || ""} onChange={(e) => setForm({ ...form, nilaiPerolehan: Number(e.target.value) })} required disabled={live && !!editing} /></FormField>
