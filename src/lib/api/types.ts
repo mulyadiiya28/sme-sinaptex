@@ -764,6 +764,16 @@ export type LabaRugi = {
   laba: number;
 };
 
+export type EmailSettings = {
+  smtpHost: string;
+  smtpPort: number;
+  smtpUsername: string;
+  smtpPassword: string;
+  fromEmail: string;
+  fromName: string;
+  isEnabled: boolean;
+};
+
 export type Role = "pemilik" | "kasir";
 
 export type User = {

@@ -72,6 +72,7 @@ import type {
   CreateFiscalPeriodRequest,
   CreateSupplierRequest,
   DailyMovementReport,
+  EmailSettings,
   FiscalPeriod,
   HargaLoyalty,
   HasilRestoreBackup,
@@ -117,6 +118,8 @@ import {
   liveCheckout,
   liveCompanyProfileGet,
   liveCompanyProfilePut,
+  liveEmailSettingsGet,
+  liveEmailSettingsPut,
   liveCreateProduct,
   liveFiscalPeriodClose,
   liveFiscalPeriodCloseYear,
@@ -630,6 +633,16 @@ export const api = {
       throw new Error(
         "Unggah logo hanya tersedia di mode live — engine yang menyimpan berkas logo untuk faktur PDF.",
       );
+    },
+    email: async (): Promise<EmailSettings> => {
+      if (API_MODE === "live") return liveEmailSettingsGet();
+      await delay(120);
+      return { smtpHost: "", smtpPort: 587, smtpUsername: "", smtpPassword: "", fromEmail: "", fromName: "", isEnabled: false };
+    },
+    simpanEmail: async (input: EmailSettings): Promise<EmailSettings> => {
+      if (API_MODE === "live") return liveEmailSettingsPut(input);
+      await delay(150);
+      return input;
     },
   },
 

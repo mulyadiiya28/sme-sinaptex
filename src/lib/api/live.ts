@@ -82,6 +82,7 @@ import type {
   CreateApprovalRuleRequest,
   CreateFiscalPeriodRequest,
   CreateSupplierRequest,
+  EmailSettings,
   DailyMovementReport,
   FiscalPeriod,
   HasilBalikTutup,
@@ -2410,6 +2411,53 @@ export async function liveCompanyProfilePut(input: CompanyProfile): Promise<Comp
     },
   });
   return petakanProfil(p);
+}
+
+type BtEmailSettings = {
+  smtpHost: string;
+  smtpPort: number;
+  smtpUsername: string;
+  smtpPassword: string;
+  fromEmail: string;
+  fromName: string;
+  isEnabled: boolean;
+};
+
+export async function liveEmailSettingsGet(): Promise<EmailSettings> {
+  const r = await minta<BtEmailSettings>("/api/settings/email");
+  return {
+    smtpHost: r.smtpHost ?? "",
+    smtpPort: r.smtpPort ?? 587,
+    smtpUsername: r.smtpUsername ?? "",
+    smtpPassword: r.smtpPassword ?? "",
+    fromEmail: r.fromEmail ?? "",
+    fromName: r.fromName ?? "",
+    isEnabled: r.isEnabled ?? false,
+  };
+}
+
+export async function liveEmailSettingsPut(input: EmailSettings): Promise<EmailSettings> {
+  const r = await minta<BtEmailSettings>("/api/settings/email", {
+    method: "PUT",
+    body: {
+      smtpHost: input.smtpHost,
+      smtpPort: input.smtpPort,
+      smtpUsername: input.smtpUsername,
+      smtpPassword: input.smtpPassword,
+      fromEmail: input.fromEmail,
+      fromName: input.fromName,
+      isEnabled: input.isEnabled,
+    },
+  });
+  return {
+    smtpHost: r.smtpHost ?? "",
+    smtpPort: r.smtpPort ?? 587,
+    smtpUsername: r.smtpUsername ?? "",
+    smtpPassword: r.smtpPassword ?? "",
+    fromEmail: r.fromEmail ?? "",
+    fromName: r.fromName ?? "",
+    isEnabled: r.isEnabled ?? false,
+  };
 }
 
 /**
