@@ -56,15 +56,21 @@ export function NotifikasiSettings() {
             <option value="wa">WhatsApp (manual)</option>
           </select>
         </FormField>
-        <FormField label="Telegram Bot Token">
-          <input className="input" value={draft.telegramBotToken} onChange={(e) => ubah({ telegramBotToken: e.target.value })} placeholder="123456:ABC..." />
-        </FormField>
-        <FormField label="Telegram Chat ID">
-          <input className="input" value={draft.telegramChatId} onChange={(e) => ubah({ telegramChatId: e.target.value })} placeholder="123456789" />
-        </FormField>
-        <FormField label="Nomor WA (manual)">
-          <input className="input" value={draft.waNomor} onChange={(e) => ubah({ waNomor: e.target.value })} placeholder="628..." />
-        </FormField>
+        {draft.provider === "telegram" && (
+          <>
+            <FormField label="Telegram Bot Token">
+              <input className="input" value={draft.telegramBotToken} onChange={(e) => ubah({ telegramBotToken: e.target.value })} placeholder="123456:ABC..." />
+            </FormField>
+            <FormField label="Telegram Chat ID">
+              <input className="input" value={draft.telegramChatId} onChange={(e) => ubah({ telegramChatId: e.target.value })} placeholder="123456789" />
+            </FormField>
+          </>
+        )}
+        {draft.provider === "wa" && (
+          <FormField label="Nomor WA (manual)">
+            <input className="input" value={draft.waNomor} onChange={(e) => ubah({ waNomor: e.target.value })} placeholder="628..." />
+          </FormField>
+        )}
       </div>
 
       <div className="mt-5 flex items-center gap-3">
