@@ -122,7 +122,27 @@ export default function AsetTetapPage() {
       <div className="flex justify-end gap-1.5">
         {user?.role === "pemilik" && r.status !== "nonaktif" && (
           <>
-            <button type="button" onClick={() => { setEditing(r); setOpenCreate(true); }} className="btn-secondary rounded-lg px-2.5 py-1.5 text-xs"><Edit3 className="size-3.5" aria-hidden /> Edit</button>
+            <button type="button" onClick={() => {
+              const t = r.kategori === "Tanah";
+              setEditing(r);
+              setForm({
+                kode: r.kode,
+                nama: r.nama,
+                kategori: r.kategori,
+                nilaiPerolehan: r.nilaiPerolehan,
+                nilaiResidu: t ? 0 : r.nilaiResidu,
+                umurEkonomis: t ? 12 : r.umurEkonomis,
+                metodePenyusutan: t ? "garis-lurus" : r.metodePenyusutan,
+                tanggalPerolehan: r.tanggalPerolehan,
+                lokasi: r.lokasi,
+                status: r.status,
+                akunAset: r.akunAset,
+                akunPenyusutan: t ? "" : r.akunPenyusutan,
+                akunBebanPenyusutan: t ? "" : r.akunBebanPenyusutan,
+                catatan: r.catatan,
+              });
+              setOpenCreate(true);
+            }} className="btn-secondary rounded-lg px-2.5 py-1.5 text-xs"><Edit3 className="size-3.5" aria-hidden /> Edit</button>
             <button
               type="button"
               aria-label={live ? "Nonaktifkan aset" : "Hapus aset"}
@@ -146,6 +166,7 @@ export default function AsetTetapPage() {
   // Engine tidak menyimpan lokasi aset; kolom ini hanya bermakna di mode mock.
   const kolom = live ? columns.filter((c) => c.key !== "lokasi") : columns;
   const kategoriTerpilih = KATEGORI_ASET.find((k) => k.nilai === form.kategori);
+  const tanah = form.kategori === "Tanah";
   const opsiKategori: KategoriAset[] = kategoriTerpilih
     ? KATEGORI_ASET
     : [...KATEGORI_ASET, { nilai: form.kategori, label: form.kategori, golongan: "Kategori dari data lama", umurBulan: form.umurEkonomis }];
@@ -317,7 +338,16 @@ export default function AsetTetapPage() {
                     value={form.kategori}
                     onChange={(e) => {
                       const pilihan = KATEGORI_ASET.find((k) => k.nilai === e.target.value);
-                      setForm({ ...form, kategori: e.target.value, umurEkonomis: pilihan?.umurBulan ?? form.umurEkonomis });
+                      const adalahTanah = e.target.value === "Tanah";
+                      setForm({
+                        ...form,
+                        kategori: e.target.value,
+                        nilaiResidu: adalahTanah ? 0 : form.nilaiResidu,
+                        umurEkonomis: adalahTanah ? 12 : pilihan?.umurBulan ?? form.umurEkonomis,
+                        metodePenyusutan: adalahTanah ? "garis-lurus" : form.metodePenyusutan,
+                        akunPenyusutan: adalahTanah ? "" : form.akunPenyusutan || "1511",
+                        akunBebanPenyusutan: adalahTanah ? "" : form.akunBebanPenyusutan || "6911",
+                      });
                     }}
                   >
                     {opsiKategori.map((k) => (
@@ -327,22 +357,27 @@ export default function AsetTetapPage() {
                   <p className="mt-1 text-xs text-muted">
                     Golongan {kategoriTerpilih?.golongan ?? "dari data lama"} · umur bawaan {kategoriTerpilih?.umurBulan ?? form.umurEkonomis} bulan, masih bisa diubah.
                   </p>
-                  {(form.kategori === "Tanah" || form.kategori === "Aset Dalam Pembangunan") && (
+                  {tanah && (
                     <p className="mt-1 text-xs text-amber-600">
-                      Secara pajak tidak disusutkan, tetapi engine tetap memerlukan umur ekonomis lebih dari 0 bulan.
+                      Tanah tidak disusutkan — nilai residu, umur, metode, dan akun penyusutan dikunci ke nilai default. Engine tetap menyimpan umur 12 bulan sebagai syarat teknis.
+                    </p>
+                  )}
+                  {form.kategori === "Aset Dalam Pembangunan" && (
+                    <p className="mt-1 text-xs text-amber-600">
+                      Belum disusutkan sampai aset siap pakai; ubah kategori saat mulai digunakan.
                     </p>
                   )}
                 </FormField>
                 {!live && <FormField label="Lokasi"><input className="input" value={form.lokasi} onChange={(e) => setForm({ ...form, lokasi: e.target.value })} /></FormField>}
                 <FormField label="Nilai Perolehan (Rp)"><input type="number" min={0} className="input text-right tabular-nums" value={form.nilaiPerolehan || ""} onChange={(e) => setForm({ ...form, nilaiPerolehan: Number(e.target.value) })} required disabled={live && !!editing} /></FormField>
-                <FormField label="Nilai Residu (Rp)"><input type="number" min={0} className="input text-right tabular-nums" value={form.nilaiResidu || ""} onChange={(e) => setForm({ ...form, nilaiResidu: Number(e.target.value) })} /></FormField>
-                <FormField label="Umur Ekonomis (bulan)"><input type="number" min={1} className="input text-right tabular-nums" value={form.umurEkonomis || ""} onChange={(e) => setForm({ ...form, umurEkonomis: Number(e.target.value) })} required /></FormField>
-                <FormField label="Metode Penyusutan"><select className="input" value={form.metodePenyusutan} onChange={(e) => setForm({ ...form, metodePenyusutan: e.target.value as AsetTetapInput["metodePenyusutan"] })}><option value="garis-lurus">Garis Lurus</option><option value="menurun-ganda">Menurun Ganda (DDB)</option><option value="jumlah-tahun">Jumlah Tahun (SYD)</option></select></FormField>
+                <FormField label="Nilai Residu (Rp)"><input type="number" min={0} className="input text-right tabular-nums" value={form.nilaiResidu || ""} onChange={(e) => setForm({ ...form, nilaiResidu: Number(e.target.value) })} disabled={tanah} /></FormField>
+                <FormField label="Umur Ekonomis (bulan)"><input type="number" min={1} className="input text-right tabular-nums" value={form.umurEkonomis || ""} onChange={(e) => setForm({ ...form, umurEkonomis: Number(e.target.value) })} required disabled={tanah} /></FormField>
+                <FormField label="Metode Penyusutan"><select className="input" value={form.metodePenyusutan} onChange={(e) => setForm({ ...form, metodePenyusutan: e.target.value as AsetTetapInput["metodePenyusutan"] })} disabled={tanah}><option value="garis-lurus">Garis Lurus</option><option value="menurun-ganda">Menurun Ganda (DDB)</option><option value="jumlah-tahun">Jumlah Tahun (SYD)</option></select></FormField>
                 <FormField label="Tanggal Perolehan"><input type="date" className="input" value={form.tanggalPerolehan} onChange={(e) => setForm({ ...form, tanggalPerolehan: e.target.value })} required disabled={live && !!editing} /></FormField>
                 {!live && <FormField label="Status"><select className="input" value={form.status} onChange={(e) => setForm({ ...form, status: e.target.value as AsetTetapInput["status"] })}><option value="aktif">Aktif</option><option value="dijual">Dijual</option><option value="dihapuskan">Dihapuskan</option><option value="dipindahkan">Dipindahkan</option></select></FormField>}
                 {!live && <FormField label="Akun Aset"><input className="input" value={form.akunAset} onChange={(e) => setForm({ ...form, akunAset: e.target.value })} /></FormField>}
-                {!live && <FormField label="Akun Akum. Penyusutan"><input className="input" value={form.akunPenyusutan} onChange={(e) => setForm({ ...form, akunPenyusutan: e.target.value })} /></FormField>}
-                {!live && <FormField label="Akun Beban Penyusutan"><input className="input" value={form.akunBebanPenyusutan} onChange={(e) => setForm({ ...form, akunBebanPenyusutan: e.target.value })} /></FormField>}
+                {!live && <FormField label="Akun Akum. Penyusutan"><input className="input" value={form.akunPenyusutan} onChange={(e) => setForm({ ...form, akunPenyusutan: e.target.value })} disabled={tanah} /></FormField>}
+                {!live && <FormField label="Akun Beban Penyusutan"><input className="input" value={form.akunBebanPenyusutan} onChange={(e) => setForm({ ...form, akunBebanPenyusutan: e.target.value })} disabled={tanah} /></FormField>}
               </div>
               {!live && <FormField label="Catatan"><input className="input" value={form.catatan} onChange={(e) => setForm({ ...form, catatan: e.target.value })} /></FormField>}
               {error && <p className="rounded-xl bg-rose-50 px-3 py-2 text-xs text-rose-700">{error}</p>}
