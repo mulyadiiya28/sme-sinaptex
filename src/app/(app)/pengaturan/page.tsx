@@ -24,6 +24,7 @@ import { FormField } from "@/components/form-field";
 import { PrinterSettings } from "@/components/pengaturan/printer-settings";
 import { GatewaySettings } from "@/components/pengaturan/gateway-settings";
 import { EmailSettings } from "@/components/pengaturan/email-settings";
+import { NotifikasiSettings } from "@/components/pengaturan/notifikasi-settings";
 import { LisensiSettings } from "@/components/pengaturan/lisensi-settings";
 import { MoneyDisplay } from "@/components/money-display";
 import { PageHeader } from "@/components/page-header";
@@ -38,7 +39,7 @@ import { useAuth } from "@/lib/store/auth";
 import { useToko } from "@/lib/store/toko";
 import { cn } from "@/lib/utils";
 
-type Tab = "profil" | "migrasi" | "operasional" | "printer" | "gateway" | "email" | "akuntansi" | "keamanan" | "backup" | "cabang" | "lisensi";
+type Tab = "profil" | "migrasi" | "operasional" | "printer" | "gateway" | "email" | "notifikasi" | "akuntansi" | "keamanan" | "backup" | "cabang" | "lisensi";
 
 const TABS: Array<{ id: Tab; label: string }> = [
   { id: "profil", label: "Profil Toko" },
@@ -47,6 +48,7 @@ const TABS: Array<{ id: Tab; label: string }> = [
   { id: "printer", label: "Printer" },
   { id: "gateway", label: "Gateway" },
   { id: "email", label: "Email" },
+  { id: "notifikasi", label: "Notifikasi" },
   { id: "akuntansi", label: "Akuntansi" },
   { id: "keamanan", label: "Keamanan" },
   { id: "backup", label: "Backup Database" },
@@ -85,6 +87,7 @@ export default function PengaturanPage() {
       {tab === "printer" && <PrinterSettings />}
       {tab === "gateway" && <GatewaySettings />}
       {tab === "email" && <EmailSettings />}
+      {tab === "notifikasi" && <NotifikasiSettings />}
       {tab === "akuntansi" && (
         <>
           <DaftarAkunInfo />
