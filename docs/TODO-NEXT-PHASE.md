@@ -188,7 +188,7 @@ semantik engine).
 - [x] Filter transaksi multi-kriteria (keyword, rentang tanggal, status, metode pembayaran)
 - [x] Export filtered data (ekspor CSV mengikuti filter aktif)
 - [x] Quick filter (hari ini, 7 hari terakhir, bulan ini, belum lunas)
-- [ ] Saved filter preset (disimpan user's sendiri — belum ada)
+- [x] Saved filter preset — disimpan lokal per perangkat (`pos-sinaptex-filter-preset`); tombol "Simpan preset" + chip terapkan/hapus di tab Transaksi
 
 **Expected:**
 - Search lebih powerful

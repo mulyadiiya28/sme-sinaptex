@@ -14,6 +14,7 @@ import { useCariAwal } from "@/hooks/use-cari-awal";
 import { api, API_MODE } from "@/lib/api/client";
 import { useAuth } from "@/lib/store/auth";
 import { useToko } from "@/lib/store/toko";
+import { useFilterPreset, type FilterPreset } from "@/lib/store/filter-preset";
 import { tanggalLokal } from "@/lib/format";
 import { cetakStruk } from "@/lib/struk";
 import { cn } from "@/lib/utils";
@@ -48,6 +49,10 @@ export default function RiwayatPage() {
   const [targetVoid, setTargetVoid] = useState<TransaksiRiwayat | null>(null);
   const [targetRetur, setTargetRetur] = useState<TransaksiRiwayat | null>(null);
   const [targetKonfirmasi, setTargetKonfirmasi] = useState<TransaksiRiwayat | null>(null);
+
+  const filterPreset = useFilterPreset();
+  const [simpanBuka, setSimpanBuka] = useState(false);
+  const [namaPreset, setNamaPreset] = useState("");
 
   const filtered = useMemo(() => {
     const q = keyword.trim().toLowerCase();
@@ -102,6 +107,29 @@ export default function RiwayatPage() {
     setStatusFilter("semua");
     setMetodeFilter("semua");
     setKeyword("");
+  }
+
+  function simpanPreset() {
+    const nama = namaPreset.trim();
+    if (!nama) return;
+    filterPreset.simpan({
+      nama,
+      keyword: keyword.trim(),
+      dari,
+      sampai,
+      statusFilter,
+      metodeFilter,
+    });
+    setNamaPreset("");
+    setSimpanBuka(false);
+  }
+
+  function terapkanPresetTersimpan(p: FilterPreset) {
+    setKeyword(p.keyword);
+    setDari(p.dari);
+    setSampai(p.sampai);
+    setStatusFilter(p.statusFilter);
+    setMetodeFilter(p.metodeFilter);
   }
 
   function eksporCsv() {
@@ -291,6 +319,65 @@ export default function RiwayatPage() {
           >
             Reset filter
           </button>
+          <button
+            type="button"
+            onClick={() => setSimpanBuka((v) => !v)}
+            className="rounded-full border border-line bg-white px-3 py-1 text-xs font-semibold text-muted transition-colors hover:border-brand hover:text-brand"
+          >
+            {simpanBuka ? "Tutup" : "Simpan preset"}
+          </button>
+          {simpanBuka && (
+            <div className="flex items-center gap-1.5">
+              <input
+                type="text"
+                value={namaPreset}
+                onChange={(e) => setNamaPreset(e.target.value)}
+                placeholder="Nama preset"
+                className="input h-7 w-32 text-xs"
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    simpanPreset();
+                  }
+                }}
+              />
+              <button
+                type="button"
+                onClick={simpanPreset}
+                disabled={!namaPreset.trim()}
+                className="rounded-full border border-brand bg-brand px-3 py-1 text-xs font-semibold text-white disabled:opacity-40"
+              >
+                Simpan
+              </button>
+            </div>
+          )}
+          {filterPreset.presets.length > 0 && (
+            <div className="flex flex-wrap items-center gap-1.5">
+              <span className="text-xs font-semibold text-muted">Tersimpan:</span>
+              {filterPreset.presets.map((p) => (
+                <span
+                  key={p.nama}
+                  className="inline-flex items-center gap-1 rounded-full border border-line bg-white px-2.5 py-1 text-xs font-semibold text-muted"
+                >
+                  <button
+                    type="button"
+                    onClick={() => terapkanPresetTersimpan(p)}
+                    className="hover:text-brand"
+                  >
+                    {p.nama}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => filterPreset.hapus(p.nama)}
+                    aria-label={`Hapus preset ${p.nama}`}
+                    className="text-muted/60 hover:text-rose-600"
+                  >
+                    ×
+                  </button>
+                </span>
+              ))}
+            </div>
+          )}
           <span className="ml-auto text-xs text-muted">
             Menampilkan {filtered.length} dari {(riwayat.data ?? []).length} transaksi
           </span>
