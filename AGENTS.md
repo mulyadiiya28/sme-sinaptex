@@ -7,7 +7,12 @@ Tauri 2 desktop app (`POS-Sinaptex.exe`). Backend is an external C# engine ("Acc
 ASP.NET Core, .NET 10) served over REST + JWT.
 
 - Two data modes: `mock` (in-memory engine, default) and `live` (HTTP ke engine C#).
-- Live mode is **partially wired** — see "Mode Live" below for the exact connected/not-connected split.
+- Live mode mengikuti endpoint yang sudah ada di engine — lihat "Mode Live" untuk daftar terhubung,
+  alur yang ditolak mock, dan perilaku yang menyimpang.
+- Modul: Kasir (voucher/poin/pembayaran campuran), Riwayat, Shift, Produk, Persediaan
+  (ringkasan/stok/mutasi/opname/gudang), Pembelian + PPh, Pemasok, Voucher, Member & Poin, Keuangan
+  (kas/biaya/piutang/hutang/uang muka), Akuntansi (neraca saldo, jurnal, buku besar, laba-rugi, neraca
+  berjalan, periode fiskal), Laporan, PPh, Aset Tetap, Persetujuan, Aturan Approval, Cabang, Pengaturan.
 - Static export: `output: "export"` → `out/` (consumed by Tauri `frontendDist`).
 - PWA via `@serwist/next` (service worker disabled in dev; `src/app/manifest.ts`).
 - Offline LAN topology (Mode A): POS.exe → `http://<server-toko>:PORT/api`.
@@ -53,24 +58,31 @@ src/
   app/
     layout.tsx           → root layout (Providers, metadata, theme color)
     manifest.ts          → PWA manifest
-    login/page.tsx       → login (no shell; auto-buka shift untuk role kasir)
+    login/page.tsx       → login (no shell)
     kasir/page.tsx       → full-screen POS, intentionally outside (app) group
-    (app)/               → AppShell group + AuthGuard: dashboard (/), produk, riwayat, shift,
-                           pembelian, supplier, keuangan, piutang (reminder), akuntansi, laporan,
-                           approval-rules, pengaturan
-  components/            → shared UI (app-shell, sidebar, data-table, money-display,
-                           status-badge, form-field, page-header, auth-guard) + kasir/ + produk/ +
-                           pengaturan/printer-settings.tsx
+    (app)/               → AppShell group + AuthGuard (lihat NAV_GROUPS): dashboard (/), riwayat,
+                           shift, produk, persediaan, aset-tetap, pembelian, supplier, voucher,
+                           member, keuangan (kas/biaya/piutang/hutang/uang muka), piutang (reminder),
+                           akuntansi, laporan, pph, persetujuan, approval-rules, cabang, pengaturan
+  components/            → shared UI (app-shell, app-topbar, sidebar, global-search, notif-button,
+                           data-table, money-display, status-badge, form-field, page-header, kpi-card,
+                           panel-kesehatan, skeleton, auth-guard) + kasir/ + produk/ + dashboard/
+                           (chart tren/komposisi/produk) + pengaturan/ (printer, gateway, email,
+                           notifikasi, lisensi) + activation/ + legal/
   hooks/queries.ts       → ALL TanStack Query hooks (queries + mutation groups)
   lib/
     api/types.ts         → domain types (single source of truth / C# contract)
     api/client.ts        → `api` facade, API_MODE mock|live switch
     api/live.ts          → live client: fetch ke engine C# + pemetaan DTO→domain
     api/mock/db.ts       → in-memory mock engine (double-entry journal, GL, P&L)
+    uang.ts              → pembulatan per baris + `totalParity` (total checkout = engine)
+    dashboard.ts         → agregasi tren/komposisi pembayaran dashboard
     reminder.ts          → helper reminder piutang (tahap H-1/H+3/H+7, template, tautan WA)
+    notifikasi/telegram.ts → kirim pesan Bot API Telegram langsung dari POS (tanpa engine)
     gateway/client.ts    → client payment gateway (Midtrans/Xendit/REST umum): buat tagihan + status
-    store/               → zustand: auth.ts (persist), cart.ts, toko.ts (persist),
-                           printer.ts (persist), reminder.ts (persist), gateway.ts (persist)
+    license.ts, license-device.ts → format/validasi key + sidik perangkat
+    store/               → zustand: auth, cart, toko, printer, reminder, gateway, aktivasi,
+                           cabang (cabang aktif + daftar), notifikasi (Telegram/WA)
     printer/             → escpos.ts (builder struk/kuitansi) + printer.ts (invoke Tauri)
     csv.ts, format.ts, nav.ts, struk.ts, utils.ts
   sw.ts                  → Serwist service worker
@@ -130,6 +142,13 @@ dan persetujuan transaksi
 (`GET /api/transactions?status=SUBMITTED`, `POST /api/transactions/{id}/approve`,
 `POST /api/cash-batches/{batchId}/post`).
 
+Voucher & loyalitas: `/api/vouchers` (list/create/update/deactivate + `POST /api/vouchers/validate`),
+member (`/api/members`, `/{id}`, `/{id}/deactivate`, `/{id}/points`, `/{kode}/points/adjust`), tier
+(`/api/member-tiers`, `/{id}`, `/{id}/deactivate`), kebijakan poin (`GET/PUT /api/loyalty/policy`),
+harga loyalty (`POST /api/loyalty/price`). Email SMTP (`GET/PUT /api/settings/email`), uang muka/refund
+(`POST /api/payments/advances`, `POST /api/payments/refunds`), dan aksi periode fiskal
+(`/api/fiscal-periods/*`: create, close, close-year, lock, reopen, reverse-closing, pending-close).
+
 Tidak ada lagi jalur 501 untuk alur yang sudah terhubung: `engineBelumAda` sudah dihapus. Bila akun kas
 untuk kode akun yang dipakai checkout/pelunasan/biaya belum ada, POS membuatnya lewat
 `POST /api/cash-accounts`.
@@ -143,11 +162,14 @@ aktif dan menyimpan lokasi tujuan), dan laporan register per periode
 ini tidak pernah menjurnal perolehan aset; POS menampilkan status hasil mutasi sebagai `nonaktif`.
 Field POS yang tidak disimpan engine (lokasi, akun per aset, catatan) disembunyikan di mode live,
 "hapus" berarti menonaktifkan, dan status nonaktif dipetakan ke `nonaktif`.
-Sebagian **Persediaan** (menu `Persediaan`, rute `/persediaan`) juga belum punya endpoint; yang sudah jalan di live adalah master gudang, stok
-per gudang, penyesuaian stok, transfer stok antar gudang (`POST /api/inventory/transfers`), kartu stok
-(`GET /api/inventory/movements`), opname stok (`/api/inventory/opnames`), dan ringkasan/nilai
-persediaan (`GET /api/inventory/stock-valuation?warehouseId=` — nilai dari harga rata-rata/HPP; tampilan
-"Semua Gudang" menjumlahkan valuasi tiap gudang karena endpoint hanya menerima satu gudang).
+**Persediaan** (menu `Persediaan`, rute `/persediaan`) sudah tersambung untuk kelima tabnya: ringkasan
+dan nilai persediaan (`GET /api/inventory/stock-valuation?warehouseId=` — nilai dari harga rata-rata/HPP;
+tampilan "Semua Gudang" menjumlahkan valuasi tiap gudang karena endpoint hanya menerima satu gudang),
+stok per gudang (`GET /api/inventory/stock?warehouseId=`), kartu stok
+(`GET /api/inventory/movements?productId=&warehouseId=`), opname stok
+(`/api/inventory/opnames`), dan master gudang (`GET/POST /api/warehouses`,
+`POST /api/warehouses/{id}/deactivate`). Penyesuaian stok (`POST /api/inventory/adjustments`) dan
+transfer stok antar gudang (`POST /api/inventory/transfers`) juga terhubung.
 
 Perilaku live yang menyimpang dari mock:
 
@@ -156,9 +178,9 @@ Perilaku live yang menyimpang dari mock:
   settlement (N debit + 1 kredit piutang), satu alokasi total. **Kembalian dihitung POS**, bukan engine:
   POS mengirim bagian yang benar-benar diterima (tunai di-clamp ke sisa, kelebihannya jadi `kembalian`),
   jadi uang kembalian tidak pernah masuk laci. Transfer/QRIS tetap tidak boleh melebihi sisa.
-  Pembayaran 0 (kredit penuh tanpa uang muka) **diizinkan** sejak engine commit `c6160ce`: dokumen
+  Pembayaran 0 (kredit penuh tanpa DP) **diizinkan** sejak engine commit `c6160ce`: dokumen
   ditulis tanpa cash movement/settlement/allocation, piutang tetap terbuka.
-- **Pembulatan uang selaras engine**: POS menghitung total dengan pembulatan per-baris (qty 4dp, harga 2dp, gross 2dp, diskon 2dp) dan sebaran diskon transaksi yang sama persis seperti engine, sehingga total di layar kasir **sama persis** dengan `documentTotal` engine — tidak ada lagi selisih sub-rupiah yang menyebabkan "pembayaran kurang" palsu.
+- **Pembulatan uang selaras engine**: POS menghitung total dengan pembulatan per-baris (qty 4dp, harga 2dp, gross 2dp, diskon 2dp) dan sebaran diskon transaksi yang sama persis seperti engine, sehingga total di layar kasir **sama persis** dengan `documentTotal` engine — tidak ada lagi selisih sub-rupiah yang menyebabkan "pembayaran kurang" palsu. Helper-nya `src/lib/uang.ts` (`hitungBarisHarga`, `sebarDiskonTransaksi`, `totalParity`): urutan potongan = base baris → diskon transaksi → voucher → loyalty → pajak.
 - `livePembelianBuat` mendukung `metode: "hutang"` (pembelian 100% hutang) sejak engine commit
   `c6160ce`: dokumen ditulis tanpa cash account, hutang tetap terbuka. Pembelian DP sebagian juga didukung.
   Faktur **tunai/bank** boleh tanpa pemasok (`supplierId` null) untuk pembelian pasar; faktur **hutang**
@@ -172,6 +194,23 @@ Perilaku live yang menyimpang dari mock:
   `total − PPh` karena engine memvalidasi pembayaran terhadap net payable. Halaman `/pph` memakai
   `api.pph.laporan(dari, sampai)` → `GET /api/reports/pph?fromDate=&toDate=` dengan filter bulan;
   mode mock menghitung rekap yang sama dari `mockDb.laporanPph`.
+- **Voucher & poin**: checkout mengirim `voucherCode`, `memberCode`, `redeemPoints`; engine yang menghitung
+  diskon voucher dan harga loyalty — `POST /api/vouchers/validate` dan `POST /api/loyalty/price` dipakai POS
+  hanya untuk pratinjau, jadi angka yang dibukukan tetap milik engine. Diskon voucher/loyalty dipotong dari
+  nilai invoice (tidak disebar ke baris). Memilih voucher mereset member (`cart.clearMember`), jadi poin
+  divalidasi ulang terhadap dasar setelah voucher.
+- **Uang muka**: tab **Uang Muka** di `/keuangan` memanggil `POST /api/payments/advances` /
+  `POST /api/payments/refunds` dengan `direction` `CUSTOMER`/`SUPPLIER`, akun `2400` (uang muka pelanggan)
+  dan `1350` (uang muka pemasok) — dapat diganti lewat
+  `NEXT_PUBLIC_ENGINE_UANG_MUKA_PELANGGAN|PEMASOK`. Mode mock menolak alur ini dengan pesan eksplisit
+  (jurnal kas + akun uang muka milik engine). `butuhPersetujuan` menandai dokumen yang tertahan approval.
+- **Email** SMTP disimpan di engine (`GET/PUT /api/settings/email`, tab **Email**); mode mock hanya
+  mengembalikan nilai kosong dan tidak menghubungi server.
+- **Notifikasi Telegram/WA** tidak lewat engine: konfigurasi per perangkat di store `useNotifikasi`
+  (`pos-sinaptex-notifikasi`), pengiriman langsung dari POS ke Bot API Telegram
+  (`src/lib/notifikasi/telegram.ts`). Auto-kirim setelah checkout hanya untuk provider Telegram dan
+  fire-and-forget (kegagalan tidak membatalkan transaksi). Provider WA baru menyimpan nomor — belum ada
+  API pengiriman.
 - Master pemasok sengaja hanya list/create/nonaktifkan (engine tidak menyediakan update kode/nama) —
   menjaga integritas nama pemasok pada faktur lama. `liveSupplierList` memakai
   `?includeInactive=true` supaya pemasok nonaktif tetap muncul di master dan namanya masih bisa
@@ -209,14 +248,16 @@ Perilaku live yang menyimpang dari mock:
 - Shift menyimpan **user pembuka** (`cashierUserId`) selain namanya. POS memakai `shift.cashierUserId`
   untuk menandai "shift dibuka oleh X" saat kasir yang login berbeda; operator yang melayani tetap
   user yang sedang login (nama itu masuk ke `requestedBy` batch → `requestedByName` di engine).
-- Profil toko disinkronkan ke `GET/PUT /api/settings/company-profile` (`api.pengaturan`); store
-  `useToko` hanya cache untuk struk. Di mode mock, `api.pengaturan` membaca/tulis store lokal.
+- Profil toko disinkronkan ke `GET/PUT /api/settings/company-profile` (`api.toko.profil`); store
+  `useToko` hanya cache untuk struk. `api.pengaturan` (nama lama) masih dipakai untuk profil ringkas +
+  unggah logo + email, dan `api.toko.kebijakan` untuk kebijakan operasional. Di mode mock, keduanya
+  membaca/tulis store lokal.
 - Logo toko diunggah ke engine (`POST /api/settings/company-profile/logo`, multipart) — berkasnya
   disimpan server yang mencetak faktur PDF, bukan di browser POS. URL logo dari engine relatif
   (`/uploads/logos/...`) → `urlLogoAbsolut()` di `live.ts` yang menempelkan host engine. Mode mock
   menolak unggah logo dengan pesan jelas (tidak ada penyimpanan berkas di browser).
 - Dashboard menampilkan "Kesehatan usaha" dari `GET /api/analytics/health-summary?date=`
-  (`api.analitik.ringkasanKesehatan`, query key `["kesehatan-usaha"]`). Angka Rasio Lancar, Rasio
+  (`api.analytics.healthSummary`, query key `["kesehatan-usaha"]`). Angka Rasio Lancar, Rasio
   Kas, dan Modal Kerja di live datang dari engine (jurnal yang sama dengan neraca saldo); mode mock
   menghitungnya sendiri dari akun mock (hanya 3 indikator yang bisa dihitung jujur).
 - Dashboard analytics (P2.1): tren penjualan harian (SVG, filter 7/30/90 hari), komposisi metode
@@ -259,6 +300,12 @@ Perilaku live yang menyimpang dari mock:
   gateway yang belum dikonfirmasi dilaporkan berstatus `MENUNGGU_KONFIRMASI` supaya tombol Konfirmasi
   tetap tampil. Pembayaran campuran QRIS + transfer boleh berbagi batch: tiap metode jadi kaki sendiri,
   dan konfirmasi QRIS hanya memindahkan kaki gateway-nya.
+- **Cabang aktif** (`src/lib/store/cabang.ts`, persist `pos-sinaptex-cabang`): memilih cabang di topbar
+  membuat `minta()` menempelkan `X-Branch-Id` ke setiap request live; `null` = Pusat (tenant utuh).
+  Gudang baru otomatis terikat ke cabang aktif.
+- **Rasio analitik** (`/api/analytics/*`) dipakai halaman Laporan tab Analisis: profitabilitas,
+  perputaran persediaan/AR/AP, modal kerja + perputarannya, rasio lancar/kas, solvabilitas, siklus
+  konversi kas, dan ranking performa produk untuk dashboard.
 
 ## Printer ESC/POS
 
@@ -283,9 +330,11 @@ Perilaku live yang menyimpang dari mock:
   dua grup pertama, jadi key acak ditolak. Jenis lisensi dari karakter pertama.
   2 karakter terakhir grup kedua bisa menyandi bulan kedaluwarsa sejak Jan 2026 (base32);
   nilai 0 atau penuh = tanpa batas.
-- Key dicatat lokal per perangkat (`pos-sinaptex-key-terpakai`) dan dicocokkan ke `machine_id`.
-  **Bukan** penegakan server: engine belum punya endpoint lisensi, jadi key yang sama tetap bisa
-  dipakai di PC lain yang belum pernah menyimpan catatan itu. Jangan anggap ini anti-pembajakan.
+- Key dicatat lokal per perangkat (`pos-sinaptex-key-terpakai`) dan dicocokkan ke `machine_id`
+  (key yang sudah dipakai perangkat lain ditolak). Mode live juga memanggil engine
+  `POST /api/licenses/activate` dan status `GET /api/licenses/status?machineId=`; mode mock hanya
+  memvalidasi format + checksum secara lokal. Penjagaan ini tetap bisa dilewati dengan menghapus
+  localStorage, jadi jangan anggap anti-pembajakan.
 - Instalasi yang sudah punya sesi `pos-sinaptex-auth` ditandai `instalasi-lama` dan tidak dikunci.
   Mode mock boleh melewati key ("mode demo"); mode live mewajibkan key pada perangkat baru.
 - Tab **Lisensi** di Pengaturan hanya menampilkan status (jenis, key tersamar, kedaluwarsa, sidik).
@@ -355,17 +404,29 @@ Perilaku live yang menyimpang dari mock:
   `reminder` = `pos-sinaptex-reminder` (template + riwayat reminder piutang);
   `gateway` = `pos-sinaptex-gateway` (konfigurasi payment gateway per perangkat);
   `aktivasi` = `pos-sinaptex-aktivasi` (syarat disetujui, key lisensi, atau pengecualian demo/instalasi lama);
+  `cabang` = `pos-sinaptex-cabang` (cabang aktif + daftar);
+  `notifikasi` = `pos-sinaptex-notifikasi` (Telegram/WA per perangkat);
   `cart` tidak pernah dipersist).
-  Total keranjang memakai helper di `src/lib/store/cart.ts` (`subtotalLines`, `pajakNominal`,
-  `totalTransaksi`); `api/client.ts` menghitung ulang total di sisi "server" (`hitungTotal`).
-- React Query: query key berupa array string pendek (`["products"]`, `["pelanggan"]`, `["shift"]`,
-  `["shift-riwayat"]`, `["transaksi"]`, `["retur"]`, `["pembelian"]`, `["biaya"]`, `["jurnal"]`,
-  `["akun"]`, `["laba-rugi"]`, `["kesehatan-usaha"]`, `["users"]`, `["audit"]`). Default provider:
-  `staleTime: 30_000`, `retry: 1`.
+  Item keranjang membawa `voucher` + `member` (diskon dari validasi engine). Perhitungan uang dipusatkan
+  di `src/lib/uang.ts` (`hitungBarisHarga`, `sebarDiskonTransaksi`, `totalParity`); `cart.ts` masih
+  mengekspor `subtotalLines`/`pajakNominal`/`totalTransaksi` untuk tampilan, dan `api/client.ts`
+  menghitung ulang total di sisi "server" (`hitungTotal` → `totalParity`).
+- React Query: query key berupa array string pendek. Namespace yang dipakai: `["products"]`, `["pelanggan"]`,
+  `["shift"]`, `["shift-riwayat"]`, `["transaksi"]`, `["retur"]`, `["pembelian"]`, `["pph-laporan", …]`,
+  `["biaya"]`, `["jurnal"]`, `["akun", …]`, `["laba-rugi"]`, `["kesehatan-usaha"]`, `["analytics", …]`,
+  `["master", "suppliers"|"vouchers"|"members"|"member-tiers"|"loyalty-policy"|"approval-rules"]`,
+  `["inventaris-ringkasan"]`, `["inventaris-stok", …]`, `["inventaris-mutasi", …]`, `["gudang"]`,
+  `["stock-opname"]`, `["aset-tetap", …]`, `["backup"]`, `["cabang"]`, `["transfer-cabang"]`,
+  `["persetujuan"]`, `["users"]`, `["audit"]`. Default provider: `staleTime: 30_000`, `retry: 1`.
   Mutation dikelompokkan dalam hook yang mengembalikan objek mutation, contoh:
   `useTransaksiMutations() → { batal, retur, konfirmasiDigital }`, `useShiftMutations()`,
   `useProductMutations()`, `useUserMutations()`, `useImporMutations()`, `usePembayaranMutations()`,
-  `useBiayaMutations()`; checkout punya hook sendiri `useCheckout(onSuccess)`.
+  `useBiayaMutations()`, `useMemberMutations()`, `useTierMutations()`, `useAsetTetapMutations()`,
+  `useInventarisMutations()`, `useBackupMutations()`, `useCabangMutations()`,
+  `useTransferCabangMutations()`, `useUangMukaMutations()`, `useRefundMutations()`,
+  `usePersetujuanMutations()`; checkout punya hook sendiri `useCheckout(onSuccess)`.
+  Voucher memakai hook tunggal (`useVoucherList`, `useVoucherCreate`, `useVoucherUpdate`,
+  `useVoucherDeactivate`, `useVoucherValidate`), bukan grup mutation.
   Invalidasi: perubahan GL invalidate `["jurnal"]`, `["akun"]`, `["laba-rugi"]`; aksi transaksi juga
   `["transaksi"]`, `["products"]`, `["shift"]`, `["audit"]`, `["retur"]`.
 - Akses rute: `AuthGuard` (di `(app)/layout.tsx`) redirect ke `/login` tanpa sesi dan menolak role
@@ -395,6 +456,12 @@ Perilaku live yang menyimpang dari mock:
   transaksi). QRIS membuat status `menunggu_pembayaran` sampai owner mengonfirmasi; di live konfirmasi
   memindahkan dana gateway ke bank lewat `POST /api/cash-transfers` (fallback
   `POST /api/sales/{id}/confirm-payment` bila tidak ada kaki gateway).
+- Voucher & poin: diskon voucher divalidasi dengan dasar belanja sebelum voucher; poin dihitung dari
+  dasar **setelah** voucher. Memilih voucher mereset member, jadi urutannya voucher dulu lalu poin.
+  Keduanya hanya memotong nilai invoice, bukan harga baris (riwayat/struk live tidak punya baris voucher).
+- Member: master + tier + kebijakan poin (aktif, poin per ribu, nilai poin, autoTier). Hanya pemilik yang
+  boleh mengubah master/tier/kebijakan (mock menegakkan role); penyesuaian poin dicatat sebagai transaksi
+  poin per member.
 - Void/retur/penyesuaian stok/konfirmasi digital/impor = owner only. Mock menegakkan role di `mockDb`
   (`user.role !== "pemilik"` → error); live memetakan ke otorisasi/approval engine. Transaksi asli tetap
   direferensikan, jurnal pembalik diposting.
@@ -406,8 +473,9 @@ Perilaku live yang menyimpang dari mock:
 - Saldo kas shift = `saldoAwal + kasMasuk − kasKeluar + penjualanTunai`; `penjualanTunai` bertambah dari
   checkout tunai, pelunasan piutang tunai, dan berkurang saat refund retur tunai.
 - Tutup shift mencatat selisih uang fisik vs sistem sebagai peringatan.
-- Mock adalah in-memory: data (produk, transaksi, jurnal, shift) reset saat reload halaman; hanya
-  `auth` + `toko` yang persist di localStorage.
+- Mock adalah in-memory: data (produk, transaksi, jurnal, shift, voucher, member) reset saat reload
+  halaman; yang persist di localStorage hanya store perangkat (`auth`, `toko`, `printer`, `reminder`,
+  `gateway`, `aktivasi`, `cabang`, `notifikasi`).
 
 ## Caveat yang diketahui
 
@@ -426,6 +494,13 @@ Batasan yang masih ada:
   `init`-only). Faktur lama tanpa `supplierId` (sebelum master dipakai) dikelompokkan lewat namanya.
 - Live: satu shift aktif per tenant (bukan per kasir) — POS menandai "shift dibuka oleh X" kalau
   kasir yang login berbeda dengan pembuka shift.
+- Live: diskon voucher/poin hanya memotong total invoice, tidak muncul sebagai baris sendiri di
+  riwayat/struk (riwayat membaca `discountAmount` per baris).
+- Mock: alur yang butuh penyimpanan/jurnal engine ditolak dengan pesan eksplisit — uang muka/refund,
+  unggah logo, dan backup/pulihkan database. Email mock mengembalikan nilai kosong; lisensi mock hanya
+  memvalidasi format key secara lokal.
+- Mock: notifikasi Telegram tetap dikirim langsung dari browser (bisa kena CORS/koneksi internet),
+  karena fitur ini tidak lewat engine di kedua mode.
 - Mock: uang memakai `number` JS, bukan decimal — pembulatan bisa berbeda dari engine.
 
 ## Quick Reference (Ringkasan Cepat)
@@ -449,14 +524,15 @@ python ../tools/bootstrap-backend.py
 
 ### Peta Kode Singkat
 ```
-src/app/           layout, login, kasir (full-screen), (app)/ grup → dashboard, produk, riwayat, shift, pembelian, supplier, keuangan, piutang (reminder), akuntansi, laporan, approval-rules, pengaturan
-src/components/    shared UI + kasir/ + produk/ + pengaturan/printer-settings
+src/app/           layout, login, kasir (full-screen), (app)/ grup → dashboard, riwayat, shift, produk, persediaan, aset-tetap, pembelian, supplier, voucher, member, keuangan, piutang (reminder), akuntansi, laporan, pph, persetujuan, approval-rules, cabang, pengaturan
+src/components/    shared UI + kasir/ + produk/ + dashboard/ + pengaturan/ (printer, gateway, email, notifikasi, lisensi) + activation/ + legal/
 src/hooks/queries.ts   SEMUA TanStack Query hooks
 src/lib/api/       types.ts (kontrak), client.ts (facade + switch), live.ts (HTTP engine), mock/db.ts (engine mock)
-src/lib/store/     auth.ts, toko.ts (persist), cart.ts (no persist), printer.ts (persist), reminder.ts (persist), gateway.ts (persist)
+src/lib/store/     auth, toko, printer, reminder, gateway, aktivasi, cabang, notifikasi (persist), cart (no persist)
 src/lib/printer/   escpos.ts (builder), printer.ts (invoke Tauri)
 src/lib/gateway/   client.ts (buat tagihan + status: Midtrans/Xendit/REST umum)
-src/lib/           csv, format, nav, reminder (tahap reminder piutang), struk, utils (cn)
+src/lib/notifikasi/ telegram.ts (kirim Bot API langsung dari POS)
+src/lib/           csv, dashboard, format, license, license-device, nav, reminder, struk, uang (totalParity), utils (cn)
 src-tauri/         Rust shell minimal + printer.rs (raw print Windows spooler)
 backend/           nested git repo (Accounting Engine .NET 10)
 tools/             bootstrap-backend.py
@@ -480,7 +556,7 @@ scripts/           backend task, client env, backup harian + restore
 - Validasi: Zod hanya `product-form-dialog.tsx`; sisanya hand-roll + pesan ID
 - Dialog: overlay buatan sendiri, ikon `aria-hidden`, tombol ikon wajib `aria-label`
 - React Query key: array string pendek (`["products"]`, `["transaksi"]`, `["shift"]`, …)
-- Zustand: 1 store/concern, persist `auth`, `toko`, `printer`, `reminder`
+- Zustand: 1 store/concern, persist `auth`, `toko`, `printer`, `reminder`, `gateway`, `aktivasi`, `cabang`, `notifikasi`
 
 ### Domain Rules Ringkas
 - Kasir **tidak transaksi sebelum shift buka** (panel pemblokir)
@@ -491,6 +567,8 @@ scripts/           backend task, client env, backup harian + restore
 - Void/retur/penyesuaian/konfirmasi/impor = owner only; jurnal pembalik
 - Saldo dari jurnal; tidak input manual (kecuali impor saldo awal)
 - Retur proporsional (neto + pajak + diskon), refund = yang dibayar pelanggan
+- Voucher dulu, baru poin: pilih voucher mereset member; keduanya memotong nilai invoice (bukan harga baris)
+- Uang muka pelanggan/pemasok hanya di mode live (`/api/payments/advances|refunds`), bukan jurnal mock
 
 ### Gotcha Mode Live
 - Engine pakai **id** dokumen; POS simpan nomor → terjemahkan dulu (`cariPenjualanByNomor`)
@@ -501,6 +579,9 @@ scripts/           backend task, client env, backup harian + restore
 - `piutang` dari aging `side=RECEIVABLE`; `terbayar` pembelian dari `side=PAYABLE` (bukan `payableAmount`)
 - Void 409 (POSTED) → fallback retur penuh
 - Master pemasok: list/create/nonaktifkan saja; list pakai `?includeInactive=true`
+- Voucher/poin: engine menghitung diskon; POS cuma pratinjau (`/api/vouchers/validate`, `/api/loyalty/price`); `voucherCode`/`memberCode`/`redeemPoints` masuk checkout
+- Uang muka & refund: `/api/payments/advances|refunds` (akun `2400`/`1350`, env `NEXT_PUBLIC_ENGINE_UANG_MUKA_*`)
+- Notifikasi Telegram dikirim langsung dari POS (bukan engine); email SMTP disimpan di engine
 - Satu shift aktif per tenant (bukan per kasir)
 - Impor produk live all-or-nothing, `satuan` harus ada master unit, no stok awal
 - Profil toko sync `/api/settings/company-profile`; field POS di localStorage
@@ -511,13 +592,18 @@ scripts/           backend task, client env, backup harian + restore
 - Batch tertahan approval: `/persetujuan` → `GET /api/transactions?status=SUBMITTED` → approve → `POST /api/cash-batches/{batchId}/post`
 
 ### Verifikasi
-- Frontend: `npx tsc --noEmit` bersih + `npm run build` sukses (16 halaman statis)
-- Backend: `dotnet build` 0 warning + `dotnet test` 490 unit + 752 integration lulus
+- Frontend: `npx tsc --noEmit` bersih + `npm run build` sukses (21 halaman + `/_not-found` +
+  `/manifest.webmanifest`, static export ke `out/`)
+- Backend: `dotnet build` bersih + `dotnet test` (unit + integration) di repo `backend/`
 - Mock: alur manual `/kasir` (buka shift → checkout → riwayat → tutup shift)
 
 ## Docs
 
 - `README.md` — setup, fitur, arsitektur singkat, konvensi, domain rules, gotcha live, verifikasi
 - `DESIGN.md` — token design system (`@theme` 42 baris) + tabel "Utility yang TIDAK ada"
+- `docs/README-DOKUMENTASI.md` — indeks dokumentasi (manual owner/kasir, quick start, deployment)
+- `docs/TODO-NEXT-PHASE.md` — status MVP/P1/P2 + rencana fase berikutnya
 - `docs/rencana-desain-ui-ux.md` — arsip historis: blueprint desain, kontrak endpoint usulan vs aktual, log perbaikan
+- `docs/SPEC-SPLASH-ACTIVATION.md`, `docs/SPEC-PRINTER-ESC-POS.md` — spesifikasi splash/aktivasi & printer ESC/POS
+- `docs/DEPLOYMENT-GUIDE.md`, `docs/MANUAL-OWNER.md`, `docs/MANUAL-KASIR.md`, `docs/QUICK-START-*.md` — deploy & panduan pemakaian
 - `backend/README.md`, `backend/AGENTS.md`, `backend/knowledge.md` — spesifikasi & aturan engine (repo terpisah)

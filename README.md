@@ -50,15 +50,21 @@ npm run dev
 
 | Area | Fitur |
 |------|-------|
-| **Kasir** | Katalog produk (cari/barcode/keyboard), keranjang, diskon item & transaksi, pelanggan, pembayaran tunai/transfer/QRIS/campuran, QRIS via gateway (Midtrans/Xendit/REST sendiri, QR + polling status), kembalian, piutang, idempotensi, cetak struk |
+| **Kasir** | Katalog produk (cari/barcode/keyboard), keranjang, diskon item & transaksi, pelanggan, voucher, member & tukar poin, pembayaran tunai/transfer/QRIS/campuran, QRIS via gateway (Midtrans/Xendit/REST sendiri, QR + polling status), kembalian, piutang, idempotensi, cetak struk, notifikasi Telegram otomatis (opsional) |
 | **Shift** | Buka shift (saldo awal dari pengaturan), kas masuk/keluar, tutup shift (selisih fisik vs sistem), riwayat shift |
 | **Produk** | CRUD (Zod validasi), kategori, satuan, harga beli/jual, stok min, impor CSV/XLSX (mock: per baris; live: all-or-nothing), penyesuaian stok (owner) |
-| **Pembelian** | Faktur pembelian (pemasok wajib), item, metode tunai/bank/hutang, stok & hargaBeli ter-update otomatis, jurnal otomatis |
-| **Keuangan** | 4 tab: Kas & Bank (rekonsiliasi), Biaya (catat + tabel), Piutang (pelunasan), Hutang (pelunasan ke pemasok) |
+| **Persediaan** | Ringkasan + nilai persediaan, stok per gudang, kartu stok, opname (buat/selesaikan/batalkan), master gudang, transfer antar gudang |
+| **Pembelian** | Faktur pembelian, item, metode tunai/bank/hutang, PPh 23/42 per faktur, stok & hargaBeli ter-update otomatis, jurnal otomatis, retur pembelian |
+| **Voucher** | Master voucher (persen/nominal, minimum belanja, masa berlaku, batas pemakaian), validasi di kasir |
+| **Member & Poin** | Master member, tier (min poin, diskon, pengali poin), kebijakan poin (poin/ribu, nilai poin, auto tier), riwayat & penyesuaian poin, tukar poin di kasir |
+| **Keuangan** | 5 tab: Kas & Bank (rekonsiliasi + transfer), Biaya (catat + tabel), Piutang (pelunasan), Hutang (pelunasan ke pemasok), Uang Muka (advance/refund pelanggan & pemasok) |
 | **Reminder Piutang** | Faktur jatuh tempo/terlambat dari aging AR, tahap H-1/H+3/H+7, template pesan (4 tahap, bisa diedit), kirim via WhatsApp (`wa.me`), salin pesan, tandai sudah reminding, riwayat reminder (lokal), peringatan di dashboard |
-| **Akuntansi** | Neraca saldo (Saldo awal \| Debit \| Kredit \| Saldo berjalan), Jurnal otomatis expandable, Buku besar, Laba-rugi |
-| **Laporan** | Omzet & rata-rata, penjualan per hari, nilai persediaan, laba rugi, neraca saldo, jurnal, beban, umur piutang & hutang (aging), analisis keuangan (12 endpoint engine), gerakan harian, ekspor CSV |
-| **Pengaturan** | Profil toko (sync ke engine), logo (unggah ke engine), kebijakan operasional, periode fiscal, aturan approval, master pemasok, pengguna & audit log, printer thermal ESC/POS (pilih printer, 58/80 mm, salinan, auto-print, cut, laci, halaman tes), payment gateway (provider/base URL/API key/merchant/mode, polling, kode akun kas penampung — semua configurable, tanpa hardcode) |
+| **Akuntansi** | Neraca saldo (Saldo awal \| Debit \| Kredit \| Saldo berjalan), Jurnal otomatis expandable, Buku besar, Laba-rugi (multi-periode), Neraca berjalan (3 kolom tanggal), periode fiskal (tutup/lock/reopen/reverse) |
+| **Laporan & PPh** | Omzet & rata-rata, penjualan per hari, nilai persediaan, laba rugi, neraca saldo, jurnal, beban, aging piutang & hutang, analisis keuangan (12 endpoint engine), gerakan harian, rekap PPh per jenis, ekspor CSV |
+| **Aset Tetap** | Register aset, penyusutan per periode + posting bulanan, mutasi (jual/disposal/transfer), laporan register |
+| **Persetujuan** | Antrean batch tertahan aturan approval (`SUBMITTED`), approve per kaki, post batch; aturan approval (nominal/tipe/role) |
+| **Cabang** | Master cabang, cabang aktif di topbar (`X-Branch-Id`), transfer antar cabang + jurnal Piutang/Utang Antar Cabang |
+| **Pengaturan** | Profil toko (sync engine + logo), impor & migrasi, kebijakan operasional, printer ESC/POS, payment gateway, email SMTP, notifikasi Telegram/WA, akuntansi, keamanan, backup database, cabang, lisensi |
 | **Auth & Akses** | Login (demo: `pemilik`/`pemilik123`, `kasir`/`kasir123`), role `pemilik` (full) & `kasir` (Kasir/Riwayat/Shift), sidebar & route guard per role, JWT access token (memory) + refresh token |
 
 ---
@@ -81,18 +87,23 @@ src/
     layout.tsx            # root layout + providers
     login/page.tsx        # login tanpa shell
     kasir/page.tsx        # POS full-screen (di luar grup (app))
-    (app)/                # AppShell + AuthGuard: dashboard, produk, riwayat, shift, pembelian, supplier, keuangan, akuntansi, laporan, approval-rules, pengaturan
-  components/             # shared UI + kasir/ + produk/
+    (app)/                # AppShell + AuthGuard: dashboard, riwayat, shift, produk, persediaan,
+                          # aset-tetap, pembelian, supplier, voucher, member, keuangan, piutang,
+                          # akuntansi, laporan, pph, persetujuan, approval-rules, cabang, pengaturan
+  components/             # shared UI + kasir/ + produk/ + dashboard/ + pengaturan/ + activation/ + legal/
   hooks/queries.ts        # SEMUA TanStack Query hooks
   lib/
     api/types.ts          # domain types (kontrak C#)
     api/client.ts         # facade api.*, switch mock|live
     api/live.ts           # HTTP ke engine + mapping DTO
     api/mock/db.ts        # in-memory mock engine
-    store/                # zustand: auth, toko, cart
-    csv.ts, format.ts, nav.ts, struk.ts, utils.ts
+    uang.ts               # pembulatan + totalParity (total checkout = engine)
+    store/                # zustand: auth, toko, cart, printer, reminder, gateway, aktivasi, cabang, notifikasi
+    notifikasi/telegram.ts
+    gateway/client.ts
+    csv.ts, dashboard.ts, format.ts, license.ts, nav.ts, reminder.ts, struk.ts, utils.ts
   sw.ts                   # Serwist config
-src-tauri/                # Rust shell minimal
+src-tauri/                # Rust shell minimal + printer.rs
 backend/                  # nested git repo (Accounting Engine .NET 10)
 tools/bootstrap-backend.py
 ```
@@ -113,8 +124,8 @@ tools/bootstrap-backend.py
 - Loading: skeleton components (`src/components/skeleton.tsx`)
 - Validasi: Zod hanya di `product-form-dialog.tsx`; sisanya hand-roll + pesan ID
 - Dialog: overlay buatan sendiri, ikon `lucide-react` + `aria-hidden`, tombol ikon wajib `aria-label`
-- React Query key: array string pendek (`["products"]`, `["transaksi"]`, `["shift"]`, …)
-- Zustand: 1 store per concern, persist hanya `auth` & `toko`
+- React Query key: array string pendek (`["products"]`, `["transaksi"]`, `["analytics", …]`, `["master", …]`, …)
+- Zustand: 1 store per concern; persist `auth`, `toko`, `printer`, `reminder`, `gateway`, `aktivasi`, `cabang`, `notifikasi` (cart tidak dipersist)
 
 ---
 
@@ -128,6 +139,8 @@ tools/bootstrap-backend.py
 - Void/retur/penyesuaian stok/konfirmasi digital/impor = owner only; jurnal pembalik, bukan hapus
 - Saldo selalu dari jurnal; tidak ada input saldo manual (kecuali impor saldo awal)
 - Retur proporsional (neto + pajak + porsi diskon), refund = yang dibayar pelanggan
+- Voucher divalidasi dulu, poin dihitung dari dasar setelah voucher; keduanya memotong nilai invoice
+- Uang muka/refund pelanggan & pemasok hanya di mode live (jurnal engine)
 
 ---
 
@@ -147,25 +160,29 @@ tools/bootstrap-backend.py
 - Logo diunggah ke engine (mock menolak)
 - QRIS punya akun gateway sendiri (`1130`); konfirmasi = transfer gateway→bank bertanda `[QRIS <nomor>]`, fallback ke `POST /api/sales/{id}/confirm-payment` bila tidak ada kaki gateway
 - Batch tertahan approval: `/persetujuan` → `GET /api/transactions?status=SUBMITTED` → approve per kaki → `POST /api/cash-batches/{batchId}/post`
+- Voucher/poin: engine yang menghitung (`/api/vouchers/validate`, `/api/loyalty/price` hanya pratinjau); checkout kirim `voucherCode`/`memberCode`/`redeemPoints`
+- Uang muka & refund: `/api/payments/advances` / `refunds` (akun `2400`/`1350`, env `NEXT_PUBLIC_ENGINE_UANG_MUKA_*`); mock menolak
+- Email SMTP disimpan di engine (`/api/settings/email`); notifikasi Telegram dikirim langsung dari POS, bukan engine
+- Cabang aktif di topbar menempelkan `X-Branch-Id` ke semua request live (`null` = Pusat)
 
 ---
 
 ## Verifikasi
 
-- Frontend: `npx tsc --noEmit` bersih + `npm run build` sukses (16 halaman statis, 17 HTML dengan 404, 82 file)
-- Backend: `dotnet build AccountingEngine.slnx` (0 warning) + `dotnet test` (490 unit + 752 integration lulus = 1242 passing)
-- Deployment: ✅ MVP 1.0 production-ready, Tauri installer 2.4 MB, backend siap dijalankan di port 5121
+- Frontend: `npx tsc --noEmit` bersih + `npm run build` sukses (21 halaman + `/_not-found` + `/manifest.webmanifest` → `out/`)
+- Backend: `dotnet build AccountingEngine.slnx` bersih + `dotnet test` (unit + integration di repo `backend/`)
+- Deployment: Tauri installer (nsis + msi) + engine dijalankan terpisah di port 5121
 
 ## Status Deployment
 
 | Komponen | Status | Keterangan |
 |----------|--------|------------|
-| Frontend Build | ✅ | 16 pages, 82 files |
-| Tauri NSIS | ✅ | `POS-Sinaptex_0.1.0_x64-setup.exe` (2.4 MB) |
-| Backend Build | ✅ | 0 warnings, 1242 tests passing |
-| Database | ✅ | Migrated + Seeded (37 accounts) |
-| Backend Server | ✅ | Build OK — jalankan `dotnet run` di server toko (port 5121) |
-| Documentation | ✅ | 158+ halaman |
+| Frontend Build | ✅ | `npm run build` → static export `out/` |
+| Tauri NSIS | ✅ | `POS-Sinaptex_0.1.0_x64-setup.exe` |
+| Backend Build | ✅ | `dotnet build` + `dotnet test` (repo `backend/`) |
+| Database | ✅ | Migrated + seeded (chart of accounts) |
+| Backend Server | ✅ | Jalankan `dotnet run` di server toko (port 5121) |
+| Documentation | ✅ | `AGENTS.md` + manual owner/kasir + panduan deploy |
 
 **Repository:** https://github.com/mulyadiiya28/sme-sinaptex
 
@@ -187,7 +204,7 @@ tools/bootstrap-backend.py
 - `docs/DEPLOYMENT-GUIDE.md` — Panduan deployment lengkap (28 hal)
 - `docs/TODO-NEXT-PHASE.md` — TODO list development berikutnya (P1+P2)
 
-**Total:** 158+ halaman dokumentasi user + deployment ready 🚀
+**Total:** dokumentasi user + panduan deployment tersedia di `docs/` 🚀
 
 ## Next Phase (P1 & P2)
 
@@ -201,7 +218,7 @@ Lihat `docs/TODO-NEXT-PHASE.md` untuk roadmap lengkap:
 5. Export Laporan ✅ (2026-11-13) - CSV Excel-compatible + tab aging
 
 **P2 (Branding) - High Priority:**
-- Splash Screen & Activation (2 minggu) - Spec ready, 807 lines
+- ✅ Splash Screen & Aktivasi — gate splash + syarat & ketentuan + key lisensi per perangkat (lihat `docs/SPEC-SPLASH-ACTIVATION.md`)
 
 **Total P1+P2:** 8-10 minggu
 
