@@ -4,6 +4,7 @@ import { urlLogoAbsolut } from "@/lib/api/live";
 import { buildKuitansiEscPos, buildStrukEscPos } from "@/lib/printer/escpos";
 import { cetakMentah, printerNativeTersedia } from "@/lib/printer/printer";
 import { usePrinter } from "@/lib/store/printer";
+import { normalisasiTelepon } from "@/lib/reminder";
 
 export type DataStruk = {
   nomor: string;
@@ -188,6 +189,46 @@ export async function cetakKuitansi(toko: ProfilToko, d: DataKuitansi): Promise<
   cetakHtml(buildKuitansiHtml(toko, d));
 }
 
+export function susunTeksStruk(toko: ProfilToko, d: DataStruk): string {
+  const baris: string[] = [];
+  baris.push(toko.nama);
+  if (toko.alamat) baris.push(toko.alamat);
+  if (toko.telepon) baris.push(toko.telepon);
+  baris.push("");
+  baris.push(d.nomor);
+  baris.push(new Date(d.waktu).toLocaleString("id-ID"));
+  baris.push(`Kasir: ${d.kasir} · Shift ${d.shiftId}`);
+  if (d.pelanggan) baris.push(`Pelanggan: ${d.pelanggan}`);
+  baris.push("");
+  for (const i of d.items) {
+    baris.push(
+      `${i.nama} ${i.qty} x ${formatIDR(i.hargaJual)}${i.diskon ? ` - ${formatIDR(i.diskon)}` : ""} = ${formatIDR(
+        Math.max(0, i.hargaJual * i.qty - i.diskon),
+      )}`,
+    );
+  }
+  baris.push("");
+  baris.push(`Subtotal: ${formatIDR(d.items.reduce((s, i) => s + Math.max(0, i.hargaJual * i.qty - i.diskon), 0))}`);
+  if (d.diskonTransaksi) baris.push(`Diskon transaksi: -${formatIDR(d.diskonTransaksi)}`);
+  if (d.pajak) baris.push(`Pajak: ${formatIDR(d.pajak)}`);
+  baris.push(`TOTAL: ${formatIDR(d.total)}`);
+  for (const b of d.pembayaran ?? []) {
+    baris.push(`${b.metode === "tunai" ? "Tunai" : b.metode === "qris" ? "QRIS" : "Transfer"}: ${formatIDR(b.nominal)}`);
+  }
+  if (d.kembalian) baris.push(`Kembalian: ${formatIDR(d.kembalian)}`);
+  if (d.piutang) baris.push(`Piutang: ${formatIDR(d.piutang)}`);
+  baris.push("");
+  if (toko.footerStruk) baris.push(toko.footerStruk);
+  return baris.join("\n");
+}
+
+export function kirimStrukWa(toko: ProfilToko, d: DataStruk, nomorTelepon: string): void {
+  const no = normalisasiTelepon(nomorTelepon);
+  if (!no) return;
+  const teks = susunTeksStruk(toko, d);
+  const url = `https://wa.me/${no}?text=${encodeURIComponent(teks)}`;
+  window.open(url, "_blank", "noopener,noreferrer");
+}
 function cetakHtml(html: string): void {
   const frame = document.createElement("iframe");
   frame.style.position = "fixed";

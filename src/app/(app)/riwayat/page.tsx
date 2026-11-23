@@ -16,7 +16,7 @@ import { useAuth } from "@/lib/store/auth";
 import { useToko } from "@/lib/store/toko";
 import { useFilterPreset, type FilterPreset } from "@/lib/store/filter-preset";
 import { tanggalLokal } from "@/lib/format";
-import { cetakStruk } from "@/lib/struk";
+import { cetakStruk, kirimStrukWa } from "@/lib/struk";
 import { cn } from "@/lib/utils";
 
 const STATUS_TONE = {
@@ -572,6 +572,18 @@ function DetailDialog({ t, onClose }: { t: TransaksiRiwayat; onClose: () => void
         <div className="mt-4 flex flex-wrap gap-2">
           <button type="button" onClick={() => cetakStruk(useToko.getState().profil, { ...t, waktu: t.waktu, pembayaran: t.pembayaran })} className="btn-secondary flex-1">
             Cetak Struk
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              const nomor = window.prompt("Nomor WhatsApp pelanggan (format 628...):");
+              if (nomor && nomor.trim()) {
+                kirimStrukWa(useToko.getState().profil, { ...t, waktu: t.waktu, pembayaran: t.pembayaran }, nomor.trim());
+              }
+            }}
+            className="btn-secondary flex-1"
+          >
+            Kirim via WA
           </button>
           {API_MODE === "live" && t.status !== "dibatalkan" && (
             <button
