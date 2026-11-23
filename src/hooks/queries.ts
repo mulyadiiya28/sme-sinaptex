@@ -36,6 +36,8 @@ import type {
   Supplier,
   TransferAntarCabangInput,
   TransferKasInput,
+  UangMukaInput,
+  RefundUangMukaInput,
   User,
   Voucher,
   VoucherInput,
@@ -948,6 +950,34 @@ export function useTransferCabangMutations() {
       api.transferCabang.buat(input, user),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["transfer-cabang"] });
+      qc.invalidateQueries({ queryKey: ["jurnal"] });
+      qc.invalidateQueries({ queryKey: ["akun"] });
+      qc.invalidateQueries({ queryKey: ["laba-rugi"] });
+      qc.invalidateQueries({ queryKey: ["audit"] });
+    },
+  });
+  return { buat };
+}
+
+export function useUangMukaMutations() {
+  const qc = useQueryClient();
+  const buat = useMutation({
+    mutationFn: (input: UangMukaInput) => api.uangMuka.buat(input),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["jurnal"] });
+      qc.invalidateQueries({ queryKey: ["akun"] });
+      qc.invalidateQueries({ queryKey: ["laba-rugi"] });
+      qc.invalidateQueries({ queryKey: ["audit"] });
+    },
+  });
+  return { buat };
+}
+
+export function useRefundMutations() {
+  const qc = useQueryClient();
+  const buat = useMutation({
+    mutationFn: (input: RefundUangMukaInput) => api.refund.buat(input),
+    onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["jurnal"] });
       qc.invalidateQueries({ queryKey: ["akun"] });
       qc.invalidateQueries({ queryKey: ["laba-rugi"] });

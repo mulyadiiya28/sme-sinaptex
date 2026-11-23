@@ -66,12 +66,16 @@ import type {
   ShiftRiwayat,
   StatusLisensi,
   Solvency,
+  RefundUangMuka,
+  RefundUangMukaInput,
   TransaksiRiwayat,
   TransaksiPoin,
   TransferAntarCabang,
   TransferAntarCabangInput,
   TransferKas,
   TransferKasInput,
+  UangMuka,
+  UangMukaInput,
   User,
   WorkingCapital,
   WorkingCapitalTurnover,
@@ -126,6 +130,8 @@ const KODE = {
   hpp: process.env.NEXT_PUBLIC_ENGINE_HPP ?? "5000",
   pajak: process.env.NEXT_PUBLIC_ENGINE_PAJAK ?? "2402",
   biaya: process.env.NEXT_PUBLIC_ENGINE_BIAYA ?? "6900",
+  uangMukaPelanggan: process.env.NEXT_PUBLIC_ENGINE_UANG_MUKA_PELANGGAN ?? "2400",
+  uangMukaPemasok: process.env.NEXT_PUBLIC_ENGINE_UANG_MUKA_PEMASOK ?? "1350",
 };
 
 export const KODE_AKUN = KODE;
@@ -3558,6 +3564,98 @@ export async function liveTransferCabangBuat(
   const semuaCabang = await liveCabangDaftar();
   const namaCabang = new Map(semuaCabang.map((c) => [c.id, c.nama]));
   return petakanTransferCabang(hasil, namaCabang);
+}
+
+export async function liveUangMukaBuat(input: UangMukaInput): Promise<UangMuka> {
+  const actor = useAuth.getState().user?.id ?? ENGINE_APPROVER;
+  const cashAccountId =
+    input.akunKasId ?? (await akunKasDefault(input.metode === "tunai" ? KODE.kas : KODE.bank));
+  const accountCode =
+    input.akunUangMuka ??
+    (input.arah === "pelanggan" ? KODE.uangMukaPelanggan : KODE.uangMukaPemasok);
+  const approvedBy =
+    actor === ENGINE_APPROVER ? `${ENGINE_APPROVER}-otorisasi` : ENGINE_APPROVER;
+  const direction = input.arah === "pelanggan" ? "CUSTOMER" : "SUPPLIER";
+
+  const hasil = await minta<{
+    paymentTransactionId: string;
+    cashMovementId: string;
+    amount: number;
+    advanceAccountCode: string;
+    direction: string;
+    approvalRequired: boolean;
+  }>("/api/payments/advances", {
+    method: "POST",
+    idempotensiKunci: buatKunciIdempotensi(),
+    body: {
+      paymentDate: input.tanggal || new Date().toISOString(),
+      direction,
+      cashAccountId,
+      amount: input.nominal,
+      accountCode,
+      requestedBy: actor,
+      approvedBy,
+      counterpartyId: input.pihakId,
+      description: input.keterangan,
+    },
+  });
+
+  return {
+    id: hasil.paymentTransactionId,
+    tanggal: input.tanggal || new Date().toISOString(),
+    arah: input.arah,
+    nominal: hasil.amount,
+    akunKas: cashAccountId,
+    akunUangMuka: hasil.advanceAccountCode,
+    pihakId: input.pihakId,
+    keterangan: input.keterangan,
+    butuhPersetujuan: hasil.approvalRequired,
+  };
+}
+
+export async function liveRefundUangMukaBuat(input: RefundUangMukaInput): Promise<RefundUangMuka> {
+  const actor = useAuth.getState().user?.id ?? ENGINE_APPROVER;
+  const cashAccountId =
+    input.akunKasId ?? (await akunKasDefault(input.metode === "tunai" ? KODE.kas : KODE.bank));
+  const accountCode =
+    input.akunUangMuka ??
+    (input.arah === "pelanggan" ? KODE.uangMukaPelanggan : KODE.uangMukaPemasok);
+  const approvedBy =
+    actor === ENGINE_APPROVER ? `${ENGINE_APPROVER}-otorisasi` : ENGINE_APPROVER;
+  const direction = input.arah === "pelanggan" ? "CUSTOMER" : "SUPPLIER";
+
+  const hasil = await minta<{
+    refundTransactionId: string;
+    cashMovementId: string;
+    amount: number;
+    accountCode: string;
+    direction: string;
+    approvalRequired: boolean;
+  }>("/api/payments/refunds", {
+    method: "POST",
+    idempotensiKunci: buatKunciIdempotensi(),
+    body: {
+      refundDate: input.tanggal || new Date().toISOString(),
+      direction,
+      cashAccountId,
+      amount: input.nominal,
+      accountCode,
+      requestedBy: actor,
+      approvedBy,
+      description: input.keterangan,
+    },
+  });
+
+  return {
+    id: hasil.refundTransactionId,
+    tanggal: input.tanggal || new Date().toISOString(),
+    arah: input.arah,
+    nominal: hasil.amount,
+    akunKas: cashAccountId,
+    akunUangMuka: hasil.accountCode,
+    keterangan: input.keterangan,
+    butuhPersetujuan: hasil.approvalRequired,
+  };
 }
 
 export async function liveStokGudang(gudangId?: string): Promise<InventoryValuation> {

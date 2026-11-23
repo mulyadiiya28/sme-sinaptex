@@ -64,6 +64,10 @@ import type {
   TransferAntarCabangInput,
   TransferKas,
   TransferKasInput,
+  UangMuka,
+  UangMukaInput,
+  RefundUangMuka,
+  RefundUangMukaInput,
   User,
   WorkingCapital,
   WorkingCapitalTurnover,
@@ -168,6 +172,8 @@ import {
   liveCabangBuat,
   liveTransferCabangDaftar,
   liveTransferCabangBuat,
+  liveUangMukaBuat,
+  liveRefundUangMukaBuat,
   liveStokGudang,
   liveRingkasanInventaris,
   liveStokRendah,
@@ -709,6 +715,26 @@ export const api = {
       await delay(150);
       throw new Error(
         "Transfer antar cabang hanya tersedia di mode live — engine yang memindahkan dana dan menulis dua jurnal cabang.",
+      );
+    },
+  },
+
+  uangMuka: {
+    buat: async (input: UangMukaInput): Promise<UangMuka> => {
+      if (API_MODE === "live") return liveUangMukaBuat(input);
+      await delay(150);
+      throw new Error(
+        "Uang muka hanya tersedia di mode live — engine yang menulis jurnal kas dan akun uang muka.",
+      );
+    },
+  },
+
+  refund: {
+    buat: async (input: RefundUangMukaInput): Promise<RefundUangMuka> => {
+      if (API_MODE === "live") return liveRefundUangMukaBuat(input);
+      await delay(150);
+      throw new Error(
+        "Refund uang muka hanya tersedia di mode live — engine yang menulis jurnal kas dan akun uang muka.",
       );
     },
   },

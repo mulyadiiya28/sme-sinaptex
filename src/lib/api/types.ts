@@ -1166,6 +1166,52 @@ export type TransferAntarCabangInput = {
   tanggal?: string;
 };
 
+export type ArahUangMuka = "pelanggan" | "pemasok";
+
+export type UangMuka = {
+  id: string;
+  tanggal: string;
+  arah: ArahUangMuka;
+  nominal: number;
+  akunKas: string;
+  akunUangMuka: string;
+  pihakId?: string;
+  keterangan?: string;
+  butuhPersetujuan: boolean;
+};
+
+export type UangMukaInput = {
+  arah: ArahUangMuka;
+  nominal: number;
+  metode: "tunai" | "transfer";
+  akunKasId?: string;
+  akunUangMuka?: string;
+  pihakId?: string;
+  keterangan?: string;
+  tanggal?: string;
+};
+
+export type RefundUangMuka = {
+  id: string;
+  tanggal: string;
+  arah: ArahUangMuka;
+  nominal: number;
+  akunKas: string;
+  akunUangMuka: string;
+  keterangan?: string;
+  butuhPersetujuan: boolean;
+};
+
+export type RefundUangMukaInput = {
+  arah: ArahUangMuka;
+  nominal: number;
+  metode: "tunai" | "transfer";
+  akunKasId?: string;
+  akunUangMuka?: string;
+  keterangan?: string;
+  tanggal?: string;
+};
+
 /// <summary>Satu entri dalam Gerakan Harian: satu baris jurnal pada satu akun.</summary>
 export type DailyMovementEntry = {
   journalId: string;

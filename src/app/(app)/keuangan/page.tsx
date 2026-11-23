@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { ArrowLeftRight, ReceiptText, Wallet } from "lucide-react";
-import type { AgedInvoice, AgingReport, Biaya, Pembelian, Reconciliation, TransferKas, TransaksiRiwayat } from "@/lib/api/types";
+import type { AgedInvoice, AgingReport, Biaya, Pembelian, Reconciliation, TransferKas, TransaksiRiwayat, UangMukaInput, RefundUangMukaInput, ArahUangMuka } from "@/lib/api/types";
 import { DataTable, type Column } from "@/components/data-table";
 import { FormField } from "@/components/form-field";
 import { KpiCard } from "@/components/kpi-card";
@@ -28,16 +28,19 @@ import {
   useTransaksiMutations,
   useTransferKas,
   useTransferKasMutations,
+  useUangMukaMutations,
+  useRefundMutations,
 } from "@/hooks/queries";
 import { cn } from "@/lib/utils";
 
-type Tab = "kas" | "biaya" | "piutang" | "hutang";
+type Tab = "kas" | "biaya" | "piutang" | "hutang" | "uangmuka";
 
 const TABS: Array<{ id: Tab; label: string }> = [
   { id: "kas", label: "Kas & Bank" },
   { id: "biaya", label: "Biaya" },
   { id: "piutang", label: "Piutang" },
   { id: "hutang", label: "Hutang" },
+  { id: "uangmuka", label: "Uang Muka" },
 ];
 
 export default function KeuanganPage() {
@@ -69,6 +72,7 @@ export default function KeuanganPage() {
       {tab === "biaya" && <PanelBiaya />}
       {tab === "piutang" && <PanelPiutang />}
       {tab === "hutang" && <PanelHutang />}
+      {tab === "uangmuka" && <PanelUangMuka />}
     </div>
   );
 }
@@ -662,6 +666,127 @@ function BayarDialog({
             <button type="button" onClick={onClose} className="btn-secondary">Batal</button>
           </div>
         </form>
+      </div>
+    </div>
+  );
+}
+
+function PanelUangMuka() {
+  const mutUangMuka = useUangMukaMutations();
+  const mutRefund = useRefundMutations();
+  const [arah, setArah] = useState<ArahUangMuka>("pelanggan");
+  const [nominal, setNominal] = useState(0);
+  const [metode, setMetode] = useState<"tunai" | "transfer">("tunai");
+  const [keterangan, setKeterangan] = useState("");
+  const [mode, setMode] = useState<"advance" | "refund">("advance");
+  const [error, setError] = useState<string | null>(null);
+  const [sukses, setSukses] = useState<string | null>(null);
+  const pending = mutUangMuka.buat.isPending || mutRefund.buat.isPending;
+
+  const submit = async () => {
+    if (pending) return;
+    setError(null);
+    setSukses(null);
+    if (nominal <= 0) {
+      setError("Nominal harus lebih dari 0.");
+      return;
+    }
+    try {
+      if (mode === "advance") {
+        const hasil = await mutUangMuka.buat.mutateAsync({
+          arah,
+          nominal,
+          metode,
+          keterangan: keterangan.trim() || undefined,
+        });
+        setSukses(
+          `Uang muka ${formatIDR(hasil.nominal)} dicatat (transaksi ${hasil.id})${hasil.butuhPersetujuan ? " — menunggu persetujuan." : "."}`,
+        );
+      } else {
+        const hasil = await mutRefund.buat.mutateAsync({
+          arah,
+          nominal,
+          metode,
+          keterangan: keterangan.trim() || undefined,
+        });
+        setSukses(
+          `Refund ${formatIDR(hasil.nominal)} dicatat (transaksi ${hasil.id})${hasil.butuhPersetujuan ? " — menunggu persetujuan." : "."}`,
+        );
+      }
+      setNominal(0);
+      setKeterangan("");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Gagal mencatat.");
+    }
+  };
+
+  return (
+    <div className="space-y-4">
+      <div className="panel p-4 space-y-3">
+        <div className="flex gap-2">
+          <button
+            type="button"
+            onClick={() => setMode("advance")}
+            className={mode === "advance" ? "btn-primary" : "btn-secondary"}
+          >
+            Catat Uang Muka
+          </button>
+          <button
+            type="button"
+            onClick={() => setMode("refund")}
+            className={mode === "refund" ? "btn-primary" : "btn-secondary"}
+          >
+            Refund Uang Muka
+          </button>
+        </div>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <label className="block">
+            <span className="label">Arah</span>
+            <select
+              className="input"
+              value={arah}
+              onChange={(e) => setArah(e.target.value as ArahUangMuka)}
+            >
+              <option value="pelanggan">Pelanggan (uang muka pelanggan, akun 2400)</option>
+              <option value="pemasok">Pemasok (uang muka pemasok, akun 1350)</option>
+            </select>
+          </label>
+          <label className="block">
+            <span className="label">Metode</span>
+            <select
+              className="input"
+              value={metode}
+              onChange={(e) => setMetode(e.target.value as "tunai" | "transfer")}
+            >
+              <option value="tunai">Tunai</option>
+              <option value="transfer">Transfer/Bank</option>
+            </select>
+          </label>
+        </div>
+        <label className="block">
+          <span className="label">Nominal</span>
+          <input
+            type="number"
+            min={0}
+            className="input text-right tabular-nums"
+            value={nominal || ""}
+            onChange={(e) => setNominal(Number(e.target.value))}
+          />
+        </label>
+        <label className="block">
+          <span className="label">Keterangan (opsional)</span>
+          <input
+            type="text"
+            className="input"
+            value={keterangan}
+            onChange={(e) => setKeterangan(e.target.value)}
+          />
+        </label>
+        {error && <p className="text-sm text-rose-600">{error}</p>}
+        {sukses && <p className="text-sm text-emerald-600">{sukses}</p>}
+        <button type="button" onClick={submit} className="btn-primary" disabled={nominal <= 0 || pending}>
+          {pending ? "Menyimpan…" : mode === "advance" ? "Catat Uang Muka" : "Catat Refund"}
+        </button>
       </div>
     </div>
   );
