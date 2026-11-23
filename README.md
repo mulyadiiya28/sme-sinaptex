@@ -170,7 +170,7 @@ tools/bootstrap-backend.py
 ## Verifikasi
 
 - Frontend: `npx tsc --noEmit` bersih + `npm run build` sukses (21 halaman + `/_not-found` + `/manifest.webmanifest` → `out/`)
-- Backend: `dotnet build AccountingEngine.slnx` bersih + `dotnet test` (unit + integration di repo `backend/`)
+- Backend: `dotnet build AccountingEngine.slnx` bersih + `dotnet test` (525 unit + 766 integration lulus)
 - Deployment: Tauri installer (nsis + msi) + engine dijalankan terpisah di port 5121
 
 ## Status Deployment

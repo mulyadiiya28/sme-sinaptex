@@ -594,7 +594,7 @@ scripts/           backend task, client env, backup harian + restore
 ### Verifikasi
 - Frontend: `npx tsc --noEmit` bersih + `npm run build` sukses (21 halaman + `/_not-found` +
   `/manifest.webmanifest`, static export ke `out/`)
-- Backend: `dotnet build` bersih + `dotnet test` (unit + integration) di repo `backend/`
+- Backend: `dotnet build` bersih + `dotnet test` (525 unit + 766 integration lulus)
 - Mock: alur manual `/kasir` (buka shift → checkout → riwayat → tutup shift)
 
 ## Docs
