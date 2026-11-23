@@ -156,7 +156,7 @@ semantik engine).
 - [x] Type: nominal / percentage
 - [x] Validasi di checkout (kode voucher di payment-dialog, diskon dihitung engine, voucherCode + diskonVoucher dikirim)
 - [x] Usage limit & history — engine menyimpan `UsageLimit`/`UsedCount`, POS menampilkan jumlah terpakai
-- [ ] Promo bundle
+- [ ] Promo bundle — butuh endpoint & model di engine (di luar scope POS; voucher saat ini hanya persen/nominal)
 
 **Expected:**
 - Diskon voucher code
