@@ -3,6 +3,11 @@
 **Tanggal:** 2026-11-12  
 **Fase:** MVP (P0 - Fondasi)
 
+> ⚠️ **Status terbaru (2026-11-23):** snapshot ini dari 2026-11-12. Bagian "Yang BELUM (P1)"
+> di bawah sudah usang — **printer ESC/POS, gateway QRIS, reminder piutang, voucher (termasuk
+> usage limit), PPh, dan transfer antar cabang** sudah diimplementasikan. Rujukan terkini:
+> `docs/TODO-NEXT-PHASE.md` dan `CATATAN_IMPLEMENTASI.md`.
+
 ---
 
 ## ✅ KESIMPULAN: MVP SUDAH TUNTAS

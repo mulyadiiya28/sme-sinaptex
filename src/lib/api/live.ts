@@ -68,6 +68,8 @@ import type {
   Solvency,
   TransaksiRiwayat,
   TransaksiPoin,
+  TransferAntarCabang,
+  TransferAntarCabangInput,
   TransferKas,
   TransferKasInput,
   User,
@@ -3412,6 +3414,23 @@ type BtCabang = {
   isHeadquarters: boolean;
 };
 
+type BtTransferCabang = {
+  id: string;
+  businessId: string;
+  fromBranchId: string;
+  toBranchId: string;
+  amount: number;
+  description: string | null;
+  requestedBy: string | null;
+  transferDate: string;
+  status: string;
+  fromJournalId: string | null;
+  toJournalId: string | null;
+  version: number;
+  createdAt: string;
+  replayed?: boolean;
+};
+
 function petakanBackup(data: BtBackupFile): BackupFile {
   return {
     fileName: data.fileName,
@@ -3486,6 +3505,59 @@ export async function liveCabangBuat(input: {
     nama: data.name,
     isHeadquarters: data.isHeadquarters,
   };
+}
+
+function petakanTransferCabang(
+  t: BtTransferCabang,
+  namaCabang: Map<string, string>,
+): TransferAntarCabang {
+  return {
+    id: t.id,
+    dariCabangId: t.fromBranchId,
+    dariCabangNama: namaCabang.get(t.fromBranchId) ?? t.fromBranchId,
+    keCabangId: t.toBranchId,
+    keCabangNama: namaCabang.get(t.toBranchId) ?? t.toBranchId,
+    nominal: t.amount,
+    keterangan: t.description ?? undefined,
+    peminta: t.requestedBy ?? "—",
+    tanggal: t.transferDate,
+    status: t.status,
+  };
+}
+
+/**
+ * Transfer dana antar cabang. Bila cabang aktif dipilih, engine hanya
+ * mengembalikan transfer yang menyentuh cabang itu (dikirim maupun diterima);
+ * tanpa cabang aktif, seluruh transfer tenant ditampilkan.
+ */
+export async function liveTransferCabangDaftar(): Promise<TransferAntarCabang[]> {
+  const cabang = useCabang.getState().cabangAktif;
+  const qs = cabang ? `?branchId=${encodeURIComponent(cabang)}` : "";
+  const [daftar, semuaCabang] = await Promise.all([
+    minta<BtTransferCabang[]>(`/api/inter-branch-transfers${qs}`),
+    liveCabangDaftar(),
+  ]);
+  const namaCabang = new Map(semuaCabang.map((c) => [c.id, c.nama]));
+  return daftar.map((t) => petakanTransferCabang(t, namaCabang));
+}
+
+export async function liveTransferCabangBuat(
+  input: TransferAntarCabangInput,
+): Promise<TransferAntarCabang> {
+  const hasil = await minta<BtTransferCabang>("/api/inter-branch-transfers", {
+    method: "POST",
+    idempotensiKunci: buatKunciIdempotensi(),
+    body: {
+      fromBranchId: input.dariCabangId,
+      toBranchId: input.keCabangId,
+      amount: input.nominal,
+      description: input.keterangan?.trim() || null,
+      transferDate: input.tanggal || null,
+    },
+  });
+  const semuaCabang = await liveCabangDaftar();
+  const namaCabang = new Map(semuaCabang.map((c) => [c.id, c.nama]));
+  return petakanTransferCabang(hasil, namaCabang);
 }
 
 export async function liveStokGudang(gudangId?: string): Promise<InventoryValuation> {

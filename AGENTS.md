@@ -124,7 +124,8 @@ kebijakan operasional (`GET/PUT /api/settings/operational-policy`), periode fisk
 laporan PPh per jenis (`GET /api/reports/pph`),
 analitik kesehatan & rasio (`/api/analytics/*`), backup database
 (`GET/POST /api/backup`, `GET /api/backup/list`, `GET /api/backup/download`, `POST /api/backup/restore`),
-cabang (`GET/POST /api/branches`), faktur PDF penjualan (`GET /api/sales/{id}/pdf`),
+cabang (`GET/POST /api/branches`), transfer antar cabang
+(`GET/POST /api/inter-branch-transfers`), faktur PDF penjualan (`GET /api/sales/{id}/pdf`),
 dan persetujuan transaksi
 (`GET /api/transactions?status=SUBMITTED`, `POST /api/transactions/{id}/approve`,
 `POST /api/cash-batches/{batchId}/post`).
@@ -506,6 +507,7 @@ scripts/           backend task, client env, backup harian + restore
 - Logo upload ke engine (mock tolak)
 - QRIS: uang ditahan di akun gateway (`1130`), konfirmasi = `POST /api/cash-transfers` gateway→bank bertanda `[QRIS <nomor>]`
 - Backup/cabang: POS mengirim `X-Branch-Id` saat cabang aktif dipilih (topbar). Default null = Pusat (semua cabang). Gudang baru otomatis terikat ke cabang aktif.
+- Transfer antar cabang (tab **Cabang**): `POST /api/inter-branch-transfers` menulis satu dokumen + dua jurnal (Piutang Antar Cabang di pengirim, Utang Antar Cabang di penerima); cabang asal/tujuan dari body, bukan header; engine menolak cabang sama & periode tertutup.
 - Batch tertahan approval: `/persetujuan` → `GET /api/transactions?status=SUBMITTED` → approve → `POST /api/cash-batches/{batchId}/post`
 
 ### Verifikasi

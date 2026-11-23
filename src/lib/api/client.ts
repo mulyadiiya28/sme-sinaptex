@@ -60,6 +60,8 @@ import type {
   StatusLisensi,
   Solvency,
   TransaksiRiwayat,
+  TransferAntarCabang,
+  TransferAntarCabangInput,
   TransferKas,
   TransferKasInput,
   User,
@@ -164,6 +166,8 @@ import {
   liveBackupUnduh,
   liveCabangDaftar,
   liveCabangBuat,
+  liveTransferCabangDaftar,
+  liveTransferCabangBuat,
   liveStokGudang,
   liveRingkasanInventaris,
   liveStokRendah,
@@ -690,6 +694,21 @@ export const api = {
       await delay(150);
       throw new Error(
         "Manajemen cabang hanya tersedia di mode live — hierarki cabang disimpan engine.",
+      );
+    },
+  },
+
+  transferCabang: {
+    daftar: async (): Promise<TransferAntarCabang[]> => {
+      if (API_MODE === "live") return liveTransferCabangDaftar();
+      await delay(120);
+      return [];
+    },
+    buat: async (input: TransferAntarCabangInput, _user: User): Promise<TransferAntarCabang> => {
+      if (API_MODE === "live") return liveTransferCabangBuat(input);
+      await delay(150);
+      throw new Error(
+        "Transfer antar cabang hanya tersedia di mode live — engine yang memindahkan dana dan menulis dua jurnal cabang.",
       );
     },
   },

@@ -34,6 +34,7 @@ import type {
   StockOpnameInput,
   StockTransferInput,
   Supplier,
+  TransferAntarCabangInput,
   TransferKasInput,
   User,
   Voucher,
@@ -927,6 +928,30 @@ export function useCabangMutations() {
       api.cabang.buat(input),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["cabang"] });
+    },
+  });
+  return { buat };
+}
+
+export function useTransferCabang(enabled = true) {
+  return useQuery({
+    queryKey: ["transfer-cabang"],
+    queryFn: () => api.transferCabang.daftar(),
+    enabled,
+  });
+}
+
+export function useTransferCabangMutations() {
+  const qc = useQueryClient();
+  const buat = useMutation({
+    mutationFn: ({ input, user }: { input: TransferAntarCabangInput; user: User }) =>
+      api.transferCabang.buat(input, user),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["transfer-cabang"] });
+      qc.invalidateQueries({ queryKey: ["jurnal"] });
+      qc.invalidateQueries({ queryKey: ["akun"] });
+      qc.invalidateQueries({ queryKey: ["laba-rugi"] });
+      qc.invalidateQueries({ queryKey: ["audit"] });
     },
   });
   return { buat };

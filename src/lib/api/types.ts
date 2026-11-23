@@ -1139,6 +1139,33 @@ export type Cabang = {
   isHeadquarters: boolean;
 };
 
+/**
+ * Satu transfer dana antar cabang. Engine menulis satu dokumen dan dua jurnal:
+ * Dr Piutang Antar Cabang / Cr Kas di cabang pengirim, Dr Kas / Cr Utang Antar
+ * Cabang di cabang penerima.
+ */
+export type TransferAntarCabang = {
+  id: string;
+  dariCabangId: string;
+  dariCabangNama: string;
+  keCabangId: string;
+  keCabangNama: string;
+  nominal: number;
+  keterangan?: string;
+  peminta: string;
+  tanggal: string;
+  status: string;
+};
+
+/// <summary>Request membuat transfer antar cabang (POST /api/inter-branch-transfers).</summary>
+export type TransferAntarCabangInput = {
+  dariCabangId: string;
+  keCabangId: string;
+  nominal: number;
+  keterangan?: string;
+  tanggal?: string;
+};
+
 /// <summary>Satu entri dalam Gerakan Harian: satu baris jurnal pada satu akun.</summary>
 export type DailyMovementEntry = {
   journalId: string;

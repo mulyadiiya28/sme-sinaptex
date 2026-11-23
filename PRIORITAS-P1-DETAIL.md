@@ -3,6 +3,11 @@
 **Tanggal:** 2026-11-12  
 **Fase:** P1 - Operasional (Penyempurnaan Toko)
 
+> ⚠️ **Status terbaru (2026-11-23):** dokumen ini adalah snapshot historis 2026-11-12.
+> Sejak itu **Voucher/kupon (termasuk usage limit & riwayat pemakaian)**, **PPh per faktur
+> + laporan `/pph`**, **tab Email (SMTP)**, dan **transfer antar cabang** sudah selesai.
+> Rujukan status terkini: `docs/TODO-NEXT-PHASE.md` dan `CATATAN_IMPLEMENTASI.md`.
+
 ---
 
 ## 🎯 Apa itu P1?

@@ -155,7 +155,7 @@ semantik engine).
 - [x] Master voucher (CRUD) — halaman `/voucher` (list/create/update/deactivate)
 - [x] Type: nominal / percentage
 - [x] Validasi di checkout (kode voucher di payment-dialog, diskon dihitung engine, voucherCode + diskonVoucher dikirim)
-- [ ] Usage limit & history
+- [x] Usage limit & history — engine menyimpan `UsageLimit`/`UsedCount`, POS menampilkan jumlah terpakai
 - [ ] Promo bundle
 
 **Expected:**
@@ -219,6 +219,7 @@ semantik engine).
 - [x] Stock per branch — filter gudang di halaman Persediaan
 - [x] Report per branch — laporan akuntansi (jurnal, neraca, laba-rugi, gerakan harian, ekspor) menghormati cabang aktif
 - [x] `[Branch ID]` header di API calls — topbar selector mengirim `X-Branch-Id`
+- [x] Transfer antar cabang — tab **Transfer Antar Cabang** di `/cabang` (`GET/POST /api/inter-branch-transfers`; satu dokumen + dua jurnal)
 
 **Expected:**
 - Multi-cabang support
@@ -333,5 +334,5 @@ Implement dulu yang mudah & bermanfaat:
 
 ---
 
-**Last Updated:** 2026-11-20  
-**Next Review:** 2026-11-27 (setelah P2.3 terpasang)
+**Last Updated:** 2026-11-23  
+**Next Review:** setelah transfer antar cabang diuji di mesin produksi

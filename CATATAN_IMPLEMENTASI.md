@@ -188,20 +188,17 @@ Endpoint-nya sudah ada di engine, tinggal dichotomi UI:
 
 | Controller engine | Fitur yang bisa ditambahkan |
 |---|---|
-| `InterBranchTransfersController` | Transfer antar cabang |
 | `LoansController` | Pinjaman + akrual bunga |
 | `RolesController` + `UserRolesController` | Manajemen RBAC (peran, izin, scope cabang) — POS hanya memakai `authorityLevel` |
-| `EmailSettingsController` | Pengaturan email / notifikasi |
+| `MidtransController` | Pembuatan transaksi + webhook Midtrans di sisi engine (POS memakai gateway client-side) |
+| `PaymentsController` (`/api/payments/advances`, `/refunds`, `/{id}/reverse`) | Uang muka & refund mandiri (bukan retur) |
 
 Sudah dipakai POS: `BackupsController` (tab **Backup Database** di Pengaturan:
-buat/unduh/pulihkan), `BranchesController` (tab **Cabang**: daftar + buat
-cabang), dan faktur PDF (`GET /api/sales/{id}/pdf` — tombol **Faktur PDF** di
-dialog detail Riwayat; struk thermal tetap dicetak dari browser). POS **belum**
-mengirim `X-Branch-Id`: engine menjaga stok per cabang, jadi pencatatan per
-cabang baru bisa dipakai setelah gudang-gudang POS terikat ke cabang tujuan.
-
-Engine juga menyediakan **kode QR** (`/api/sales/{id}/qrcode`) yang belum dipakai
-POS.
+buat/unduh/pulihkan), `BranchesController` + `InterBranchTransfersController` (tab **Cabang**:
+master cabang + transfer antar cabang), `EmailSettingsController` (tab **Email** di Pengaturan),
+faktur PDF (`GET /api/sales/{id}/pdf` — tombol **Faktur PDF** di dialog detail Riwayat; struk
+thermal tetap dicetak dari browser). POS **belum** memakai **kode QR** engine
+(`/api/sales/{id}/qrcode`) karena faktur PDF engine sudah menstempel QR-nya.
 
 ## Verifikasi
 
@@ -271,6 +268,9 @@ post batch → penjualan ter-post. Test pertama sudah dibuktikan menangkap bug.
 3. ~~Dukungan pembayaran campuran + kembalian di engine (batch kas menerima satu akun kas).~~
    Selesai: `POST /api/cash-batches/sales` menerima `payments[]`; kembalian dihitung POS.
 4. ~~Diskon sebagai field tersendiri di dokumen penjualan engine.~~ Selesai (SaleItems.DiscountAmount).
-5. Pencatatan per cabang: POS perlu mengirim `X-Branch-Id` dan gudang POS harus
-   terikat ke cabang tujuan (engine menolak stok dari gudang cabang lain).
-6. UI backup/restore dan manajemen cabang.
+5. ~~Pencatatan per cabang: POS perlu mengirim `X-Branch-Id` dan gudang POS harus
+   terikat ke cabang tujuan (engine menolak stok dari gudang cabang lain).~~
+   Selesai: topbar mengirim `X-Branch-Id` saat cabang aktif dipilih; gudang baru
+   otomatis terikat ke cabang aktif; laporan akuntansi menghormati cabang.
+6. ~~UI backup/restore dan manajemen cabang.~~ Selesai: tab **Backup Database** dan
+   tab **Cabang** (master cabang + transfer antar cabang) di Pengaturan/Cabang.
