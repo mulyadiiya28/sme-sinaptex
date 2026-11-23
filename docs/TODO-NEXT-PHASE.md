@@ -248,9 +248,9 @@ semantik engine).
 
 ### 13. WhatsApp Integration (P2.4)
 **Tasks:**
-- [ ] Send struk via WhatsApp
-- [ ] Reminder piutang via WhatsApp
-- [ ] Customer notification
+- [x] Send struk via WhatsApp — tombol "Kirim via WA" di detail transaksi membuka `wa.me` dengan teks struk (tanpa API provider)
+- [x] Reminder piutang via WhatsApp — sudah ada di halaman `/piutang` (tombol WA membuka `wa.me`)
+- [x] Customer notification — notifikasi Telegram otomatis setelah checkout (opsional) + kirim struk via WA manual
 
 **Expected:**
 - Digital struk via WA
