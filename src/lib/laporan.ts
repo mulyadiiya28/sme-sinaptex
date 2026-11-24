@@ -14,6 +14,41 @@ function tipeAkun(kode: string, master: AkunMaster[]): AkunMaster["tipe"] {
   return "EXPENSE";
 }
 
+export type RingkasanLabaRugi = {
+  pendapatan: number;
+  retur: number;
+  hpp: number;
+  biaya: number;
+  pajak: number;
+  laba: number;
+};
+
+/**
+ * Satu-satunya definisi laba untuk seluruh laporan: pendapatan dikurangi HPP
+ * dan beban. Pajak (PPN/PPh) adalah kewajiban, bukan beban, jadi tidak
+ * mengurangi laba — jurnal penutup pun hanya menutup akun pendapatan/beban.
+ */
+export function ringkasLabaRugi(akun: AkunSaldo[], master: AkunMaster[] = []): RingkasanLabaRugi {
+  const pendapatan = akun
+    .filter((a) => tipeAkun(a.kode, master) === "REVENUE")
+    .reduce((s, a) => s + (a.kredit - a.debit), 0);
+  const hpp = akun
+    .filter((a) => a.kode === "5000" || a.kode === "5100")
+    .reduce((s, a) => s + (a.debit - a.kredit), 0);
+  const biaya = akun
+    .filter((a) => tipeAkun(a.kode, master) === "EXPENSE" && a.kode !== "5000" && a.kode !== "5100")
+    .reduce((s, a) => s + (a.debit - a.kredit), 0);
+
+  return {
+    pendapatan,
+    retur: 0,
+    hpp,
+    biaya,
+    pajak: 0,
+    laba: pendapatan - hpp - biaya,
+  };
+}
+
 export type KelompokArusKas = "operasi" | "investasi" | "pendanaan";
 
 export type ArusKasBaris = {
@@ -124,13 +159,7 @@ export function susunPerubahanModal(
   const ekuitas = akun.filter((a) => tipeAkun(a.kode, master) === "EQUITY");
   const modalAwal = ekuitas.reduce((s, a) => s + a.saldoAwal, 0);
 
-  const pendapatan = akun
-    .filter((a) => tipeAkun(a.kode, master) === "REVENUE")
-    .reduce((s, a) => s + (a.kredit - a.debit), 0);
-  const beban = akun
-    .filter((a) => tipeAkun(a.kode, master) === "EXPENSE")
-    .reduce((s, a) => s + (a.debit - a.kredit), 0);
-  const labaBerjalan = pendapatan - beban;
+  const labaBerjalan = ringkasLabaRugi(akun, master).laba;
 
   let labaDitutup = 0;
   let setoran = 0;

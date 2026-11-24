@@ -16,6 +16,7 @@ import { useQuery } from "@tanstack/react-query";
 import { api } from "@/lib/api/client";
 import { susunArusKas, susunPerubahanModal, type ArusKas, type PerubahanModal } from "@/lib/laporan";
 import { cn } from "@/lib/utils";
+import { ringkasLabaRugi } from "@/lib/laporan";
 
 type Tab = "akun" | "jurnal" | "buku-besar" | "laba-rugi" | "neraca" | "arus-kas" | "perubahan-modal";
 type StatusSaldo = "memuat" | "kosong" | "tanpa-transaksi" | "seimbang" | "tidak-seimbang";
@@ -328,11 +329,8 @@ function PanelLabaRugi() {
   const tipeDariKode = (kode: string) => master.data?.find((a) => a.kode === kode)?.tipe ?? (kode.charAt(0) === "4" ? "REVENUE" : (kode.charAt(0) === "5" || kode.charAt(0) === "6" || kode.charAt(0) === "7") ? "EXPENSE" : "ASSET");
 
   const ringkas = (rows: AkunSaldo[]) => {
-    const pendapatan = rows.filter((r) => tipeDariKode(r.kode) === "REVENUE").reduce((sum, r) => sum + (r.kredit - r.debit), 0);
-    const hpp = rows.filter((r) => r.kode === "5000" || r.kode === "5100").reduce((sum, r) => sum + (r.debit - r.kredit), 0);
-    const biaya = rows.filter((r) => tipeDariKode(r.kode) === "EXPENSE" && r.kode !== "5000" && r.kode !== "5100").reduce((sum, r) => sum + (r.debit - r.kredit), 0);
-    const pajak = rows.filter((r) => r.kode === "2201" || r.kode === "2202").reduce((sum, r) => sum + (r.kredit - r.debit), 0);
-    return { pendapatan, hpp, biaya, pajak, laba: pendapatan - hpp - biaya - pajak };
+    const r = ringkasLabaRugi(rows, master.data ?? []);
+    return { pendapatan: r.pendapatan, hpp: r.hpp, biaya: r.biaya, pajak: 0, laba: r.laba };
   };
 
   const rows = akun.data ?? [];
