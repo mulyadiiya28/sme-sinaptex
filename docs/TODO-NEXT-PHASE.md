@@ -54,8 +54,8 @@
 - [x] Polling status di layar kasir + tagihan otomatis tercatat ke engine sebagai pembayaran QRIS (menunggu konfirmasi pemilik)
 - [x] Referensi id tagihan gateway ditulis pada deskripsi penjualan untuk rekonsiliasi
 - [ ] Webhook handler untuk payment status (butuh endpoint publik di server)
-- [ ] Auto-cancel timeout (15 menit)
-- [ ] Refund API integration
+- [x] Auto-cancel timeout (15 menit) — countdown di gateway-panel, polling berhenti saat kedaluwarsa, status jadi expired
+- [x] Refund API integration — tab Uang Muka di /keuangan (advance & refund lewat /api/payments)
 
 **Catatan:** Semua nilai gateway dibaca dari store lokal (`pos-sinaptex-gateway`), jadi tiap toko memakai akun
 provider sendiri. Kode akun kas penampung dapat diubah di Pengaturan dan dipakai runtime oleh `live.ts`
@@ -131,6 +131,9 @@ semantik engine).
 **Tasks:**
 - [x] Export Neraca Saldo ke Excel (CSV BOM dari engine `/api/reports/trial-balance/export`)
 - [x] Export Laba-Rugi ke Excel (CSV `Komponen, Nominal` dari tab Laba Rugi)
+- [x] Laporan arus kas & perubahan modal di /akuntansi (tab baru, dihitung POS dari trial balance + jurnal)
+- [x] Ekspor PDF neraca saldo & gerakan harian dari engine (format=pdf di /api/reports/.../export)
+- [x] Cetak PDF browser untuk semua tab laporan & akuntansi (window.print + @media print)
 - [x] Export AR Aging ke Excel (CSV rincian faktur + bucket dari tab Umur Piutang & Hutang)
 - [x] Export AP Aging ke Excel (CSV rincian faktur + bucket dari tab Umur Piutang & Hutang)
 - [x] Export Struk ke PDF (tombol Cetak → dialog browser → "Save as PDF" saat printer native nonaktif; faktur penjualan live sudah punya PDF engine)

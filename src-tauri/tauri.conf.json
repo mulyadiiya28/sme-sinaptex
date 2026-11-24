@@ -37,7 +37,7 @@
     ],
     "windows": {
       "wix": {
-        "language": "id-ID"
+        "language": "en-US"
       },
       "nsis": {
         "languages": ["Indonesian", "English"],
