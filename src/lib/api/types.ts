@@ -722,6 +722,7 @@ export type JurnalEntry = {
   waktu: string;
   keterangan: string;
   ref: string;
+  tipe?: string;
   baris: JurnalBaris[];
 };
 

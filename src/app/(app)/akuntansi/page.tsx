@@ -11,12 +11,13 @@ import { MoneyDisplay } from "@/components/money-display";
 import { PageHeader } from "@/components/page-header";
 import { KpiSkeleton, ListSkeleton, Skeleton, TableSkeleton } from "@/components/skeleton";
 import { StatusBadge } from "@/components/status-badge";
-import { useAkun, useJurnal, useLabaRugi } from "@/hooks/queries";
+import { useAkun, useCashAccounts, useJurnal, useLabaRugi } from "@/hooks/queries";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "@/lib/api/client";
+import { susunArusKas, susunPerubahanModal, type ArusKas, type PerubahanModal } from "@/lib/laporan";
 import { cn } from "@/lib/utils";
 
-type Tab = "akun" | "jurnal" | "buku-besar" | "laba-rugi" | "neraca";
+type Tab = "akun" | "jurnal" | "buku-besar" | "laba-rugi" | "neraca" | "arus-kas" | "perubahan-modal";
 type StatusSaldo = "memuat" | "kosong" | "tanpa-transaksi" | "seimbang" | "tidak-seimbang";
 
 const TABS: Array<{ id: Tab; label: string }> = [
@@ -25,6 +26,8 @@ const TABS: Array<{ id: Tab; label: string }> = [
   { id: "buku-besar", label: "Buku Besar" },
   { id: "laba-rugi", label: "Laba-Rugi" },
   { id: "neraca", label: "Neraca Berjalan" },
+  { id: "arus-kas", label: "Arus Kas" },
+  { id: "perubahan-modal", label: "Perubahan Modal" },
 ];
 
 export default function AkuntansiPage() {
@@ -57,6 +60,8 @@ export default function AkuntansiPage() {
       {tab === "buku-besar" && <PanelBukuBesar />}
       {tab === "laba-rugi" && <PanelLabaRugi />}
       {tab === "neraca" && <PanelNeraca />}
+      {tab === "arus-kas" && <PanelArusKas />}
+      {tab === "perubahan-modal" && <PanelPerubahanModal />}
     </div>
   );
 }
@@ -531,4 +536,269 @@ function BalanceBadge({ status }: { status: StatusSaldo }) {
         </span>
       );
   }
+}
+
+function awalBulan(): string {
+  const d = new Date();
+  return new Date(d.getFullYear(), d.getMonth(), 1).toISOString().slice(0, 10);
+}
+
+function hariIni(): string {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function RentangTanggal({
+  dari,
+  sampai,
+  setDari,
+  setSampai,
+}: {
+  dari: string;
+  sampai: string;
+  setDari: (v: string) => void;
+  setSampai: (v: string) => void;
+}) {
+  return (
+    <div className="mb-3 flex flex-wrap items-end gap-2 px-1">
+      <FormField label="Dari tanggal" className="w-40">
+        <input type="date" className="input" value={dari} onChange={(e) => setDari(e.target.value)} />
+      </FormField>
+      <FormField label="Sampai tanggal" className="w-40">
+        <input type="date" className="input" value={sampai} onChange={(e) => setSampai(e.target.value)} />
+      </FormField>
+      <button
+        type="button"
+        className="btn-secondary h-10"
+        onClick={() => {
+          setDari(awalBulan());
+          setSampai(hariIni());
+        }}
+      >
+        Bulan ini
+      </button>
+      <button
+        type="button"
+        className="btn-secondary h-10"
+        onClick={() => {
+          const y = new Date().getFullYear();
+          setDari(`${y}-01-01`);
+          setSampai(hariIni());
+        }}
+      >
+        Tahun ini
+      </button>
+    </div>
+  );
+}
+
+function PanelArusKas() {
+  const [dari, setDari] = useState(awalBulan());
+  const [sampai, setSampai] = useState(hariIni());
+  const akun = useAkun({ from: dari, to: sampai });
+  const jurnal = useQuery({
+    queryKey: ["jurnal", dari, sampai],
+    queryFn: () => api.akuntansi.jurnal({ from: dari, to: sampai }),
+  });
+  const kas = useCashAccounts();
+  const master = useQuery({ queryKey: ["akun-master"], queryFn: () => api.akuntansi.akunMaster(), staleTime: 300_000 });
+
+  if (akun.isLoading || jurnal.isLoading || kas.isLoading || master.isLoading) {
+    return <KpiSkeleton />;
+  }
+
+  const kodeKas = new Set((kas.data ?? []).map((a) => a.kode));
+  if (kodeKas.size === 0) {
+    (akun.data ?? []).filter((a) => a.kode.startsWith("11")).forEach((a) => kodeKas.add(a.kode));
+  }
+  const arus: ArusKas = susunArusKas(akun.data ?? [], jurnal.data ?? [], kodeKas, master.data ?? []);
+  const kelompok: Array<{ id: "operasi" | "investasi" | "pendanaan"; label: string }> = [
+    { id: "operasi", label: "Arus kas operasi" },
+    { id: "investasi", label: "Arus kas investasi" },
+    { id: "pendanaan", label: "Arus kas pendanaan" },
+  ];
+  const selisih = arus.kenaikanKas - (arus.kasAkhir - arus.kasAwal);
+
+  return (
+    <div className="space-y-4">
+      <div className="panel p-4">
+        <h2 className="mb-1 px-1 text-sm font-bold text-brand">Laporan arus kas</h2>
+        <p className="mb-3 px-1 text-xs text-muted">
+          Metode langsung dari jurnal: setiap pergerakan akun kas dikelompokkan menurut akun lawannya.
+        </p>
+        <RentangTanggal dari={dari} sampai={sampai} setDari={setDari} setSampai={setSampai} />
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          <KpiCard label="Operasi" value={<MoneyDisplay value={arus.operasi} />} tone="navy" />
+          <KpiCard label="Investasi" value={<MoneyDisplay value={arus.investasi} />} tone="violet" />
+          <KpiCard label="Pendanaan" value={<MoneyDisplay value={arus.pendanaan} />} tone="rose" />
+          <KpiCard label="Kenaikan kas" value={<MoneyDisplay value={arus.kenaikanKas} />} tone="emerald" />
+        </div>
+
+        <div className="mt-4 overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-line text-left text-xs uppercase tracking-wide text-muted">
+                <th className="px-3 py-2">Uraian</th>
+                <th className="px-3 py-2 text-right">Nominal</th>
+              </tr>
+            </thead>
+            <tbody>
+              {kelompok.map((k) => {
+                const baris = arus.baris.filter((b) => b.kelompok === k.id);
+                const total = k.id === "operasi" ? arus.operasi : k.id === "investasi" ? arus.investasi : arus.pendanaan;
+                return (
+                  <React.Fragment key={k.id}>
+                    <tr className="bg-slate-50 font-bold">
+                      <td className="px-3 py-2">{k.label}</td>
+                      <td className="px-3 py-2 text-right tabular-nums">
+                        <MoneyDisplay value={total} />
+                      </td>
+                    </tr>
+                    {baris.length === 0 && (
+                      <tr className="border-b border-line/60">
+                        <td className="px-3 py-1.5 pl-6 text-muted" colSpan={2}>
+                          Tidak ada pergerakan.
+                        </td>
+                      </tr>
+                    )}
+                    {baris.map((b) => (
+                      <tr key={`${k.id}-${b.akun}`} className="border-b border-line/60">
+                        <td className="px-3 py-1.5 pl-6 text-muted">{b.akun}</td>
+                        <td className="px-3 py-1.5 text-right tabular-nums">
+                          <MoneyDisplay value={b.nominal} />
+                        </td>
+                      </tr>
+                    ))}
+                  </React.Fragment>
+                );
+              })}
+              <tr className="border-t-2 border-line font-black">
+                <td className="px-3 py-2">Kenaikan / (penurunan) kas</td>
+                <td className="px-3 py-2 text-right tabular-nums">
+                  <MoneyDisplay value={arus.kenaikanKas} />
+                </td>
+              </tr>
+              <tr>
+                <td className="px-3 py-1.5 pl-6 text-muted">Kas awal periode</td>
+                <td className="px-3 py-1.5 text-right tabular-nums">
+                  <MoneyDisplay value={arus.kasAwal} />
+                </td>
+              </tr>
+              <tr className="font-bold">
+                <td className="px-3 py-1.5 pl-6">Kas akhir periode</td>
+                <td className="px-3 py-1.5 text-right tabular-nums">
+                  <MoneyDisplay value={arus.kasAkhir} />
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        {Math.abs(selisih) >= 0.005 && (
+          <p className="mt-2 px-1 text-xs text-amber-600">
+            Selisih rekonsiliasi kas: <MoneyDisplay value={selisih} /> (periksa jurnal yang tidak seimbang atau
+            akun kas yang belum terdaftar).
+          </p>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function PanelPerubahanModal() {
+  const [dari, setDari] = useState(`${new Date().getFullYear()}-01-01`);
+  const [sampai, setSampai] = useState(hariIni());
+  const akun = useAkun({ from: dari, to: sampai });
+  const jurnal = useQuery({
+    queryKey: ["jurnal", dari, sampai],
+    queryFn: () => api.akuntansi.jurnal({ from: dari, to: sampai }),
+  });
+  const master = useQuery({ queryKey: ["akun-master"], queryFn: () => api.akuntansi.akunMaster(), staleTime: 300_000 });
+
+  if (akun.isLoading || jurnal.isLoading || master.isLoading) {
+    return <KpiSkeleton />;
+  }
+
+  const modal: PerubahanModal = susunPerubahanModal(akun.data ?? [], jurnal.data ?? [], master.data ?? []);
+
+  return (
+    <div className="space-y-4">
+      <div className="panel p-4">
+        <h2 className="mb-1 px-1 text-sm font-bold text-brand">Laporan perubahan modal</h2>
+        <p className="mb-3 px-1 text-xs text-muted">
+          Modal awal, laba periode, setoran dan prive diambil dari jurnal ekuitas. Bila periode sudah ditutup, laba
+          tahun lalu muncul sebagai laba ditutup (akun Laba Ditahan).
+        </p>
+        <RentangTanggal dari={dari} sampai={sampai} setDari={setDari} setSampai={setSampai} />
+
+        <div className="mt-2 space-y-1.5 text-sm tabular-nums">
+          <div className="flex items-center justify-between">
+            <span className="text-muted">Modal awal periode</span>
+            <MoneyDisplay value={modal.modalAwal} />
+          </div>
+          <div className="flex items-center justify-between">
+            <span className="text-muted">(+) Laba (rugi) periode berjalan</span>
+            <MoneyDisplay value={modal.labaBerjalan} />
+          </div>
+          {Math.abs(modal.labaDitutup) >= 0.005 && (
+            <div className="flex items-center justify-between">
+              <span className="text-muted">(+) Laba ditutup ke Laba Ditahan</span>
+              <MoneyDisplay value={modal.labaDitutup} />
+            </div>
+          )}
+          <div className="flex items-center justify-between">
+            <span className="text-muted">(+) Setoran modal</span>
+            <MoneyDisplay value={modal.setoran} />
+          </div>
+          <div className="flex items-center justify-between">
+            <span className="text-muted">(-) Prive / pengambilan</span>
+            <MoneyDisplay value={modal.prive} />
+          </div>
+          <div className="mt-2 flex items-center justify-between border-t-2 border-line pt-2 font-black text-brand">
+            <span>Modal akhir periode</span>
+            <MoneyDisplay value={modal.modalAkhir} />
+          </div>
+        </div>
+
+        <div className="mt-5 overflow-x-auto">
+          <h3 className="mb-2 px-1 text-xs font-bold uppercase tracking-wide text-muted">Rincian akun ekuitas</h3>
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-line text-left text-xs uppercase tracking-wide text-muted">
+                <th className="px-3 py-2">Akun</th>
+                <th className="px-3 py-2 text-right">Saldo awal</th>
+                <th className="px-3 py-2 text-right">Debit</th>
+                <th className="px-3 py-2 text-right">Kredit</th>
+                <th className="px-3 py-2 text-right">Saldo akhir</th>
+              </tr>
+            </thead>
+            <tbody>
+              {modal.rincian.length === 0 && (
+                <tr>
+                  <td className="px-3 py-3 text-muted" colSpan={5}>
+                    Belum ada akun ekuitas.
+                  </td>
+                </tr>
+              )}
+              {modal.rincian.map((r) => (
+                <tr key={r.akun} className="border-b border-line/60">
+                  <td className="px-3 py-1.5">{r.akun}</td>
+                  <td className="px-3 py-1.5 text-right tabular-nums">
+                    <MoneyDisplay value={r.saldoAwal} />
+                  </td>
+                  <td className="px-3 py-1.5 text-right tabular-nums">
+                    <MoneyDisplay value={r.debit} />
+                  </td>
+                  <td className="px-3 py-1.5 text-right tabular-nums">
+                    <MoneyDisplay value={r.kredit} />
+                  </td>
+                  <td className="px-3 py-1.5 text-right tabular-nums">
+                    <MoneyDisplay value={r.saldoAkhir} />
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  );
 }

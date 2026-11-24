@@ -1264,6 +1264,7 @@ export async function liveJurnal(params: JurnalParams = {}): Promise<JurnalEntry
       waktu: row.date,
       keterangan: row.description?.trim() || row.transactionType || "Jurnal",
       ref: row.referenceId?.trim() || row.referenceType || row.id,
+      tipe: row.transactionType ?? undefined,
       baris: row.lines.map((line) => ({
         akun: line.accountName ? `${line.accountCode} ${line.accountName}` : line.accountCode,
         debit: line.debit,

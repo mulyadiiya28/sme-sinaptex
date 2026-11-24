@@ -12,7 +12,8 @@ ASP.NET Core, .NET 10) served over REST + JWT.
 - Modul: Kasir (voucher/poin/pembayaran campuran), Riwayat, Shift, Produk, Persediaan
   (ringkasan/stok/mutasi/opname/gudang), Pembelian + PPh, Pemasok, Voucher, Member & Poin, Keuangan
   (kas/biaya/piutang/hutang/uang muka), Akuntansi (neraca saldo, jurnal, buku besar, laba-rugi, neraca
-  berjalan, periode fiskal), Laporan, PPh, Aset Tetap, Persetujuan, Aturan Approval, Cabang, Pengaturan.
+  berjalan, arus kas, perubahan modal, periode fiskal), Laporan, PPh, Aset Tetap, Persetujuan, Aturan
+  Approval, Cabang, Pengaturan.
 - Static export: `output: "export"` → `out/` (consumed by Tauri `frontendDist`).
 - PWA via `@serwist/next` (service worker disabled in dev; `src/app/manifest.ts`).
 - Offline LAN topology (Mode A): POS.exe → `http://<server-toko>:PORT/api`.
@@ -266,6 +267,12 @@ Perilaku live yang menyimpang dari mock:
   dari transaksi tercatat di POS (riwayat 1 tahun), bukan dari engine.
 - Neraca saldo memakai `GET /api/reports/trial-balance?fromDate=&toDate=` dan membaca
   `openingBalance`/`closingBalance`: kolom **Saldo awal | Debit | Kredit | Saldo berjalan**.
+- **Arus kas & perubahan modal dihitung di POS** (`src/lib/laporan.ts`) karena engine belum punya
+  endpoint khusus: arus kas metode langsung mengelompokkan tiap jurnal yang menyentuh akun kas
+  (kode dari `GET /api/cash-accounts`, fallback kode `11xx`) menjadi operasi/investasi (`16xx`)/
+  pendanaan (ekuitas, `25xx`/`26xx`, `1250`/`2450`) menurut akun lawannya; perubahan modal memakai
+  saldo akun ekuitas + laba berjalan dan memisahkan jurnal `CLOSING` (laba ditutup) dari setoran/prive.
+  Neraca berjalan & laba-rugi juga dihitung POS dari trial balance.
 - Rute engine selalu memakai **id** dokumen, sedangkan POS menyimpan nomor dokumen
   (`SALE-00001`). Jadi nomor harus diterjemahkan dulu (`cariPenjualanByNomor`) sebelum
   memanggil `/api/sales/{id}/...` — konfirmasi digital dan pelunasan piutang pernah 404 karena
@@ -532,7 +539,7 @@ src/lib/store/     auth, toko, printer, reminder, gateway, aktivasi, cabang, not
 src/lib/printer/   escpos.ts (builder), printer.ts (invoke Tauri)
 src/lib/gateway/   client.ts (buat tagihan + status: Midtrans/Xendit/REST umum)
 src/lib/notifikasi/ telegram.ts (kirim Bot API langsung dari POS)
-src/lib/           csv, dashboard, format, license, license-device, nav, reminder, struk, uang (totalParity), utils (cn)
+src/lib/           csv, dashboard, format, laporan (arus kas & perubahan modal), license, license-device, nav, reminder, struk, uang (totalParity), utils (cn)
 src-tauri/         Rust shell minimal + printer.rs (raw print Windows spooler)
 backend/           nested git repo (Accounting Engine .NET 10)
 tools/             bootstrap-backend.py
