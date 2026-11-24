@@ -271,6 +271,23 @@ export default function LaporanPage() {
     }
   }
 
+  async function eksporGerakanHarianPdf() {
+    if (!dmDate || !dmAccount) {
+      alert("Pilih tanggal dan akun sebelum mengekspor.");
+      return;
+    }
+    try {
+      const blob = await api.akuntansi.eksporGerakanHarian(dmDate, dmAccount, "pdf");
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = `gerakan-harian-${dmDate}-${dmAccount}.pdf`;
+      a.click();
+      URL.revokeObjectURL(a.href);
+    } catch (err) {
+      alert(String(err));
+    }
+  }
+
   function eksporLabaRugi() {
     const data = labaRugi.data;
     if (!data) return;
@@ -958,7 +975,12 @@ export default function LaporanPage() {
               </div>
 
               <div className="mt-4">
-                <h2 className="mb-3 px-1 text-sm font-bold text-brand">Gerakan Harian per Akun</h2>
+                <div className="mb-3 flex items-center justify-between px-1">
+                  <h2 className="text-sm font-bold text-brand">Gerakan Harian per Akun</h2>
+                  <button type="button" onClick={eksporGerakanHarianPdf} className="btn-secondary">
+                    <Download className="size-4" aria-hidden /> Ekspor PDF (engine)
+                  </button>
+                </div>
                 <div className="overflow-x-auto">
                   <table className="w-full text-sm border-collapse">
                     <thead>

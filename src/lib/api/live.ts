@@ -2772,6 +2772,13 @@ export async function liveDailyMovement(date: string, accountCode: string): Prom
   return data;
 }
 
+export async function liveDailyMovementExport(date: string, accountCode: string, format: string = "csv"): Promise<Blob> {
+  const qs = new URLSearchParams({ date, accountCode, format });
+  const cabang = useCabang.getState().cabangAktif;
+  if (cabang) qs.set("branchId", cabang);
+  return ambilBerkas(`/api/reports/daily-movement/export?${qs.toString()}`);
+}
+
 export async function liveAging(side: "RECEIVABLE" | "PAYABLE", asOfDate?: string): Promise<AgingReport> {
   const qs = new URLSearchParams({ side });
   if (asOfDate) qs.set("asOfDate", asOfDate);

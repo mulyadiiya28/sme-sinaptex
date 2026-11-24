@@ -190,6 +190,7 @@ import {
   liveImporProduk,
   liveImporSaldoAwal,
   liveDailyMovement,
+  liveDailyMovementExport,
   liveInventoryTurnover,
   liveJurnal,
   liveKonfirmasiDigital,
@@ -799,6 +800,11 @@ export const api = {
           .join(","),
       );
       return new Blob(["\uFEFF" + [head, ...isi].join("\r\n")], { type: "text/csv;charset=utf-8" });
+    },
+    eksporGerakanHarian: async (date: string, accountCode: string, format: string = "csv"): Promise<Blob> => {
+      if (API_MODE === "live") return liveDailyMovementExport(date, accountCode, format);
+      await delay(120);
+      throw new Error("Ekspor gerakan harian hanya tersedia di mode live.");
     },
     labaRugi: async (): Promise<LabaRugi> => {
       if (API_MODE === "live") return liveLabaRugi();
