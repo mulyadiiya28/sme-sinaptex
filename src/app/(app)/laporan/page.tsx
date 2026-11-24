@@ -378,6 +378,13 @@ export default function LaporanPage() {
             {t.icon} {t.label}
           </button>
         ))}
+        <button
+          type="button"
+          onClick={() => window.print()}
+          className="no-print ml-auto rounded-lg border border-line bg-white px-4 py-2 text-sm font-semibold text-muted hover:text-ink"
+        >
+          Cetak PDF
+        </button>
       </div>
 
       <div className="panel mb-4 flex flex-wrap items-end gap-2.5 p-4">

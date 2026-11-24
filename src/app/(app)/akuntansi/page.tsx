@@ -40,7 +40,7 @@ export default function AkuntansiPage() {
         title="Akuntansi"
         description="Pencatatan double-entry otomatis dari engine: setiap transaksi membentuk jurnal, saldo akun, dan laba-rugi."
       />
-      <div className="mb-4 flex flex-wrap gap-2">
+      <div className="mb-4 flex flex-wrap items-center gap-2">
         {TABS.map((t) => (
           <button
             key={t.id}
@@ -54,6 +54,13 @@ export default function AkuntansiPage() {
             {t.label}
           </button>
         ))}
+        <button
+          type="button"
+          onClick={() => window.print()}
+          className="no-print ml-auto rounded-full border border-line bg-white px-4 py-2 text-sm font-semibold text-muted hover:text-ink"
+        >
+          Cetak PDF
+        </button>
       </div>
 
       {tab === "akun" && <PanelAkun />}
