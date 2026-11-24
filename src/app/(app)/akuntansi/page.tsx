@@ -357,6 +357,7 @@ function PanelLabaRugi() {
           <button type="button" className="btn-secondary h-10" onClick={() => { const d = new Date(); setDari(new Date(d.getFullYear(), d.getMonth(), 1).toISOString().slice(0, 10)); setSampai(d.toISOString().slice(0, 10)); }}>Bulan ini</button>
           <button type="button" className="btn-secondary h-10" onClick={() => { const d = new Date(); const y = d.getFullYear() - 1; setDari(`${y}-01-01`); setSampai(`${y}-12-31`); }}>Tahun lalu</button>
           <button type="button" className="btn-secondary h-10" onClick={() => setBandingkan((v) => !v)}>{bandingkan ? "Sembunyikan perbandingan" : "Bandingkan bulan lalu"}</button>
+          <button type="button" className="btn-secondary h-10" onClick={() => window.print()}>Cetak (PDF)</button>
         </div>
 
         {bandingkan ? (
@@ -463,6 +464,7 @@ function PanelNeraca() {
         <FormField label="Kolom 2" className="w-40"><input type="date" className="input" value={d2} onChange={(e) => setD2(e.target.value)} /></FormField>
         <FormField label="Kolom 3" className="w-40"><input type="date" className="input" value={d3} onChange={(e) => setD3(e.target.value)} disabled={tunggal} /></FormField>
         <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={tunggal} onChange={(e) => setTunggal(e.target.checked)} /> Tampilan tunggal</label>
+        <button type="button" className="btn-secondary h-10" onClick={() => window.print()}>Cetak (PDF)</button>
       </div>
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
