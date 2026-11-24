@@ -788,8 +788,8 @@ export const api = {
           normalBalance: tipeDariKode(kode) === "LIABILITY" || tipeDariKode(kode) === "EQUITY" || tipeDariKode(kode) === "REVENUE" ? "CREDIT" : "DEBIT",
         }));
     },
-    eksporNeracaSaldo: async (dari: string, sampai: string): Promise<Blob> => {
-      if (API_MODE === "live") return liveNeracaSaldoExport(dari, sampai);
+    eksporNeracaSaldo: async (dari: string, sampai: string, format: string = "csv"): Promise<Blob> => {
+      if (API_MODE === "live") return liveNeracaSaldoExport(dari, sampai, format);
       await delay(120);
       const rows = mockDb.akunSaldos({ from: dari, to: sampai });
       const head = "akun,saldo_awal,debit,kredit,saldo_berjalan";

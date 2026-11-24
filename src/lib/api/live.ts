@@ -1207,8 +1207,8 @@ export async function liveAkun(params: NeracaParams = {}): Promise<AkunSaldo[]> 
   }));
 }
 
-export async function liveNeracaSaldoExport(dari: string, sampai: string): Promise<Blob> {
-  const query = new URLSearchParams({ fromDate: dari, toDate: sampai, format: "csv" });
+export async function liveNeracaSaldoExport(dari: string, sampai: string, format: string = "csv"): Promise<Blob> {
+  const query = new URLSearchParams({ fromDate: dari, toDate: sampai, format });
   const cabang = useCabang.getState().cabangAktif;
   if (cabang) query.set("branchId", cabang);
   return ambilBerkas(`/api/reports/trial-balance/export?${query.toString()}`);

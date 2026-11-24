@@ -254,6 +254,23 @@ export default function LaporanPage() {
     }
   }
 
+  async function eksporNeracaSaldoPdf() {
+    if (!dari || !sampai) {
+      alert("Pilih rentang tanggal Dari dan Sampai sebelum mengekspor.");
+      return;
+    }
+    try {
+      const blob = await api.akuntansi.eksporNeracaSaldo(dari, sampai, "pdf");
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = `neraca-saldo-${dari}-${sampai}.pdf`;
+      a.click();
+      URL.revokeObjectURL(a.href);
+    } catch (err) {
+      alert(String(err));
+    }
+  }
+
   function eksporLabaRugi() {
     const data = labaRugi.data;
     if (!data) return;
@@ -401,7 +418,12 @@ export default function LaporanPage() {
         )}
         {tab === "neraca-saldo" && (
           <button type="button" onClick={eksporNeracaSaldo} className="btn-secondary">
-            <Download className="size-4" aria-hidden /> Ekspor Neraca Saldo
+            <Download className="size-4" aria-hidden /> Ekspor CSV
+          </button>
+        )}
+        {tab === "neraca-saldo" && (
+          <button type="button" onClick={eksporNeracaSaldoPdf} className="btn-secondary">
+            <Download className="size-4" aria-hidden /> Ekspor PDF (engine)
           </button>
         )}
         {tab === "laba-rugi" && (
