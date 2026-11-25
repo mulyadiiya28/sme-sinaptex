@@ -173,7 +173,11 @@ export const mockDb = {
   products: [...produkSeed] as Product[],
   retur: [] as ReturPenjualan[],
   returPembelian: [] as ReturPembelian[],
-  pelanggan: [] as Pelanggan[],
+  pelanggan: [
+    { id: "plg-1", nama: "Ibu Siti", telepon: "0812-2000-0001", alamat: "Jl. Merdeka 12", batasKredit: 500000 },
+    { id: "plg-2", nama: "Pak Budi", telepon: "0812-2000-0002", alamat: "Jl. Sudirman 8", batasKredit: 300000 },
+    { id: "plg-3", nama: "Warung Makan Bu Ani", telepon: "0812-2000-0003", alamat: "Pasar Baru Blok C", batasKredit: 1000000 },
+  ] as Pelanggan[],
   suppliers: [
     {
       id: "sup-1",
@@ -318,8 +322,15 @@ export const mockDb = {
   ] as Voucher[],
 
   // ===== LOYALTY =====
-  members: [] as Member[],
-  memberTiers: [] as MemberTier[],
+  members: [
+    { id: "mem-1", kode: "MBR-001", nama: "Ibu Siti", telepon: "0812-2000-0001", tierId: "tier-1", poin: 120, poinSeumurHidup: 120, bergabungPada: "2025-01-01", aktif: true },
+    { id: "mem-2", kode: "MBR-002", nama: "Pak Budi", telepon: "0812-2000-0002", tierId: "tier-2", poin: 650, poinSeumurHidup: 650, bergabungPada: "2024-06-15", aktif: true },
+  ] as Member[],
+  memberTiers: [
+    { id: "tier-1", kode: "BRONZE", nama: "Bronze", minPoin: 0, diskonPersen: 0, pengaliPoin: 1, aktif: true },
+    { id: "tier-2", kode: "SILVER", nama: "Silver", minPoin: 500, diskonPersen: 0.03, pengaliPoin: 1.2, aktif: true },
+    { id: "tier-3", kode: "GOLD", nama: "Gold", minPoin: 2000, diskonPersen: 0.05, pengaliPoin: 1.5, aktif: true },
+  ] as MemberTier[],
   transaksiPoin: [] as TransaksiPoin[],
   loyaltyPolicy: {
     aktif: true,
