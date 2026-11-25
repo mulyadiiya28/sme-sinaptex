@@ -29,6 +29,33 @@ npx tauri build      # Windows installer (nsis + msi)
 npx tsc --noEmit     # Typecheck — no lint/test tooling in the POS repo
 ```
 
+### Installer tunggal (engine sebagai sidecar)
+
+`npx tauri build` sekarang membundel engine sebagai **sidecar** (`accounting-engine`) plus
+template database (`src-tauri/resources/accounting.db`), jadi satu installer memuat frontend +
+backend. Alur build:
+
+```bash
+# 1. publish engine self-contained ke src-tauri/binaries
+cd backend
+dotnet publish src/AccountingEngine.Api -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -o ../src-tauri/binaries
+# lalu rename hasilnya menjadi accounting-engine-x86_64-pc-windows-msvc.exe
+
+# 2. bangun template DB (skema + pemilik + chart of accounts)
+cd ..
+powershell -ExecutionPolicy Bypass -File scripts\build-engine-template.ps1
+
+# 3. build installer
+npx tauri build
+```
+
+Saat aplikasi dibuka, `src-tauri/src/lib.rs` menyalin template ke
+`%LOCALAPPDATA%\id.sinaptex.pos\accounting.db` bila belum ada, lalu menjalankan sidecar di
+`http://localhost:5121` dengan connection string, folder backup, dan folder file lewat env.
+Engine menulis log ke `%LOCALAPPDATA%\id.sinaptex.pos\engine.log`. Login bawaan template:
+`pemilik` / `pemilik123`. `src-tauri/binaries/` dan `src-tauri/resources/accounting.db`
+gitignored (artefak build). Engine juga menjalankan migrasi otomatis saat start (aman untuk DB lama).
+
 Backup harian (Scheduled Task, butuh Administrator; lihat `docs/DEPLOYMENT-GUIDE.md`):
 `powershell -ExecutionPolicy Bypass -File scripts\install-backup-task.ps1 -RunNow`
 

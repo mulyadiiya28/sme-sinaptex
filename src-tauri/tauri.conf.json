@@ -28,6 +28,7 @@
   "bundle": {
     "active": true,
     "externalBin": ["binaries/accounting-engine"],
+    "resources": ["resources/accounting.db"],
     "targets": ["nsis", "msi"],
     "icon": [
       "icons/32x32.png",

@@ -27,6 +27,7 @@ public/sw.js
 # Rust build artifacts
 src-tauri/target/
 src-tauri/binaries/
+src-tauri/resources/accounting.db
 
 # Debug scripts
 check_models*.py
