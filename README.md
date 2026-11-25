@@ -169,19 +169,19 @@ tools/bootstrap-backend.py
 
 ## Verifikasi
 
-- Frontend: `npx tsc --noEmit` bersih + `npm run build` sukses (21 halaman + `/_not-found` + `/manifest.webmanifest` → `out/`)
+- Frontend: `npx tsc --noEmit` bersih + `npm run build` sukses (25 halaman + `/_not-found` + `/manifest.webmanifest` → `out/`)
 - Backend: `dotnet build AccountingEngine.slnx` bersih + `dotnet test` (525 unit + 766 integration lulus)
-- Deployment: Tauri installer (nsis + msi) + engine dijalankan terpisah di port 5121
+- Deployment: installer tunggal nsis/msi membundel engine sebagai sidecar + template DB; engine auto-start di port 5121, data di `%LOCALAPPDATA%\id.sinaptex.pos`
 
 ## Status Deployment
 
 | Komponen | Status | Keterangan |
 |----------|--------|------------|
 | Frontend Build | ✅ | `npm run build` → static export `out/` |
-| Tauri NSIS | ✅ | `POS-Sinaptex_0.1.0_x64-setup.exe` |
+| Tauri NSIS/MSI | ✅ | `POS-Sinaptex_0.1.1_x64-setup.exe` / `.msi` (engine sidecar + template DB) |
 | Backend Build | ✅ | `dotnet build` + `dotnet test` (repo `backend/`) |
-| Database | ✅ | Migrated + seeded (chart of accounts) |
-| Backend Server | ✅ | Jalankan `dotnet run` di server toko (port 5121) |
+| Database | ✅ | Migrasi otomatis + template seed (pemilik/pemilik123) |
+| Backend Server | ✅ | Auto-start dari sidecar, port 5121, log di `%LOCALAPPDATA%\id.sinaptex.pos\engine.log` |
 | Documentation | ✅ | `AGENTS.md` + manual owner/kasir + panduan deploy |
 
 **Repository:** https://github.com/mulyadiiya28/sme-sinaptex
