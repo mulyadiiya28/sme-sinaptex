@@ -11,7 +11,7 @@ $ErrorActionPreference = "Stop"
 $root = Split-Path -Parent $PSScriptRoot
 $exe = Join-Path $root "src-tauri\binaries\accounting-engine-x86_64-pc-windows-msvc.exe"
 if (-not (Test-Path $exe)) {
-  throw "engine belum dipublish ke $exe. Jalankan: dotnet publish src/AccountingEngine.Api -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -o src-tauri/binaries"
+  throw "engine belum dipublish ke $exe. Jalankan: dotnet publish src/AccountingEngine.Api -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:EnableCompressionInSingleFile=true -o src-tauri/binaries"
 }
 
 $tpl = Join-Path $env:TEMP "pos-sinaptex-template"

@@ -38,7 +38,7 @@ backend. Alur build:
 ```bash
 # 1. publish engine self-contained ke src-tauri/binaries
 cd backend
-dotnet publish src/AccountingEngine.Api -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -o ../src-tauri/binaries
+dotnet publish src/AccountingEngine.Api -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:EnableCompressionInSingleFile=true -o ../src-tauri/binaries
 # lalu rename hasilnya menjadi accounting-engine-x86_64-pc-windows-msvc.exe
 
 # 2. bangun template DB (skema + pemilik + chart of accounts)
